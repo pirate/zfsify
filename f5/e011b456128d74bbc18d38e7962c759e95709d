@@ -1,0 +1,21 @@
+docs/evidence/published-final-check.txt
+  s_3dff2a00c4a5b5::t_9ec843f2e532d4 1-3
+docs/validation-preserve-erase.md
+  s_3dff2a00c4a5b5::t_72114808a51643 50-51,138-144
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f5e011b456128d74bbc18d38e7962c759e95709d",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
