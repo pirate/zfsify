@@ -85,7 +85,9 @@ def publish(final=False):
     dt = max(now-tick, .001)
     current = disks(a.devices.split(','))
     state['io'] = {d: [(v[0]-prev[d][0])/dt/1e6, (v[1]-prev[d][1])/dt/1e6, (v[2]-prev[d][2])/dt]
-                   for d, v in current.items() if d in prev}
+                   for d, v in current.items() if d in prev
+                   # Partition recreation resets counters; establish a new baseline.
+                   if all(new >= old for new, old in zip(v, prev[d]))}
     state['speed'] = state['done']/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
     state['elapsed'] = now-start
     prev, tick, last_done = current, now, state['done']

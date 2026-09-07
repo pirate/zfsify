@@ -1,0 +1,3 @@
+38e6cae41e467229b1e781b8334c36d07dcfe4790c0abfc5b375ac114babd0ea  /run/zfsify-published.sh
+zfs-on-boot: Already installed; nothing to do.
+Published installer re-run guard passed

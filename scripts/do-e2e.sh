@@ -41,7 +41,7 @@ for attempt in {1..60}; do
     sleep 5
 done
 [[ -n $IP ]]
-"${SSH[@]}" "root@$IP" 'cloud-init status --wait; mkdir -p /root/zfs-on-boot-source'
+"${SSH[@]}" "root@$IP" 'cloud-init status --wait && mkdir -p /root/zfs-on-boot-source'
 "${SCP[@]}" "$BASE/scripts/setup-fixture.sh" "$BASE/scripts/$FIXTURE_CHECK" "root@$IP:/root/"
 "${SSH[@]}" "root@$IP" "bash /root/setup-fixture.sh $MODE"
 "${SCP[@]}" "$BASE/dist/install.sh" "root@$IP:/root/zfs-on-boot-source/install.sh"

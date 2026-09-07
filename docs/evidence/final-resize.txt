@@ -1,0 +1,52 @@
+active
+active
+active
+status: done
+[test Droplet ID redacted]
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool               390M   154G    96K  none
+rpool/ROOT          389M   154G    96K  none
+rpool/ROOT/ubuntu   389M   154G   389M  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+ZFS root verification passed.
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+/home/erasetest/.ssh/authorized_keys: OK
+/usr/bin/awk
+active
+active
+active
+ERASE VERIFIED: fresh ZFS root, retained accounts/configuration/SSH access, original data removed.
+rpool	171261820928	ONLINE
+NAME   START         SIZE FSTYPE
+vda          171798691840 
+├─vda1  2048      1048576 
+└─vda2  4096 171796577792 zfs_member
+vdb                493568 iso9660
+Sep 07 05:04:22 zfs-on-boot-erase-test systemd[1]: Starting zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize...
+Sep 07 05:04:25 zfs-on-boot-erase-test zfs-on-boot-grow[745]: CHANGED: partition=2 start=4096 old: size=167768031 end=167772126 new: size=335540191 end=335544286
+Sep 07 05:04:25 zfs-on-boot-erase-test zfs-on-boot-grow[839]: rpool        171261820928        ONLINE
+Sep 07 05:04:25 zfs-on-boot-erase-test systemd[1]: zfs-on-boot-grow.service: Deactivated successfully.
+Sep 07 05:04:25 zfs-on-boot-erase-test systemd[1]: Finished zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize.
+[boot ID redacted]

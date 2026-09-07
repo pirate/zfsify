@@ -526,7 +526,7 @@ umount /target/run /target/proc /target/sys
 umount -R /target/dev
 
 ZFS_ON_BOOT_46827e9cffcde6d6f8956b1fb2b68862dba0c65e9b1258493c9aba0e663f5c84
-cat > "$work/progress.py" <<'ZFS_ON_BOOT_d976d1cdba5626d79c72984e1713155e7cab2b2a7ca46c6d5944edcb19a65b24'
+cat > "$work/progress.py" <<'ZFS_ON_BOOT_384f4cdae1a15781231b3f9a0b7df1dff0216ea3f7cf23d207302d76e123db9d'
 #!/usr/bin/python3
 """Run a phase with live Linux disk telemetry, or follow it across SSH sessions."""
 import argparse
@@ -614,7 +614,9 @@ def publish(final=False):
     dt = max(now-tick, .001)
     current = disks(a.devices.split(','))
     state['io'] = {d: [(v[0]-prev[d][0])/dt/1e6, (v[1]-prev[d][1])/dt/1e6, (v[2]-prev[d][2])/dt]
-                   for d, v in current.items() if d in prev}
+                   for d, v in current.items() if d in prev
+                   # Partition recreation resets counters; establish a new baseline.
+                   if all(new >= old for new, old in zip(v, prev[d]))}
     state['speed'] = state['done']/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
     state['elapsed'] = now-start
     prev, tick, last_done = current, now, state['done']
@@ -672,7 +674,7 @@ if code == 0 and state['total']: state['done'] = state['total']
 publish(final=True)
 sys.exit(code)
 
-ZFS_ON_BOOT_d976d1cdba5626d79c72984e1713155e7cab2b2a7ca46c6d5944edcb19a65b24
+ZFS_ON_BOOT_384f4cdae1a15781231b3f9a0b7df1dff0216ea3f7cf23d207302d76e123db9d
 cat > "$work/plan.py" <<'ZFS_ON_BOOT_47fad85edc65109b9740efb8f67c1fdd4ec324179cc6db9ff49a21152ecc694f'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""

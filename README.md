@@ -8,6 +8,7 @@ less than half the root filesystem is used, or reinstall Ubuntu with your
 accounts and configuration.
 
 [![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](#requirements)
+[![DigitalOcean tested](https://img.shields.io/badge/DigitalOcean-tested-0080FF?logo=digitalocean&logoColor=white)](docs/validation.md)
 [![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#requirements)
 [![MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 
@@ -16,6 +17,11 @@ accounts and configuration.
 </div>
 
 ## Quick start
+
+**Tested end-to-end on DigitalOcean with Ubuntu 24.04 amd64:** preserve an
+existing installation or reinstall with `--erase`, boot `/` and `/boot` from ZFS
+on the included disk, and automatically expand after a Droplet disk resize.
+[Read the validation results](docs/validation-preserve-erase.md).
 
 On an Ubuntu 24.04 amd64 VPS that meets the [requirements](#requirements),
 wait for initial provisioning to finish (`cloud-init status --wait`), then run
@@ -119,7 +125,8 @@ The installer builds a complete RAM OS using signed Ubuntu APT repositories.
 After booting that OS, the original filesystem is unmounted, checked and shrunk.
 It creates a temporary ZFS pool in the freed tail of the same disk. `rsync`
 preserves file contents, numeric ownership, permissions, ACLs, xattrs, hard links
-and sparse files. A second, checksum-based comparison must find no differences
+and sparse files. Virtual filesystems, `/tmp`, installer staging files, swap
+files, and the unused EFI boot files are excluded. A second, checksum-based comparison must find no differences
 before the original ext4 partitions are removed.
 
 It replaces the front of the disk with a mirror member, waits for a successful
@@ -188,6 +195,19 @@ Noninteractive logs include periodic progress reports and detailed command outpu
 
 ## Automatic disk growth
 
+**DigitalOcean disk resizing works automatically: resize the Droplet normally in
+DigitalOcean, including its disk, and power it back on. No special commands are
+needed inside Ubuntu.** We verified a real **80 GB → 160 GB** resize: the next
+boot expanded the partition and ZFS pool, and SSH, retained accounts and
+configuration, and system health checks all passed. See the
+[DigitalOcean validation report](docs/validation-preserve-erase.md). CPU/RAM-only
+resizes do not increase disk capacity. Follow DigitalOcean’s
+[normal resize procedure](https://docs.digitalocean.com/products/droplets/how-to/resize/)
+for shutdown, resizing, and power-on.
+
+<details>
+<summary>How automatic expansion works</summary>
+
 The pool has `autoexpand=on`. A systemd service, `zfs-on-boot-grow.service`, runs
 on each normal boot. It discovers the single root vdev, runs `growpart`, refreshes
 the kernel's partition mapping and runs `zpool online -e`. It is idempotent and
@@ -195,6 +215,8 @@ leaves the starting sector unchanged. This handles a provider disk enlargement
 on the boot after the resize; CPU/RAM-only resizes do not grow storage.
 Cloud-init's generic root resize is disabled so it does not run ext4 tools on ZFS.
 Multi-device pools are refused by this automatic-growth helper.
+
+</details>
 
 ## Logs and recovery
 

@@ -1,0 +1,88 @@
+Selected verbatim phase reports from the final preservation run.
+Intervening command output and repeated samples omitted.
+
+[#######-----------------] phase 4/10: Check offline ext4 /dev/vda1 [complete]
+  devices: /dev/vda,/dev/vda1 | elapsed 2s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 0.6 W 0.1 MB/s 120 IOPS | /dev/vda1: R 0.6 W 0.1 MB/s 120 IOPS
+
+[#######-----------------] phase 4/10: Shrink ext4 on /dev/vda1 [complete]
+  devices: /dev/vda,/dev/vda1 | elapsed 1s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 27.2 W 6.5 MB/s 4570 IOPS | /dev/vda1: R 27.2 W 6.5 MB/s 4570 IOPS
+
+[#######-----------------] phase 4/10: Shorten /dev/vda1 and create temporary ZFS partition [complete]
+  devices: /dev/vda,/dev/vda1 | elapsed 1s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 0.7 W 0.0 MB/s 191 IOPS | /dev/vda1: R -18.5 W 0.0 MB/s -486 IOPS
+
+[#######-----------------] phase 4/10: Create rpool on /dev/vda32 [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 0s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 13.3 W 8.4 MB/s 816 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 13.3 W 8.4 MB/s 816 IOPS
+
+[#########---------------] phase 5/10: Copy /old/ to /dev/vda32 [running]
+  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 0s
+  0.0/4,850.6 MB (0.0%) | 0.0 MB/s logical
+  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS
+
+[###########-------------] phase 5/10: Copy /old/ to /dev/vda32 [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 232s
+  4,850.6/4,850.6 MB (100.0%) | 20.9 MB/s logical (phase average)
+  /dev/vda: R 0.1 W 0.0 MB/s 17 IOPS | /dev/vda1: R 0.1 W 0.0 MB/s 17 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS
+
+[############------------] phase 6/10: Checksum and metadata verification: /dev/vda1 -> /dev/vda32 [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 152s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 7.5 W 0.0 MB/s 379 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 7.5 W 0.0 MB/s 379 IOPS
+
+[##############----------] phase 7/10: Configure ZFS root, initramfs and boot services [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 52s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 0.9 W 0.0 MB/s 55 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.9 W 0.0 MB/s 55 IOPS
+
+[################--------] phase 8/10: Replace original ext4 with front mirror member on /dev/vda [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 1s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 0.0 W 0.0 MB/s 24 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS
+
+[################--------] phase 8/10: Relocate via mirror: /dev/vda32 -> /dev/vda2 [running]
+  devices: /dev/vda,/dev/vda2,/dev/vda32 | elapsed 0s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS
+
+[###################-----] phase 8/10: Relocate via mirror: /dev/vda32 -> /dev/vda2 [complete]
+  devices: /dev/vda,/dev/vda2,/dev/vda32 | elapsed 9s
+  ~2,072.3/2,072.3 MB (100.0%) | 236.5 MB/s logical (phase average)
+  /dev/vda: R 82.1 W 113.2 MB/s 866 IOPS | /dev/vda2: R 0.0 W 112.1 MB/s 524 IOPS | /dev/vda32: R 82.1 W 1.1 MB/s 346 IOPS
+
+[################--------] phase 8/10: Detach temporary /dev/vda32 after successful resilver [complete]
+  devices: /dev/vda,/dev/vda2,/dev/vda32 | elapsed 0s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 3.7 W 14.1 MB/s 579 IOPS | /dev/vda2: R 3.7 W 6.5 MB/s 489 IOPS | /dev/vda32: R 0.0 W 7.6 MB/s 90 IOPS
+
+[###################-----] phase 9/10: Remove temporary partition /dev/vda32 [complete]
+  devices: /dev/vda,/dev/vda2,/dev/vda32 | elapsed 1s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 0.0 W 0.0 MB/s 651 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS
+
+[###################-----] phase 9/10: Grow final ZFS partition /dev/vda2 to fill /dev/vda [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 1s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 1.4 W 4.3 MB/s 505 IOPS | /dev/vda2: R 0.8 W 4.2 MB/s 418 IOPS
+
+[#####################---] phase 10/10: Install GRUB on /dev/vda; /boot is on ZFS [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 2s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 5.9 W 4.7 MB/s 1185 IOPS | /dev/vda2: R 3.1 W 3.5 MB/s 484 IOPS
+
+[#####################---] phase 10/10: Finalize GRUB configuration [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 32s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 2.8 W 0.0 MB/s 99 IOPS | /dev/vda2: R 1.6 W 0.0 MB/s 45 IOPS
+
+[########################] phase 10/10: Ready to reboot [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 0s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS
+

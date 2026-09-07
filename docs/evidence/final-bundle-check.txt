@@ -1,0 +1,2 @@
+fa531a4d1aac02faa63bb1ccfe2513ff896110e7ff7f79bd6d980f86b2360386  /run/reformat-candidate.sh
+Final bundle re-run guard passed on DigitalOcean

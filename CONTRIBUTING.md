@@ -25,13 +25,15 @@ repositories publish updates, even when the shell script is unchanged.
 ## Test on DigitalOcean
 
 The harness creates a billable `s-2vcpu-4gb` Ubuntu 24.04 Droplet and a temporary SSH
-key, installs the packaged script there, verifies the result and another reboot,
+key, creates a data/account fixture, installs the packaged script there, verifies
+the result and another reboot,
 then deletes its recorded cloud resources. Requires Python 3, curl, OpenSSH, and a
 DigitalOcean token supplied through `DIGITALOCEAN_TOKEN`. Set it in your environment
 without putting the value in source, command examples, or logs.
 
 ```sh
-bash scripts/do-e2e.sh
+bash scripts/do-e2e.sh preserve
+bash scripts/do-e2e.sh erase
 ```
 
 All installer runtime testing belongs on DigitalOcean; do not run the installer

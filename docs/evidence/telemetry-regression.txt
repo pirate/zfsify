@@ -1,0 +1,4 @@
+PASS: partition counter reset does not emit negative rates
+PASS: next sample uses reset baseline: R 1 MB/s W 2 MB/s 100 IOPS
+PASS: removed device is omitted without failure
+Telemetry regression checks passed on DigitalOcean

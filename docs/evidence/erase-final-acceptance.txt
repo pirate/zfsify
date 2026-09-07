@@ -1,0 +1,52 @@
+active
+active
+active
+status: done
+[test Droplet ID redacted]
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool               245M  76.8G    96K  none
+rpool/ROOT          244M  76.8G    96K  none
+rpool/ROOT/ubuntu   244M  76.8G   244M  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+ZFS root verification passed.
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+/home/erasetest/.ssh/authorized_keys: OK
+/usr/bin/awk
+active
+active
+active
+ERASE VERIFIED: fresh ZFS root, retained accounts/configuration/SSH access, original data removed.
+9c2fd39ee17b8ed121f9ffaa96a6d6ea59004dd1d2595718f32df91c8f7dc186  /root/reformat.sh
+active
+[########################] phase 10/10: Ready to reboot [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 0s
+  data total: n/a (metadata/package operation)
+  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS
+Sep 07 05:00:24 zfs-on-boot-erase-test systemd[1]: Starting zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize...
+Sep 07 05:00:25 zfs-on-boot-erase-test zfs-on-boot-grow[696]: NOCHANGE: partition 2 is size 167768031. it cannot be grown
+Sep 07 05:00:25 zfs-on-boot-erase-test zfs-on-boot-grow[777]: rpool        85362475008        ONLINE
+Sep 07 05:00:25 zfs-on-boot-erase-test systemd[1]: zfs-on-boot-grow.service: Deactivated successfully.
+Sep 07 05:00:25 zfs-on-boot-erase-test systemd[1]: Finished zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize.
+[boot ID redacted]
