@@ -1,0 +1,59 @@
+.gitignore
+  s_0e18ebd51b1ba4::t_46937032571023 1-12
+CONTRIBUTING.md
+  s_0e18ebd51b1ba4::t_ad6ec7aca59ccd 1-63
+LICENSE
+  s_0e18ebd51b1ba4::t_6c7c5effa3ac68 1-21
+README.md
+  s_0e18ebd51b1ba4::t_1abf3d412e96b9 1-261
+SHA256SUMS
+  s_bf4d7bf3e729b5::t_5e9aba34790e04 1
+docs/evidence/digitalocean-after-kernel-reboot.txt
+  s_bf4d7bf3e729b5::t_72bf26393832e9 1-31
+docs/evidence/digitalocean-install.log
+  s_bf4d7bf3e729b5::t_4747260a629d56 1-12
+docs/evidence/digitalocean-kernel-maintenance.log
+  s_bf4d7bf3e729b5::t_d0e9f0a2909879 1-58
+docs/validation.md
+  s_bf4d7bf3e729b5::t_c4388ac1da855b 1-105
+install.sh
+  s_bf4d7bf3e729b5::t_e487723e6ea380 1-277
+scripts/do-e2e.sh
+  s_bf4d7bf3e729b5::t_1bb3eccdc08fc0 1-63
+scripts/do-test.py
+  s_bf4d7bf3e729b5::t_d957cc2ed9457a 1-78
+scripts/package.py
+  s_bf4d7bf3e729b5::t_5d558625ba7c15 1-25
+scripts/verify-snapshot.sh
+  s_bf4d7bf3e729b5::t_a42162ce4416f9 1-22
+scripts/verify.sh
+  s_bf4d7bf3e729b5::t_f647211c09184f 1-26
+src/ram-init.sh
+  s_bf4d7bf3e729b5::t_509514d3847e1a 1-98
+src/stage.sh
+  s_bf4d7bf3e729b5::t_9395e5a954d9bf 1-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f7d053f83ff9368093010ab95326872362115474",
+  "prompts": {},
+  "sessions": {
+    "s_0e18ebd51b1ba4": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0787e-cd92-7553-bf66-826a8a248bad",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    },
+    "s_bf4d7bf3e729b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07a0d-c86e-7291-a9be-d901ef91e73c",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
