@@ -108,9 +108,9 @@ needed for installation. The cloud API is used only by the optional test harness
 
 ```text
 Included VPS disk · GPT
-┌─────────────────────────────────────────────────────────────┐
+┌───────────────────────────────────────────────────────────────┐
 │ 1 MiB BIOS boot code │ ZFS rpool · all remaining usable space │
-└─────────────────────────────────────────────────────────────┘
+└───────────────────────────────────────────────────────────────┘
                        └── rpool/ROOT/ubuntu → /
                            ├── boot/       kernel + initramfs
                            ├── usr/        system + modules
