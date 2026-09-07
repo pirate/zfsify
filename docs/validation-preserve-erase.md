@@ -47,7 +47,8 @@ checksum above; they were not repeated for this display-only change. Disk,
 copy, identity-restoration, boot, and growth logic did not change.
 
 [Telemetry regression checks](evidence/telemetry-regression.txt) ·
-[Final bundle guard](evidence/final-bundle-check.txt)
+[Final bundle guard](evidence/final-bundle-check.txt) ·
+[Final public download and guard](evidence/published-final-check.txt)
 
 ## Preservation: passed
 
@@ -133,6 +134,13 @@ copy speed, and device read/write MB/s and IOPS. Metadata/package phases use
 zero while work is served from cache. The status command worked through RAM SSH
 and after the final boot. The excerpts retain the original counter-reset
 display anomaly; the final bundle fixes it as described above.
+
+## Cleanup
+
+Both disposable test Droplets and their temporary DigitalOcean SSH key were
+deleted after acceptance. The API returned 204 for each deletion and subsequent
+GET requests returned 404. The local temporary private key was removed. No
+Volumes or test snapshots were created for these runs.
 
 ## Limits
 

@@ -1,0 +1,3 @@
+fa531a4d1aac02faa63bb1ccfe2513ff896110e7ff7f79bd6d980f86b2360386  /run/published-final.sh
+zfs-on-boot: Already installed; nothing to do.
+Final public download and re-run guard passed on DigitalOcean
