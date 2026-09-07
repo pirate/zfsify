@@ -2,10 +2,9 @@
 
 # ⚡ zfsify
 
-**One command. Two reboots. Ubuntu on ZFS.**
+**One command: Convert any live Ubuntu VPS to root (`/`)-on-ZFS.**
 
-Reformat a fresh Ubuntu VPS onto ZFS in place, using its included disk.<br>
-Snapshots, compression, and checksums — all the way through `/boot`.
+Reformat a fresh Ubuntu VPS onto ZFS in place, without losing any data (as long as <50% of `/` is used).<br>
 
 [![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](#requirements)
 [![DigitalOcean tested](https://img.shields.io/badge/DigitalOcean-tested-0080FF?logo=digitalocean&logoColor=white)](docs/validation.md)
