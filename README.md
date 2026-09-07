@@ -2,274 +2,263 @@
 
 # ⚡ zfsify
 
-Move an Ubuntu VPS onto ZFS using its included disk, with `/` and `/boot` in
-the same dataset. The installer can preserve your existing installation when
-less than half the root filesystem is used, or reinstall Ubuntu with your
-accounts and configuration.
+Convert an Ubuntu VPS or attached volume to ZFS with one command,
+using the disks and data you already have.
 
-[![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](#requirements)
-[![DigitalOcean tested](https://img.shields.io/badge/DigitalOcean-tested-0080FF?logo=digitalocean&logoColor=white)](docs/validation.md)
-[![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#requirements)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#requirements)
+[![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#implementation-status)
 [![MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 
-[Quick start](#quick-start) · [Migration](#how-preservation-works) · [Validation](docs/validation.md) · [Volume toolkit](docs/volumes.md)
+[Quick start](#quick-start) · [How it works](#how-it-works) · [Space requirements](#why-is-50-free-space-needed) · [Recovery options](#when-the-disk-is-more-than-half-full)
 
 </div>
 
+Cloud providers usually ship Ubuntu with ext4, so getting ZFS on a VPS means
+building a custom boot image or manually partitioning and migrating disks.
+zfsify handles that work on a normal Ubuntu server. You can convert the boot
+drive, including `/` and `/boot`, or use ZFS for data on attached volumes.
+
+The workflow is designed for Ubuntu instances on DigitalOcean, Vultr, Hetzner,
+AWS, GCP, Azure, and other cloud providers. You create the VPS or volume through
+your provider as usual, then run zfsify inside Ubuntu. It checks the disk layout,
+transfers your files, and configures ZFS so you can use snapshots, compression,
+and checksums with your existing installation.
+
+> [!NOTE]
+> **This README describes the target design for implementation.** The currently
+> validated configuration is Ubuntu 24.04 amd64 with BIOS on DigitalOcean.
+> Broader provider support, Ubuntu 22.04, attached-volume conversion, and the
+> recovery choices below require implementation and validation. Check
+> [implementation status](#implementation-status) before running the script.
+
 ## Quick start
 
-**Tested end-to-end on DigitalOcean with Ubuntu 24.04 amd64:** preserve an
-existing installation or reinstall with `--erase`, boot `/` and `/boot` from ZFS
-on the included disk, and automatically expand after a Droplet disk resize.
-[Read the validation results](docs/validation-preserve-erase.md).
-
-On an Ubuntu 24.04 amd64 VPS that meets the [requirements](#requirements),
-wait for initial provisioning to finish (`cloud-init status --wait`), then run
-the following command as root. Take a provider snapshot before migrating valuable
-data, since the process repartitions the disk and takes services offline.
+Connect to your Ubuntu VPS over SSH and run:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/main/reformat.sh | sh
+curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/main/reformat.sh | sudo sh
 ```
 
-With **less than 50% of the root filesystem used**, this selects preservation
-without requesting input. The installer shows the disk layout and target devices, then gives you
-**15 seconds** to cancel with Ctrl-C before preparation starts. It reboots into
-a RAM environment, migrates the filesystem, and reboots into Ubuntu on ZFS.
+Choose the boot drive or an attached volume from the filesystems shown by the
+installer. It displays the selected device, its used and available space, and
+what will happen to the data before starting.
 
-At **50% or more**, the installer asks for permission to erase the disk. It
-requires a lowercase `y` followed by Enter in an interactive terminal; otherwise
-it exits before preparing the migration.
+If at least half the filesystem is free, zfsify uses that space to keep a temporary
+copy of your files while it converts the disk. Your applications, accounts, and
+configuration are carried over. A boot-drive conversion reboots into a temporary
+RAM environment and then back into Ubuntu on ZFS; plan for downtime while files
+are copied and the boot configuration is updated. Applications using a data
+volume must also stop while that volume is converted.
 
-### Reinstall Ubuntu
+If there is too little free space, the installer offers [a remote backup or a
+reinstall with a limited restore](#when-the-disk-is-more-than-half-full). It shows
+the consequences of each choice before asking you to proceed.
 
-To erase application data and install a fresh Ubuntu base while keeping accounts
-and configuration, use `--erase`:
+Take a provider snapshot or an independent backup before converting important
+data. The temporary copy is on the same disk, so a disk failure or interrupted
+repartitioning can affect both copies.
 
-```sh
-curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/main/reformat.sh | bash -s -- --erase
+## Requirements
+
+- **Ubuntu 22.04 or later**, with root access.
+- **At least 50% free space** on `/` or the volume being converted for migration
+  entirely within that disk. Filesystem metadata and temporary installation files
+  also need room; zfsify checks whether the actual contents fit before proceeding.
+- A supported, shrinkable source filesystem and disk layout, checked by the installer.
+- SSH access and access to Ubuntu package repositories.
+
+For a boot-drive conversion, the server also needs enough RAM to run the temporary
+installation environment. The currently tested configuration requires **4 GiB RAM**,
+a **16 GB disk**, **8 GB free on `/`** for staging, and **500 MB free in `/boot`**.
+
+## How it works
+
+A running system cannot reformat its own root filesystem. zfsify prepares a
+small Ubuntu environment that runs from RAM, allowing it to unmount the boot
+drive and work on the disk while SSH remains available between reboots.
+
+1. **Copy the existing data to the end of the drive.** The filesystem is checked
+   and shrunk to make room for temporary storage, then the files are copied and
+   verified there.
+2. **Set up ZFS at the start of the drive.** Once the temporary copy is verified,
+   the front of the disk can be reformatted.
+3. **Transfer the data back onto ZFS.** The files are restored to the ZFS partition
+   at the start of the disk, with ownership, permissions, and filesystem metadata.
+
+```text
+                     Start of disk                         End of disk
+Before               [          existing filesystem                  ]
+Temporary copy       [ existing filesystem ][ verified copy at end    ]
+Create ZFS           [      empty ZFS      ][ verified copy at end    ]
+Restore              [    restored ZFS     ][ verified copy at end    ]
+Finish               [              ZFS uses the disk                 ]
 ```
 
-This option authorizes erasure without a confirmation prompt and includes the
-same 15-second cancellation period. Use `sudo sh` or `sudo bash -s -- --erase`
-when running from an account other than root.
+After the transfer is verified, zfsify removes the temporary storage and expands
+ZFS to fill the available disk space. For the boot drive, it also configures the
+bootloader and initramfs, then reboots into the migrated Ubuntu installation.
+Small bootloader partitions are retained where required by the firmware.
 
 <details>
-<summary>What erase mode keeps and removes</summary>
+<summary>What happens to files and metadata?</summary>
 
+A full migration carries over applications, configuration, accounts, and persistent
+data, including numeric ownership, permissions, ACLs, extended attributes, hard
+links, symbolic links, and sparse files. Virtual filesystems such as `/proc`,
+`/sys`, and `/dev` are recreated by Linux. Temporary files, installer staging
+files, and swap files are excluded.
 
-**Erase mode deletes application data and home-directory contents.** It installs
-a stock Ubuntu base and carries over `/etc`, user/group/password records, home
-directory ownership, users' `.ssh/authorized_keys` and `authorized_keys2`, host
-keys, machine identity, network configuration, cloud-init state, APT signing
-keyrings, locally installed CA certificates, and generated Snap AppArmor policy
-includes (not Snap applications or their data). It does not
-reinstall your applications or preserve other home files (including private SSH
-keys). Existing application configuration in `/etc` may refer to software or data
-that needs reinstalling. Custom login shells must exist in the stock installation.
-Software-selection links in `/etc/alternatives` and the dynamic-linker cache
-come from the fresh OS in erase mode. System-file ownership is translated to
-the retained account IDs. Carried-over local systemd units are kept but disabled
-until their applications are restored. Disk-specific boot configuration is adjusted in both modes; the original fstab
-is saved as `/etc/fstab.before-zfsify`, and root/boot/swap entries are replaced.
+Boot and mount configuration is adjusted for ZFS. The previous filesystem table
+is saved as `/etc/fstab.before-zfsify`. The copy must pass verification before its
+source storage is reclaimed. The migrated system's first boot happens after the
+disk conversion is complete.
 
 </details>
 
-After either mode completes, reconnect with your SSH key and check the result:
+## Why is 50% free space needed?
+
+**The disk temporarily needs to hold two copies of your data.** One copy keeps
+your installation intact while the other part of the disk is reformatted. For
+example, 35 GB of data on an 80 GB disk leaves room for a second 35 GB copy;
+60 GB of data on the same disk does not.
+
+Filesystem overhead and working space also count, so being exactly half full may
+still leave too little room. zfsify measures the space required before modifying
+the partition layout.
+
+## When the disk is more than half full
+
+The installer offers two ways to proceed and shows the amount of data each can
+retain. Both require your approval before erasing the disk.
+
+### Option A: Back up elsewhere, convert, and restore everything
+
+Use an S3 bucket, another cloud storage service, or a separate volume with enough
+space to hold the backup. zfsify opens **rclone's own configuration flow** to
+choose and configure the destination, then uses rclone to transfer the backup.
+
+After verifying the backup, it reformats the selected disk as ZFS and restores
+the installation. This allows the full disk to be used for the converted system
+without needing room for two local copies. Transfer time and provider bandwidth
+charges depend on the destination and amount of data.
+
+<details>
+<summary>Backup format and credentials</summary>
+
+The filesystem is backed up in an archive format that retains Linux ownership,
+permissions, ACLs, extended attributes, and links. rclone transports that archive
+and handles its own remote configuration and credentials through its standard
+CLI or UI. zfsify does not add a separate bucket-configuration system.
+
+The backup remains available until the restored system has been verified. It
+contains system configuration and credentials, so use a private destination with
+appropriate access controls.
+
+</details>
+
+### Option B: Install fresh Ubuntu and restore what fits
+
+Choose this when you can reinstall applications or discard some data. zfsify
+calculates how much it can save outside the disk area being erased and shows a
+preview such as **“Restore 3.200 GB of 61.500 GB”**, along with the files that will
+be kept and omitted. The amount is determined by the available temporary storage.
+
+It saves complete files in this priority order:
+
+| Priority | Data to keep |
+|---|---|
+| 1 | Accounts and access: user/group/password records, users' SSH configuration and keys, networking, and information needed to configure a bootable system |
+| 2 | The rest of `/etc` |
+| 3 | `/root` and `/home` |
+| 4 | `/var`, `/opt`, `/lib`, installed software, application data, and other files |
+
+The installer then erases the disk, installs a fresh Ubuntu release selected in
+the setup flow, and restores the saved files. **Anything omitted from the preview
+is lost unless you have another backup.** If the essential account, access, and
+boot information cannot fit, this option stops before erasure.
+
+Restoring configuration or part of an application's files may leave that
+application needing reinstallation. The fresh system supplies its own kernel,
+boot files, and core libraries; incompatible system files are excluded from the
+restore preview. Services with missing dependencies or data stay disabled until
+you repair them.
+
+## Using ZFS after conversion
+
+Check the root filesystem and pool after reconnecting:
 
 ```sh
 findmnt /
 findmnt --target /boot
-zpool status
+sudo zpool status
 ```
 
-Both mount lookups should show `rpool/ROOT/ubuntu` with filesystem type `zfs`,
-and the pool should be `ONLINE`.
-
-## Requirements
-
-- Ubuntu Server **24.04 amd64**, legacy BIOS with GRUB.
-- One included disk with a GPT table and a plain ext4 root partition. An ISO
-  metadata disk is permitted. No attached Volumes are needed or used.
-- Preservation requires root to be the last partition; a separate ext4 `/boot`
-  and the standard Ubuntu BIOS/EFI helper partitions are supported.
-- At least **4 GiB RAM**, a **16 GB disk**, **8 GB free on `/`** for staging,
-  and **500 MB free in `/boot`**. These staging requirements also apply to erase.
-- Root SSH key access, working Ubuntu package repositories and Netplan networking.
-- Initial cloud-init provisioning should finish before running the installer.
-
-The project targets DigitalOcean. Other distributions, UEFI, ARM, LVM, RAID,
-encrypted root, additional data partitions, and additional mounted local data
-filesystems are outside the supported scope. The installer checks the OS and
-disk layout before proceeding.
-
-The usage threshold is calculated from allocated ext4 bytes and filesystem size
-before staging. A successful migration also requires ext4 to shrink sufficiently
-and the temporary ZFS partition to hold the copied data and metadata. If any step
-fails, the installer stops in a rescue environment. Erasure always requires your
-explicit consent.
-
-## How preservation works
-
-```text
-Included disk (tiny bootloader area omitted)
-
-[                  original ext4                  ]
-[          smaller ext4        ][ temporary ZFS    ]  shrink; copy; verify
-[          new ZFS member      ][ temporary ZFS    ]  attach; resilver
-[          new ZFS member      ][ free space       ]  detach temporary
-[                       ZFS                       ]  grow to disk end
-```
-
-The installer builds a complete RAM OS using signed Ubuntu APT repositories.
-After booting that OS, the original filesystem is unmounted, checked and shrunk.
-It creates a temporary ZFS pool in the freed tail of the same disk. `rsync`
-preserves file contents, numeric ownership, permissions, ACLs, xattrs, hard links
-and sparse files. Virtual filesystems, `/tmp`, installer staging files, swap
-files, and the unused EFI boot files are excluded. A second, checksum-based comparison must find no differences
-before the original ext4 partitions are removed.
-
-It replaces the front of the disk with a mirror member, waits for a successful
-ZFS resilver, detaches the temporary tail member, and extends the front partition.
-The temporary mirror relocates data; it provides no protection against physical
-disk failure because both members are on the same disk.
-
-The source partitions are removed after copy verification and boot configuration
-succeed; the first boot of the copied system happens after relocation. A power
-loss during shrinking or relocation may require recovery from a provider snapshot.
-
-The final layout is:
-
-```text
-GPT disk
-  1   1 MiB   BIOS boot code (no filesystem)
-  2   rest    rpool
-                rpool/ROOT/ubuntu -> /, including /boot
-```
-
-GRUB reads the kernel/initramfs directly from ZFS. The pool uses
-`compatibility=grub2`, lz4 compression, POSIX ACLs and xattr=sa. Do not enable ZFS
-features incompatible with GRUB; this layout does not support native encryption.
-A 256 MiB ARC cap is installed in `/etc/modprobe.d/zfs-on-boot.conf`. Adjust it and
-regenerate the initramfs if your workload needs a different limit. Swap files
-are excluded and swap fstab entries are removed.
-
-## Progress and reconnecting
-
-The installer displays its current phase, elapsed time, target devices, and disk
-throughput. After either reboot, reconnect using your existing SSH key. You can
-view progress during staging, in the RAM environment, and after installation:
+For a boot-drive conversion, `/` and `/boot` live in `rpool/ROOT/ubuntu`, so a root
+snapshot includes the kernel and its modules alongside the rest of the system:
 
 ```sh
-zfs-on-boot-status        # refresh every second; Ctrl-C exits the viewer
-zfs-on-boot-status --once # print the current state
+sudo zfs snapshot rpool/ROOT/ubuntu@before-upgrade
+sudo zfs list -t snapshot
 ```
 
+When you increase the disk size through your cloud provider, the next boot expands
+the partition and ZFS pool to use the added space. The pool has `autoexpand=on`;
+zfsify also handles the partition expansion needed before ZFS can use it.
+
 <details>
-<summary>Installation phases and throughput measurements</summary>
+<summary>Boot compatibility</summary>
 
-The installer reports ten phases:
-
-1. Preflight and consent
-2. Prepare Ubuntu and the RAM environment
-3. Build the archive and stage reboot
-4. Check/shrink ext4, or format for erase
-5. Copy files
-6. Verify checksums and metadata
-7. Configure ZFS boot
-8. Relocate through a temporary mirror (skipped for erase)
-9. Expand the final partition and pool
-10. Install GRUB and finish
-
-Each report identifies the block devices being touched, elapsed time, a phase
-bar, read/write MB/s and IOPS sampled from Linux block-device counters. Copy
-phases show logical bytes moved/total and logical MB/s. Resilver progress uses
-ZFS's issued/total counters when available. Package installation, checksums,
-filesystem metadata operations and GRUB do not expose reliable byte totals;
-those measurements are shown as `n/a`. The overall bar represents equally weighted
-phases, whose durations vary. Physical disk and partition counters overlap.
-
-Noninteractive logs include periodic progress reports and detailed command output.
+The tested BIOS layout uses a 1 MiB partition for GRUB boot code and the rest of the
+usable disk for ZFS. GRUB reads `/boot` directly from the pool, which uses
+`compatibility=grub2`. Keep that compatibility setting so the bootloader can read
+the pool. Native ZFS encryption requires a different boot arrangement.
 
 </details>
 
-## Automatic disk growth
+## Progress and recovery
 
-**DigitalOcean disk resizing works automatically: resize the Droplet normally in
-DigitalOcean, including its disk, and power it back on. No special commands are
-needed inside Ubuntu.** We verified a real **80 GB → 160 GB** resize: the next
-boot expanded the partition and ZFS pool, and SSH, retained accounts and
-configuration, and system health checks all passed. See the
-[DigitalOcean validation report](docs/validation-preserve-erase.md). CPU/RAM-only
-resizes do not increase disk capacity. Follow DigitalOcean’s
-[normal resize procedure](https://docs.digitalocean.com/products/droplets/how-to/resize/)
-for shutdown, resizing, and power-on.
-
-<details>
-<summary>How automatic expansion works</summary>
-
-The pool has `autoexpand=on`. A systemd service, `zfs-on-boot-grow.service`, runs
-on each normal boot. It discovers the single root vdev, runs `growpart`, refreshes
-the kernel's partition mapping and runs `zpool online -e`. It is idempotent and
-leaves the starting sector unchanged. This handles a provider disk enlargement
-on the boot after the resize; CPU/RAM-only resizes do not grow storage.
-Cloud-init's generic root resize is disabled so it does not run ext4 tools on ZFS.
-Multi-device pools are refused by this automatic-growth helper.
-
-</details>
-
-## Logs and recovery
-
-Before reboot: `/var/lib/zfs-on-boot/stage.log` and
-`/var/log/zfs-on-boot/progress.log`. Preparation installs packages and adds a
-one-shot GRUB entry, but does not repartition the running root.
-
-In RAM: `/run/zfs-on-boot.log`, `/var/log/zfs-on-boot/progress.log`, and
-`zfs-on-boot-status`. Failure leaves RAM SSH and a provider-console shell running;
-it does not automatically reboot or resume a partially completed migration.
-**Do not reboot after source removal** without inspecting the failure.
-
-After success: `/var/log/zfs-on-boot/`. Re-running the installer refuses an
-already converted system before making changes.
-
-Staging archives contain private host keys and (in erase mode) account records
-and configuration. They are stored in root-only staging directories and are
-never public release assets. Inspect mounts and logs before manually cleaning
-an interrupted `/var/lib/zfs-on-boot` or `/boot/zfs-on-boot` directory.
-
-## Development
+The installer shows the current operation, target devices, elapsed time, copy
+progress, and disk throughput. After reconnecting, view the current state with:
 
 ```sh
-python3 scripts/package.py
+zfs-on-boot-status
+zfs-on-boot-status --once
 ```
 
-This packages `src/` into `reformat.sh`, its `install.sh` alias, and `dist/`.
-The wrapper buffers all embedded scripts before launching the installer, passes
-arguments through, and separates terminal consent from its piped input.
-`SHA256SUMS` records the generated `reformat.sh` digest.
+If migration fails, the RAM environment keeps SSH and a provider-console shell
+available for inspection. **Avoid rebooting after the source filesystem has been
+removed**, since the RAM environment may be the only working system at that point.
 
-Runtime tests run on DigitalOcean Droplets. The [validation records](docs/validation.md)
-describe the installer versions and scenarios covered. See [CONTRIBUTING.md](CONTRIBUTING.md)
-for packaging and test instructions.
-
-- `src/stage.sh`: usage gate, explanation/countdown, identity capture and RAM boot.
-- `src/plan.py`: partition-layout validation and non-overlapping migration geometry.
-- `src/ram-init.sh`: offline copy/verification, relocation and final boot.
-- `src/target.sh`: boot configuration and erase-mode identity restoration.
-- `src/progress.py`: command runner, phase state and Linux device telemetry.
-- `src/grow.sh`: boot-time expansion of the final partition and ZFS vdev.
-- `scripts/verify-preserved.sh`: DO fixture checks for data and metadata retention.
-- `scripts/do-test.py`: recorded DO resource lifecycle; token comes from environment.
+| Stage | Logs |
+|---|---|
+| Preparation | `/var/lib/zfs-on-boot/stage.log` |
+| RAM environment | `/run/zfs-on-boot.log` |
+| Progress and completed installation | `/var/log/zfs-on-boot/` |
 
 ## 🧰 Volume tools
 
-For ZFS data pools on attached DigitalOcean Volumes, the [volume toolkit](docs/volumes.md)
-provides storage inspection, pool creation, stripe and mirror helpers, and
-interactive setup. Its guide covers each command, requirements, and known limitations.
+The [volume toolkit](docs/volumes.md) also provides individual commands for
+inspecting attached storage, creating ZFS data pools, and adding stripe or mirror
+devices. Use it when you want to manage a pool directly. The guide describes the
+commands, their requirements, and known limitations.
+
+## Implementation status
+
+This README is the specification for the intended user experience. The
+[validation records](docs/validation.md) identify the code versions and scenarios
+that have been tested. Ubuntu 22.04+, broad cloud-provider support, selecting and
+converting attached volumes through the installer, rclone backup/restore, and the
+size-limited priority restore described here are implementation targets.
+
+The existing `--erase` option carries over a fixed set of accounts and configuration;
+it does not implement the priority-based restore preview described above. The
+published script must be checked against the validation records before use.
+
+For implementation and testing instructions, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Related projects
 
-- [zfsbox](https://github.com/pirate/zfsbox) runs virtualized ZFS on macOS, Linux, and Docker.
 - [OpenZFS](https://github.com/openzfs/zfs) provides the filesystem used by zfsify.
-- [ZFSBootMenu](https://zfsbootmenu.org/) offers ZFS boot-environment selection and recovery tools.
-- [cloud-init](https://cloud-init.io/) handles cloud instance initialization.
+- [rclone](https://rclone.org/) supports transfers to S3 and other storage services.
+- [zfsbox](https://github.com/pirate/zfsbox) runs virtualized ZFS on macOS, Linux, and Docker.
+- [ZFSBootMenu](https://zfsbootmenu.org/) provides ZFS boot-environment selection and recovery tools.
