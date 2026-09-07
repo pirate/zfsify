@@ -1,17 +1,16 @@
 # Cloud volume toolkit
 
-The original **zfs.wizard / ZFS Cloud Management Toolkit** is preserved within
-zfsify. These scripts manage ZFS data pools on attached DigitalOcean block-storage
-volumes. They are separate from the new [root-on-ZFS installer](../README.md).
+Manage ZFS data pools on attached DigitalOcean block-storage volumes. The toolkit
+provides storage inspection, pool creation, stripe/mirror helpers, Terraform
+volume provisioning, and interactive wizards.
 
 | Goal | Entry point |
 |---|---|
-| Reinstall Ubuntu with `/` and `/boot` on ZFS using the included disk | [`install.sh`](../install.sh); see the main README |
-| Inspect attached storage or manage an additional data pool | The legacy scripts described here |
+| Reinstall Ubuntu with `/` and `/boot` on ZFS using the included disk | [Root installer](../README.md) |
+| Inspect attached storage or manage an additional data pool | The tools described in this guide |
 
-The legacy scripts remain at the repository root so existing paths keep working.
-They were inspected for documentation during the rename, but were **not runtime
-revalidated** with the new installer. Known implementation gaps are listed below.
+All commands in this guide run from the repository root. The volume tools have
+limited runtime validation; read the known limitations before using a workflow.
 
 > [!CAUTION]
 > Pool-creation and vdev helpers can erase the selected device and change pool
@@ -37,8 +36,7 @@ additional packages; the monolithic wizard installs its own dependencies.
 Provider API operations use **`DO_API_TOKEN`**. Supply it through a private shell
 environment, never a committed file. If using sudo, explicitly preserve that
 variable where needed, e.g. `sudo --preserve-env=DO_API_TOKEN bash terraform_list_volumes.sh`.
-Do not confuse it with the root installer's optional test-harness variable,
-`DIGITALOCEAN_TOKEN`.
+The root installer's test harness uses a separate variable, `DIGITALOCEAN_TOKEN`.
 
 ## Inspect storage
 
@@ -75,8 +73,7 @@ sudo bash zfs_add_stripe.sh datapool /dev/disk/by-id/YOUR_SECOND_EMPTY_VOLUME
 sudo bash zfs_add_mirror.sh datapool /dev/disk/by-id/YOUR_SECOND_EMPTY_VOLUME /dev/disk/by-id/YOUR_EXISTING_POOL_DEVICE
 ```
 
-Choose a topology deliberately: adding a stripe and attaching a mirror are
-different operations, not sequential setup steps. A failed unreplicated top-level
+The stripe and mirror commands illustrate separate topology choices. A failed unreplicated top-level
 vdev can lose the entire pool. Do not use these helpers to modify the root pool's
 boot layout.
 
@@ -97,7 +94,7 @@ optional volume creation → create pool/add stripe/attach mirror → summary �
 optional speed test and usage examples. It uses the component scripts below.
 
 **Known gaps:** `main.sh` references `terraform_create_new_volume.sh`, which is
-absent from the existing repository. That branch of the workflow cannot complete
+absent from the repository. That branch of the workflow cannot complete
 as shipped. Several operations run in background jobs without reliably propagating
 failure, and the background volume assignment does not update the parent shell.
 Use individual helpers on already attached devices rather than relying on the
@@ -109,10 +106,9 @@ wizard's volume-provisioning path.
 sudo bash zfs-wizard.sh
 ```
 
-An earlier all-in-one interactive implementation installs prerequisites, discovers
-storage, guides pool changes, and benchmarks results. It remains available for
-reference and existing users. It has separate device-discovery and formatting
-logic from `main.sh`; neither is used by the new root installer.
+This all-in-one interactive wizard installs prerequisites, discovers storage,
+guides pool changes, and benchmarks results. It has its own device-discovery and
+formatting logic. It is independent of `main.sh` and the root installer.
 
 ### Terraform volume creation: `terraform.sh`
 
@@ -125,7 +121,7 @@ provider. Options are `--size`/`-s`, `--name`/`-n`, and `--region`/`-r`; default
 are 100 GB, `zfs-HOSTNAME`, and the current Droplet's region. Missing Terraform
 dependencies may be installed through the HashiCorp APT repository.
 
-**Review these existing behaviors before use:**
+**Before using Terraform provisioning:**
 
 - It writes the API token to `terraform.tfvars` under `/tmp/do-volume-terraform`
   and retains the directory. Protect it as private credential/state material.
@@ -136,15 +132,13 @@ dependencies may be installed through the HashiCorp APT repository.
   directory, so the wizard handoff can fail even after the Volume was created.
   Verify provider state before retrying to avoid duplicate charges.
 
-No Terraform or legacy wizard behavior was changed as part of the rename.
-
 ## Script reference
 
 | Script | Purpose / arguments |
 |---|---|
 | [`setup.sh`](../setup.sh) | Prepare dependencies and component executable permissions |
 | [`main.sh`](../main.sh) | Modular interactive workflow; `--poolname NAME` (default `tank`) |
-| [`zfs-wizard.sh`](../zfs-wizard.sh) | Original monolithic interactive wizard |
+| [`zfs-wizard.sh`](../zfs-wizard.sh) | All-in-one interactive wizard |
 | [`terraform.sh`](../terraform.sh) | Create/attach a Volume; `--size`, `--name`, `--region` |
 | [`terraform_get_droplet_metadata.sh`](../terraform_get_droplet_metadata.sh) | Current Droplet metadata as JSON |
 | [`terraform_list_volumes.sh`](../terraform_list_volumes.sh) | Provider volumes; optional `REGION` |
@@ -156,7 +150,8 @@ No Terraform or legacy wizard behavior was changed as part of the rename.
 | [`zfs_add_mirror.sh`](../zfs_add_mirror.sh) | Attach mirror: `POOL_NAME DEVICE [MIRROR_TARGET]` |
 | [`speedtest.sh`](../speedtest.sh) | Read/write benchmark: `POOL_NAME` |
 
-The old README listed `terraform_create_new_volume.sh`; that file is not present.
+`main.sh` depends on `terraform_create_new_volume.sh` for volume provisioning,
+but that helper is missing.
 `terraform.sh` uses a different argument interface and is not a drop-in substitute.
 
 ## Benchmarks and datasets
@@ -171,7 +166,7 @@ sudo zfs list -t snapshot
 The benchmark writes and removes `/zfs/POOL_NAME/speedtest_file` and drops system
 caches; do not run it where that filename holds real data or where the extra load
 would disrupt workloads. Zero-filled writes, compression, and caching can skew
-its results. This is a quick diagnostic, not a standardized storage benchmark.
+its results. Use it as a quick diagnostic when investigating storage performance.
 
 For failures, inspect actual `zpool status`, device mounts, and the DigitalOcean
 console rather than relying only on progress indicators. For cloud API failures,

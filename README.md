@@ -2,274 +2,252 @@
 
 # ⚡ zfsify
 
-**One command. Two reboots. Ubuntu on ZFS.**
-
-Reformat a fresh Ubuntu VPS onto ZFS in place, using its included disk.<br>
-Snapshots, compression, and checksums — all the way through `/boot`.
+Move an Ubuntu VPS onto ZFS using its included disk, with `/` and `/boot` in
+the same dataset. The installer can preserve your existing installation when
+less than half the root filesystem is used, or reinstall Ubuntu with your
+accounts and configuration.
 
 [![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](#requirements)
-[![DigitalOcean tested](https://img.shields.io/badge/DigitalOcean-tested-0080FF?logo=digitalocean&logoColor=white)](docs/validation.md)
-[![Status: experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#requirements)
-[![License: MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
+[![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#requirements)
+[![MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 
-[Quick start](#-quick-start) · [How it works](#how-it-works) · [Disk layout](#disk-layout) · [Validation](docs/validation.md) · [Volume toolkit](docs/volumes.md)
+[Quick start](#quick-start) · [Migration](#how-preservation-works) · [Validation](docs/validation.md) · [Volume toolkit](docs/volumes.md)
 
 </div>
 
----
+## Quick start
 
-Formerly **zfs.wizard**. zfsify now focuses on root-on-ZFS installation; the
-original [cloud block-storage toolkit](docs/volumes.md) remains available.
-
-> [!CAUTION]
-> **This erases the entire root disk and installs a fresh Ubuntu system.**
-> Existing applications, other users, home directories, and data are deleted.
-> Use a fresh, disposable VPS. Only root SSH access, host keys, hostname, machine
-> identity, and network configuration are carried over. There is no confirmation prompt.
-
-## 🚀 Quick start
-
-Create a fresh **DigitalOcean Ubuntu 24.04 x64 Droplet with at least 4 GiB RAM**,
-add your SSH key, and connect as root. Wait for its initial cloud-init run to finish
-before starting (`cloud-init status --wait`). Check the [requirements](#requirements), then:
+On an Ubuntu 24.04 amd64 VPS that meets the [requirements](#requirements),
+wait for initial provisioning to finish (`cloud-init status --wait`), then run
+the following command as root. Take a provider snapshot before migrating valuable
+data, since the process repartitions the disk and takes services offline.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/main/install.sh | sudo sh
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sh
 ```
 
-Leave SSH connected until the first reboot. The installer builds Ubuntu in RAM,
-repartitions the disk, installs the new system, and reboots again. Reconnect using
-the same IP address and SSH key once it finishes. The recorded DigitalOcean run
-took **about four minutes**; package downloads and machine size affect timing.
+With **less than 50% of the root filesystem used**, this selects preservation
+without requesting input. The installer shows the disk layout and target devices, then gives you
+**15 seconds** to cancel with Ctrl-C before preparation starts. It reboots into
+a RAM environment, migrates the filesystem, and reboots into Ubuntu on ZFS.
+
+At **50% or more**, the installer asks for permission to erase the disk. It
+requires a lowercase `y` followed by Enter in an interactive terminal; otherwise
+it exits before preparing the migration.
+
+### Reinstall Ubuntu
+
+To erase application data and install a fresh Ubuntu base while keeping accounts
+and configuration, use `--erase`:
+
+```sh
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | bash -s -- --erase
+```
+
+This option authorizes erasure without a confirmation prompt and includes the
+same 15-second cancellation period. Use `sudo sh` or `sudo bash -s -- --erase`
+when running from an account other than root.
+
+<details>
+<summary>What erase mode keeps and removes</summary>
+
+
+**Erase mode deletes application data and home-directory contents.** It installs
+a stock Ubuntu base and carries over `/etc`, user/group/password records, home
+directory ownership, users' `.ssh/authorized_keys` and `authorized_keys2`, host
+keys, machine identity, network configuration, cloud-init state, APT signing
+keyrings, locally installed CA certificates, and generated Snap AppArmor policy
+includes (not Snap applications or their data). It does not
+reinstall your applications or preserve other home files (including private SSH
+keys). Existing application configuration in `/etc` may refer to software or data
+that needs reinstalling. Custom login shells must exist in the stock installation.
+Software-selection links in `/etc/alternatives` and the dynamic-linker cache
+come from the fresh OS in erase mode. System-file ownership is translated to
+the retained account IDs. Carried-over local systemd units are kept but disabled
+until their applications are restored. Disk-specific boot configuration is adjusted in both modes; the original fstab
+is saved as `/etc/fstab.before-zfsify`, and root/boot/swap entries are replaced.
+
+</details>
+
+After either mode completes, reconnect with your SSH key and check the result:
 
 ```sh
 findmnt /
 findmnt --target /boot
-sudo zpool status
+zpool status
 ```
 
-Both mount lookups should report `rpool/ROOT/ubuntu` with filesystem type `zfs`,
+Both mount lookups should show `rpool/ROOT/ubuntu` with filesystem type `zfs`,
 and the pool should be `ONLINE`.
-
-<details>
-<summary><strong>Prefer to inspect the script before running it?</strong></summary>
-
-Download the script and published checksum into an empty directory on the target VPS:
-
-```sh
-curl -fSLO https://raw.githubusercontent.com/pirate/zfsify/main/install.sh
-curl -fSLO https://raw.githubusercontent.com/pirate/zfsify/main/SHA256SUMS
-sha256sum -c SHA256SUMS
-less install.sh
-sudo sh install.sh
-```
-
-For a fixed version, replace `main` in both URLs with the same full commit SHA.
-The checksum detects mismatched or corrupted downloads; it is not an independent
-signature. The installer is a readable shell script containing both installation
-stages. Ubuntu packages come from signed Ubuntu APT repositories.
-
-</details>
-
-## Why zfsify?
-
-| | What you get |
-|---|---|
-| **Root on ZFS** | `/`, `/boot`, and kernel modules live in the same dataset. |
-| **Your included disk** | All filesystem storage is ZFS; no attached Volume is required. |
-| **Whole-system snapshots** | Capture boot files and the root filesystem together. |
-| **Familiar Ubuntu** | Ubuntu 24.04, APT, systemd, OpenSSH, Netplan, and cloud-init. |
-| **Small, inspectable installer** | Two shell stages packaged into a single download. |
-| **Access preserved** | Keep root authorized keys, SSH host keys, and network configuration. |
-
-## How it works
-
-```mermaid
-flowchart LR
-    A["Fresh Ubuntu VPS<br/>ext4 root"] --> B["Stage Ubuntu + ZFS<br/>and a RAM installer"]
-    B -->|Reboot 1| C["Run entirely in RAM<br/>Erase + repartition disk"]
-    C --> D["Copy Ubuntu to ZFS<br/>Install GRUB + initramfs"]
-    D -->|Reboot 2| E["Ubuntu on ZFS<br/>Same IP + SSH keys"]
-    style A fill:#334155,color:#fff,stroke:#64748b
-    style B fill:#1e3a8a,color:#fff,stroke:#3b82f6
-    style C fill:#78350f,color:#fff,stroke:#f59e0b
-    style D fill:#1e3a8a,color:#fff,stroke:#3b82f6
-    style E fill:#064e3b,color:#fff,stroke:#10b981
-```
-
-The original OS builds and checks a self-contained RAM environment before setting
-a one-shot GRUB boot entry. The RAM OS can then rewrite the disk it booted from.
-It copies the new Ubuntu installation onto ZFS and installs the permanent bootloader.
-
-No custom ISO upload, extra disk, cloud API token, or provider recovery boot is
-needed for installation. The cloud API is used only by the optional test harness.
-
-## Disk layout
-
-```text
-Included VPS disk · GPT
-┌───────────────────────────────────────────────────────────────┐
-│ 1 MiB BIOS boot code │ ZFS rpool · all remaining usable space │
-└───────────────────────────────────────────────────────────────┘
-                       └── rpool/ROOT/ubuntu → /
-                           ├── boot/       kernel + initramfs
-                           ├── usr/        system + modules
-                           ├── etc/        configuration
-                           └── var/ …      everything else
-```
-
-The tiny BIOS partition contains GRUB boot code, **no filesystem**. GRUB reads
-`/boot` directly from ZFS; there is no ext4/FAT filesystem or separate boot pool.
-Ubuntu's `zfs-initramfs` imports the root pool during boot.
-
-> [!IMPORTANT]
-> The pool uses `compatibility=grub2`. Keep that restriction: enabling features
-> GRUB cannot read can make the machine unbootable. Native ZFS encryption is not
-> supported by this boot layout.
 
 ## Requirements
 
-| Component | Supported baseline |
-|---|---|
-| Provider | **DigitalOcean**, tested on `s-2vcpu-4gb` in SFO3 with an 80 GB included disk |
-| OS | Ubuntu Server **24.04**, **amd64/x86_64** |
-| Boot | **Legacy BIOS + GRUB** |
-| Source storage | One disk, plain **ext4** root; separate ext4 `/boot` on the same disk is accepted |
-| Memory | **4 GiB RAM** minimum |
-| Space | **16 GB disk**, **8 GB free on `/`**, **500 MB free in `/boot`**; final archive must also fit |
-| Access | Root `/root/.ssh/authorized_keys`, working Netplan, package repository access |
+- Ubuntu Server **24.04 amd64**, legacy BIOS with GRUB.
+- One included disk with a GPT table and a plain ext4 root partition. An ISO
+  metadata disk is permitted. No attached Volumes are needed or used.
+- Preservation requires root to be the last partition; a separate ext4 `/boot`
+  and the standard Ubuntu BIOS/EFI helper partitions are supported.
+- At least **4 GiB RAM**, a **16 GB disk**, **8 GB free on `/`** for staging,
+  and **500 MB free in `/boot`**. These staging requirements also apply to erase.
+- Root SSH key access, working Ubuntu package repositories and Netplan networking.
+- Initial cloud-init provisioning should finish before running the installer.
 
-A small ISO metadata disk is allowed. Detach additional data disks before use.
-The installer rejects unsupported OS, architecture, firmware, and storage layouts
-before erasure. These checks do not make it safe to run on a machine with valuable data.
+The project targets DigitalOcean. Other distributions, UEFI, ARM, LVM, RAID,
+encrypted root, additional data partitions, and additional mounted local data
+filesystems are outside the supported scope. The installer checks the OS and
+disk layout before proceeding.
 
-**Currently outside the supported scope:** UEFI, ARM, LVM, RAID, encrypted root,
-smaller-memory VPS plans, and providers other than DigitalOcean. The minimum disk
-size is a preflight threshold; the recorded live test used 80 GB.
+The usage threshold is calculated from allocated ext4 bytes and filesystem size
+before staging. A successful migration also requires ext4 to shrink sufficiently
+and the temporary ZFS partition to hold the copied data and metadata. If any step
+fails, the installer stops in a rescue environment. Erasure always requires your
+explicit consent.
 
-## 📸 First snapshot
-
-After installation, take a snapshot of the root dataset:
-
-```sh
-sudo zfs snapshot rpool/ROOT/ubuntu@fresh-install
-sudo zfs list -t snapshot
-```
-
-Snapshots include `/boot` and matching kernel modules. Quiesce applications when
-you need application-consistent snapshots. Snapshots on the same disk do not
-protect against losing that disk, and zfsify does not yet provide a boot-environment
-selector or automated rollback workflow.
-
-## FAQ
-
-<details>
-<summary><strong>Can it preserve my existing applications and data?</strong></summary>
-
-**No. This release performs a fresh reinstall.** It carries over root authorized
-SSH keys, SSH host keys, hostname, `/etc/hosts`, machine ID, and Netplan configuration.
-Everything else on the old disk is erased. Being less than 50% full does not change
-this behavior. In-place ext4-to-ZFS migration is a possible future direction, not
-an available mode.
-
-</details>
-
-<details>
-<summary><strong>Will the pool grow automatically when I resize my Droplet?</strong></summary>
-
-No. Automatic disk expansion is not implemented. Growing the disk requires
-expanding the last partition and then its ZFS vdev. Cloud-init's `growpart` and
-`resize_rootfs` are disabled because the stock ext4 expansion flow is not used.
-Do not assume a provider resize expands the pool, or that setting `autoexpand`
-alone would resize the partition.
-
-</details>
-
-<details>
-<summary><strong>What happens if installation fails?</strong></summary>
-
-Before reboot, staging installs prerequisites and creates a one-shot GRUB entry;
-it does not erase the source filesystem. Inspect staging logs and any mounts below
-`/var/lib/zfs-on-boot/root` before cleaning up or retrying.
-
-During installation, the RAM OS provides SSH with the original keys. On failure
-it stays running with a console shell. If networking fails, use DigitalOcean's
-Recovery Console. **After erasure, do not reboot a failed install:** the RAM OS
-may be your only remaining recovery environment. A power loss may require a
-provider recovery boot or rebuilding the Droplet. One-shot GRUB fallback cannot
-restore an erased disk.
-
-| Stage | Log |
-|---|---|
-| Preparation | `/var/lib/zfs-on-boot/stage.log` |
-| RAM installer | `/run/zfs-on-boot.log` |
-| Installed system | `/var/log/zfs-on-boot/install.log` |
-
-Re-running the installer on an already installed system exits without reinstalling.
-Internal paths retain the original `zfs-on-boot` name to preserve the tested code.
-
-</details>
-
-<details>
-<summary><strong>What defaults does it configure?</strong></summary>
-
-ZFS uses `lz4` compression, `ashift=12`, POSIX ACLs, `xattr=sa`, and `atime=off`.
-The ARC is capped at 256 MiB and no swap is configured. To change the ARC cap,
-edit `/etc/modprobe.d/zfs-on-boot.conf`, run `sudo update-initramfs -u -k all`,
-and reboot. Ubuntu's `linux-image-virtual` metapackage supplies the kernel.
-
-Cloud-init remains installed, but network regeneration and automatic root expansion
-are disabled. This is an installation for one specific VPS: do not distribute its
-snapshot without generalizing SSH keys, network settings, machine identity, and
-cloud-init state. The generated RAM image includes private SSH host keys and must
-never be uploaded as a public release artifact.
-
-</details>
-
-## Validation & development
-
-The first installer was validated on a real DigitalOcean Droplet: installation,
-root and boot mounts, SSH continuity, networking, cloud-init, snapshots, kernel
-package reinstallation, and subsequent reboot. See the [validation report](docs/validation.md)
-for versions, sanitized evidence, and the exact tested checksum. This is an
-**experimental release**, not a claim of broad cloud compatibility.
+## How preservation works
 
 ```text
-src/stage.sh              build and stage the RAM environment
-src/ram-init.sh           boot in RAM, format, install, reboot
-scripts/package.py       package both stages into one shell script
-scripts/do-e2e.sh         disposable DigitalOcean installation + reboot test
-scripts/verify*.sh        checks executed inside a test Droplet
-install.sh               published standalone installer
-SHA256SUMS               checksum of the published installer
+Included disk (tiny bootloader area omitted)
+
+[                  original ext4                  ]
+[          smaller ext4        ][ temporary ZFS    ]  shrink; copy; verify
+[          new ZFS member      ][ temporary ZFS    ]  attach; resilver
+[          new ZFS member      ][ free space       ]  detach temporary
+[                       ZFS                       ]  grow to disk end
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging and DigitalOcean testing.
-Ideas for future work include data-preserving migration, automatic disk growth,
-UEFI support, and additional providers. None of these are implemented in this release.
+The installer builds a complete RAM OS using signed Ubuntu APT repositories.
+After booting that OS, the original filesystem is unmounted, checked and shrunk.
+It creates a temporary ZFS pool in the freed tail of the same disk. `rsync`
+preserves file contents, numeric ownership, permissions, ACLs, xattrs, hard links
+and sparse files. A second, checksum-based comparison must find no differences
+before the original ext4 partitions are removed.
 
-## 🧰 Cloud volume toolkit
+It replaces the front of the disk with a mirror member, waits for a successful
+ZFS resilver, detaches the temporary tail member, and extends the front partition.
+The temporary mirror relocates data; it provides no protection against physical
+disk failure because both members are on the same disk.
 
-The original **zfs.wizard** tools for attached DigitalOcean block-storage volumes
-are still included at their existing paths. They provide storage inspection,
-pool creation, stripe/mirror helpers, and interactive wizards. They do not replace
-the root filesystem and are independent of `install.sh`.
+The source partitions are removed after copy verification and boot configuration
+succeed; the first boot of the copied system happens after relocation. A power
+loss during shrinking or relocation may require recovery from a provider snapshot.
 
-See the [volume toolkit guide](docs/volumes.md) for setup, all script entry points,
-examples, Terraform behavior, and known limitations. These legacy workflows have
-not been revalidated as part of the root installer release.
+The final layout is:
+
+```text
+GPT disk
+  1   1 MiB   BIOS boot code (no filesystem)
+  2   rest    rpool
+                rpool/ROOT/ubuntu -> /, including /boot
+```
+
+GRUB reads the kernel/initramfs directly from ZFS. The pool uses
+`compatibility=grub2`, lz4 compression, POSIX ACLs and xattr=sa. Do not enable ZFS
+features incompatible with GRUB; this layout does not support native encryption.
+A 256 MiB ARC cap is installed in `/etc/modprobe.d/zfs-on-boot.conf`. Adjust it and
+regenerate the initramfs if your workload needs a different limit. Swap files
+are excluded and swap fstab entries are removed.
+
+## Progress and reconnecting
+
+The installer displays its current phase, elapsed time, target devices, and disk
+throughput. After either reboot, reconnect using your existing SSH key. You can
+view progress during staging, in the RAM environment, and after installation:
+
+```sh
+zfs-on-boot-status        # refresh every second; Ctrl-C exits the viewer
+zfs-on-boot-status --once # print the current state
+```
+
+<details>
+<summary>Installation phases and throughput measurements</summary>
+
+The installer reports ten phases:
+
+1. Preflight and consent
+2. Prepare Ubuntu and the RAM environment
+3. Build the archive and stage reboot
+4. Check/shrink ext4, or format for erase
+5. Copy files
+6. Verify checksums and metadata
+7. Configure ZFS boot
+8. Relocate through a temporary mirror (skipped for erase)
+9. Expand the final partition and pool
+10. Install GRUB and finish
+
+Each report identifies the block devices being touched, elapsed time, a phase
+bar, read/write MB/s and IOPS sampled from Linux block-device counters. Copy
+phases show logical bytes moved/total and logical MB/s. Resilver progress uses
+ZFS's issued/total counters when available. Package installation, checksums,
+filesystem metadata operations and GRUB do not expose reliable byte totals;
+those measurements are shown as `n/a`. The overall bar represents equally weighted
+phases, whose durations vary. Physical disk and partition counters overlap.
+
+Noninteractive logs include periodic progress reports and detailed command output.
+
+</details>
+
+## Automatic disk growth
+
+The pool has `autoexpand=on`. A systemd service, `zfs-on-boot-grow.service`, runs
+on each normal boot. It discovers the single root vdev, runs `growpart`, refreshes
+the kernel's partition mapping and runs `zpool online -e`. It is idempotent and
+leaves the starting sector unchanged. This handles a provider disk enlargement
+on the boot after the resize; CPU/RAM-only resizes do not grow storage.
+Cloud-init's generic root resize is disabled so it does not run ext4 tools on ZFS.
+Multi-device pools are refused by this automatic-growth helper.
+
+## Logs and recovery
+
+Before reboot: `/var/lib/zfs-on-boot/stage.log` and
+`/var/log/zfs-on-boot/progress.log`. Preparation installs packages and adds a
+one-shot GRUB entry, but does not repartition the running root.
+
+In RAM: `/run/zfs-on-boot.log`, `/var/log/zfs-on-boot/progress.log`, and
+`zfs-on-boot-status`. Failure leaves RAM SSH and a provider-console shell running;
+it does not automatically reboot or resume a partially completed migration.
+**Do not reboot after source removal** without inspecting the failure.
+
+After success: `/var/log/zfs-on-boot/`. Re-running the installer refuses an
+already converted system before making changes.
+
+Staging archives contain private host keys and (in erase mode) account records
+and configuration. They are stored in root-only staging directories and are
+never public release assets. Inspect mounts and logs before manually cleaning
+an interrupted `/var/lib/zfs-on-boot` or `/boot/zfs-on-boot` directory.
+
+## Development
+
+```sh
+python3 scripts/package.py
+```
+
+This packages `src/` into `reformat.sh`, its `install.sh` alias, and `dist/`.
+The wrapper buffers all embedded scripts before launching the installer, passes
+arguments through, and separates terminal consent from its piped input.
+`SHA256SUMS` records the generated `reformat.sh` digest.
+
+Runtime tests run on DigitalOcean Droplets. The [validation records](docs/validation.md)
+describe the installer versions and scenarios covered. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for packaging and test instructions.
+
+- `src/stage.sh`: usage gate, explanation/countdown, identity capture and RAM boot.
+- `src/plan.py`: partition-layout validation and non-overlapping migration geometry.
+- `src/ram-init.sh`: offline copy/verification, relocation and final boot.
+- `src/target.sh`: boot configuration and erase-mode identity restoration.
+- `src/progress.py`: command runner, phase state and Linux device telemetry.
+- `src/grow.sh`: boot-time expansion of the final partition and ZFS vdev.
+- `scripts/verify-preserved.sh`: DO fixture checks for data and metadata retention.
+- `scripts/do-test.py`: recorded DO resource lifecycle; token comes from environment.
+
+## 🧰 Volume tools
+
+For ZFS data pools on attached DigitalOcean Volumes, the [volume toolkit](docs/volumes.md)
+provides storage inspection, pool creation, stripe and mirror helpers, and
+interactive setup. Its guide covers each command, requirements, and known limitations.
 
 ## Related projects
 
-- [**zfsbox**](https://github.com/pirate/zfsbox) — the sibling project: virtualized ZFS from userspace on macOS, Linux, and Docker.
-- [**OpenZFS**](https://openzfs.org/) — the filesystem powering zfsify; see its [Ubuntu root-on-ZFS guide](https://openzfs.github.io/openzfs-docs/Getting%20Started/Ubuntu/Ubuntu%2022.04%20Root%20on%20ZFS.html) for a manual installation reference with a different layout.
-- [**ZFSBootMenu**](https://zfsbootmenu.org/) — an alternative boot manager with ZFS boot-environment features. zfsify currently uses GRUB.
-- [**debootstrap**](https://wiki.debian.org/Debootstrap) and [**cloud-init**](https://cloud-init.io/) — the tools behind the Ubuntu bootstrap and cloud integration.
-
----
-
-<div align="center">
-
-Built by [@pirate](https://github.com/pirate) · [MIT licensed](LICENSE) · Powered by OpenZFS
-
-</div>
+- [zfsbox](https://github.com/pirate/zfsbox) runs virtualized ZFS on macOS, Linux, and Docker.
+- [OpenZFS](https://github.com/openzfs/zfs) provides the filesystem used by zfsify.
+- [ZFSBootMenu](https://zfsbootmenu.org/) offers ZFS boot-environment selection and recovery tools.
+- [cloud-init](https://cloud-init.io/) handles cloud instance initialization.

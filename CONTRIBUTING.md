@@ -4,26 +4,22 @@ Small, inspectable changes and evidence from disposable DigitalOcean Droplets
 are welcome. Keep destructive behavior explicit and document the exact supported
 configuration. Never test this installer on a workstation or a valuable server.
 
-This repository continues the history of `pirate/zfs.wizard`. Root-level legacy
-scripts retain their names and behavior; the new root installer lives in `src/`
-and is distributed as `install.sh`. See [the volume guide](docs/volumes.md) before
-working on the older toolkit. Its token variable is `DO_API_TOKEN`, whereas the
-new test harness uses `DIGITALOCEAN_TOKEN`. Neither is required by `install.sh`.
+The root installer lives in `src/` and is distributed as `reformat.sh` and its
+`install.sh` alias. The [volume toolkit](docs/volumes.md) lives in the root-level
+shell scripts and uses `DO_API_TOKEN` for provider operations. The installer test
+harness uses `DIGITALOCEAN_TOKEN`; installation itself needs no cloud API token.
 
 ## Package the installer
 
-The source of truth is `src/stage.sh` and `src/ram-init.sh`. Packaging only embeds
+The source of truth is the files in `src/`. Packaging only embeds
 those files; it does not install Ubuntu or change the controller's disk layout.
 
 ```sh
 python3 scripts/package.py
-cp dist/install.sh install.sh
-cp dist/SHA256SUMS SHA256SUMS
 ```
 
 Commit the generated installer and checksum together with their source changes.
-Internal paths use the original `zfs-on-boot` name for compatibility with the first
-tested version. The installed Ubuntu package set can change as signed Ubuntu
+The installed Ubuntu package set can change as signed Ubuntu
 repositories publish updates, even when the shell script is unchanged.
 
 ## Test on DigitalOcean
@@ -60,8 +56,8 @@ and network details before adding evidence to a pull request.
 ## Useful contributions
 
 - A reproducible DigitalOcean failure with sanitized logs and image/plan details.
-- Data-preserving migration designs with a clear recovery story.
-- Disk growth handling, including partition expansion and subsequent reboots.
+- Migration recovery and interrupted-operation handling.
+- Additional disk layouts backed by migration and expansion evidence.
 - UEFI or additional provider support backed by real deployment evidence.
 
 Keep unvalidated configurations labeled as such. Include the packaged installer

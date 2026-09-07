@@ -1,0 +1,11 @@
+[Unit]
+Description=Expand the ZFS root partition after a cloud disk resize
+After=zfs-import.target zfs-mount.service local-fs.target
+ConditionPathExists=/etc/zfs-on-boot-installed
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/zfs-on-boot-grow
+
+[Install]
+WantedBy=multi-user.target
