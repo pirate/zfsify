@@ -1,0 +1,58 @@
+Hit:1 https://repos-droplet.digitalocean.com/apt/droplet-agent main InRelease
+Hit:2 http://sfo3.clouds.archive.ubuntu.com/ubuntu noble InRelease
+Hit:3 http://sfo3.clouds.archive.ubuntu.com/ubuntu noble-updates InRelease
+Hit:4 http://security.ubuntu.com/ubuntu noble-security InRelease
+Hit:5 http://sfo3.clouds.archive.ubuntu.com/ubuntu noble-backports InRelease
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+0 upgraded, 0 newly installed, 3 reinstalled, 0 to remove and 45 not upgraded.
+Need to get 54.0 MB of archives.
+After this operation, 0 B of additional disk space will be used.
+Get:1 http://sfo3.clouds.archive.ubuntu.com/ubuntu noble-updates/main amd64 linux-image-6.8.0-139-generic amd64 6.8.0-139.139 [14.8 MB]
+Get:2 http://sfo3.clouds.archive.ubuntu.com/ubuntu noble-updates/main amd64 linux-image-virtual amd64 6.8.0-139.139 [11.4 kB]
+Get:3 http://sfo3.clouds.archive.ubuntu.com/ubuntu noble-updates/main amd64 linux-modules-6.8.0-139-generic amd64 6.8.0-139.139 [39.1 MB]
+Fetched 54.0 MB in 4s (13.9 MB/s)
+(Reading database ...
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 13263 files and directories currently installed.)
+Preparing to unpack .../linux-image-6.8.0-139-generic_6.8.0-139.139_amd64.deb ...
+Unpacking linux-image-6.8.0-139-generic (6.8.0-139.139) over (6.8.0-139.139) ...
+Preparing to unpack .../linux-image-virtual_6.8.0-139.139_amd64.deb ...
+Unpacking linux-image-virtual (6.8.0-139.139) over (6.8.0-139.139) ...
+Preparing to unpack .../linux-modules-6.8.0-139-generic_6.8.0-139.139_amd64.deb ...
+Unpacking linux-modules-6.8.0-139-generic (6.8.0-139.139) over (6.8.0-139.139) ...
+Setting up linux-modules-6.8.0-139-generic (6.8.0-139.139) ...
+Setting up linux-image-6.8.0-139-generic (6.8.0-139.139) ...
+Setting up linux-image-virtual (6.8.0-139.139) ...
+Processing triggers for linux-image-6.8.0-139-generic (6.8.0-139.139) ...
+/etc/kernel/postinst.d/initramfs-tools:
+update-initramfs: Generating /boot/initrd.img-6.8.0-139-generic
+W: No zstd in /usr/bin:/sbin:/bin, using gzip
+/etc/kernel/postinst.d/zz-update-grub:
+Sourcing file `/etc/default/grub.d/50-zfs-on-boot.cfg'
+Generating grub configuration file ...
+Found linux image: vmlinuz-6.8.0-139-generic in rpool/ROOT/ubuntu
+Found initrd image: initrd.img-6.8.0-139-generic in rpool/ROOT/ubuntu
+Adding boot menu entry for UEFI Firmware Settings ...
+done

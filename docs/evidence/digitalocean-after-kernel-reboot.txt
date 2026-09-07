@@ -1,0 +1,31 @@
+active
+active
+active
+status: done
+[test Droplet ID redacted]
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool               446M  76.6G    96K  none
+rpool/ROOT          445M  76.6G    96K  none
+rpool/ROOT/ubuntu   445M  76.6G   445M  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+ZFS root verification passed.
+Root snapshot and clone include boot files and matching kernel modules.
+[test UUID redacted]
+2026-09-07T00:32:56Z

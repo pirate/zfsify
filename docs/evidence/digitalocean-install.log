@@ -1,0 +1,100 @@
++ echo 'Starting independent ZFS installer in RAM.'
+Starting independent ZFS installer in RAM.
++ /usr/lib/systemd/systemd-udevd --daemon
+Starting systemd-udevd version 255.4-1ubuntu8.17
++ udevadm trigger --action=add
++ udevadm settle
++ modprobe zfs
++ mkdir -p /run/sshd
++ /usr/sbin/sshd -E /run/sshd.log
++ bash /etc/zfs-on-boot/network.sh
++ echo 'SSH is available with the original host keys and authorized keys.'
+SSH is available with the original host keys and authorized keys.
+++ cat /etc/zfs-on-boot/disk
++ DISK=/dev/vda
++ [[ -b /dev/vda ]]
+++ blockdev --getsize64 /dev/vda
+++ cat /etc/zfs-on-boot/disk-size
++ [[ 85899345920 = \8\5\8\9\9\3\4\5\9\2\0 ]]
+++ lsblk -dn -o TYPE,FSTYPE
+++ awk '$1=="disk" && $2!="iso9660" {n++} END {print n+0}'
++ [[ 1 = 1 ]]
+++ findmnt -n -o FSTYPE /
++ [[ rootfs = rootfs ]]
+++ lsblk -nr -o MOUNTPOINTS /dev/vda
+++ tr -d '[:space:]'
++ [[ -z '' ]]
++++ cat /etc/zfs-on-boot/old-root-uuid
+++ blkid -U [test UUID redacted]
++ [[ /dev/vda1 = \/\d\e\v\/\v\d\a* ]]
+++ uname -r
+++ cat /etc/zfs-on-boot/kernel
++ [[ 6.8.0-139-generic = \6\.\8\.\0\-\1\3\9\-\g\e\n\e\r\i\c ]]
++ [[ -s /root/.ssh/authorized_keys ]]
+++ uname -r
++ [[ -s /boot/vmlinuz-6.8.0-139-generic ]]
+++ zpool list -H -o name
++ [[ -z '' ]]
++ echo 'Preflight complete. ERASING /dev/vda now.'
+Preflight complete. ERASING /dev/vda now.
++ sgdisk --zap-all /dev/vda
+GPT data structures destroyed! You may now partition the disk using fdisk or
+other utilities.
++ sgdisk -n 1:1MiB:+1MiB -t 1:EF02 -c 1:BIOS /dev/vda
+Creating new GPT entries in memory.
+The operation has completed successfully.
++ sgdisk -n 2:0:0 -t 2:BF01 -c 2:rpool /dev/vda
+The operation has completed successfully.
++ partprobe /dev/vda
++ udevadm settle
+++ part 2
+++ lsblk -nrpo NAME,PARTN /dev/vda
+++ awk -v n=2 '$2==n {print $1}'
++ ZPART=/dev/vda2
++ [[ -b /dev/vda2 ]]
++ zpool create -f -o ashift=12 -o compatibility=grub2 -o cachefile=none -O compression=lz4 -O atime=off -O xattr=sa -O acltype=posixacl -O mountpoint=none -R /target rpool /dev/vda2
++ zfs create -o mountpoint=none rpool/ROOT
++ zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
++ zfs mount rpool/ROOT/ubuntu
++ zpool set bootfs=rpool/ROOT/ubuntu rpool
++ mkdir -p /target/boot
++ echo 'Copying Ubuntu from RAM to ZFS.'
+Copying Ubuntu from RAM to ZFS.
++ tar --one-file-system --numeric-owner --xattrs --acls --exclude=./target --exclude=./proc --exclude=./sys --exclude=./dev --exclude=./run --exclude=./tmp --exclude=./init --exclude=./etc/zfs-on-boot -C / -cf - .
++ tar --numeric-owner --xattrs --acls -C /target -xf -
++ mkdir -p /target/proc /target/sys /target/dev /target/run /target/tmp
++ chmod 1777 /target/tmp
++ mount --rbind /dev /target/dev
++ mount --make-rslave /target/dev
++ mount -t proc proc /target/proc
++ mount -t sysfs sysfs /target/sys
++ mount --bind /run /target/run
++ printf '# / and /boot are on rpool/ROOT/ubuntu, mounted by zfs-initramfs.\n'
++ mkdir -p /target/etc/default/grub.d
++ cat
++ echo RESUME=none
++ zpool set cachefile=/target/etc/zfs/zpool.cache rpool
+++ uname -r
++ chroot /target update-initramfs -c -k 6.8.0-139-generic
+update-initramfs: Generating /boot/initrd.img-6.8.0-139-generic
+W: No zstd in /usr/bin:/sbin:/bin, using gzip
+++ chroot /target grub-probe /boot
++ [[ zfs = zfs ]]
++ chroot /target grub-install --target=i386-pc --recheck /dev/vda
+Installing for i386-pc platform.
+Installation finished. No error reported.
++ chroot /target update-grub
+Sourcing file `/etc/default/grub.d/50-zfs-on-boot.cfg'
+Generating grub configuration file ...
+Found linux image: vmlinuz-6.8.0-139-generic in rpool/ROOT/ubuntu
+Found initrd image: initrd.img-6.8.0-139-generic in rpool/ROOT/ubuntu
+Adding boot menu entry for UEFI Firmware Settings ...
+done
++ ln -sf /run/systemd/resolve/stub-resolv.conf /target/etc/resolv.conf
++ touch /target/etc/machine-id
++ mkdir -p /target/var/lib/dbus
++ ln -sf /etc/machine-id /target/var/lib/dbus/machine-id
+++ date -u +%FT%TZ
++ printf 'Installed by zfs-on-boot at %s\n' 2026-09-07T00:30:19Z
++ mkdir -p /target/var/log/zfs-on-boot
++ cp /run/zfs-on-boot.log /target/var/log/zfs-on-boot/install.log

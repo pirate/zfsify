@@ -1,0 +1,17 @@
+dist/
+.env
+.env.*
+!.env.example
+*.log
+!docs/evidence/*.log
+*.img
+*.qcow2
+*.pem
+*.key
+__pycache__/
+.DS_Store
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+tfplan

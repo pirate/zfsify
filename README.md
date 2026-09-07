@@ -1,132 +1,275 @@
-# ZFS Cloud Management Toolkit
+<div align="center">
 
-This toolkit provides a collection of modular scripts to manage ZFS pools with DigitalOcean block storage volumes. The scripts are designed to be simple, modular, and reusable.
+# ⚡ zfsify
 
-## Overview
+**One command. Two reboots. Ubuntu on ZFS.**
 
-The toolkit consists of:
+Reformat a fresh Ubuntu VPS onto ZFS in place, using its included disk.<br>
+Snapshots, compression, and checksums — all the way through `/boot`.
 
-1. A main script that orchestrates the entire workflow
-2. Individual micro-scripts that each handle a specific task
-3. A setup script to make sure everything is ready to run
+[![Ubuntu 24.04](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](#requirements)
+[![DigitalOcean tested](https://img.shields.io/badge/DigitalOcean-tested-0080FF?logo=digitalocean&logoColor=white)](docs/validation.md)
+[![Status: experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#requirements)
+[![License: MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 
-## Getting Started
+[Quick start](#-quick-start) · [How it works](#how-it-works) · [Disk layout](#disk-layout) · [Validation](docs/validation.md) · [Volume toolkit](docs/volumes.md)
 
-### Prerequisites
+</div>
 
-- A DigitalOcean droplet
-- Root access
-- DigitalOcean API token with read/write permissions (to create new volumes)
+---
 
-### Installation
+Formerly **zfs.wizard**. zfsify now focuses on root-on-ZFS installation; the
+original [cloud block-storage toolkit](docs/volumes.md) remains available.
 
-1. Clone or download this repository to your DigitalOcean droplet
-2. Run the setup script to make all component scripts executable and check for required dependencies:
+> [!CAUTION]
+> **This erases the entire root disk and installs a fresh Ubuntu system.**
+> Existing applications, other users, home directories, and data are deleted.
+> Use a fresh, disposable VPS. Only root SSH access, host keys, hostname, machine
+> identity, and network configuration are carried over. There is no confirmation prompt.
 
-```bash
-sudo ./setup.sh
+## 🚀 Quick start
+
+Create a fresh **DigitalOcean Ubuntu 24.04 x64 Droplet with at least 4 GiB RAM**,
+add your SSH key, and connect as root. Wait for its initial cloud-init run to finish
+before starting (`cloud-init status --wait`). Check the [requirements](#requirements), then:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/main/install.sh | sudo sh
 ```
 
-3. Set your DigitalOcean API token if you plan to create new volumes:
+Leave SSH connected until the first reboot. The installer builds Ubuntu in RAM,
+repartitions the disk, installs the new system, and reboots again. Reconnect using
+the same IP address and SSH key once it finishes. The recorded DigitalOcean run
+took **about four minutes**; package downloads and machine size affect timing.
 
-```bash
-export DO_API_TOKEN=your_token_here
+```sh
+findmnt /
+findmnt --target /boot
+sudo zpool status
 ```
 
-### Running the Toolkit
+Both mount lookups should report `rpool/ROOT/ubuntu` with filesystem type `zfs`,
+and the pool should be `ONLINE`.
 
-Execute the main script:
+<details>
+<summary><strong>Prefer to inspect the script before running it?</strong></summary>
 
-```bash
-sudo ./main.sh
+Download the script and published checksum into an empty directory on the target VPS:
+
+```sh
+curl -fSLO https://raw.githubusercontent.com/pirate/zfsify/main/install.sh
+curl -fSLO https://raw.githubusercontent.com/pirate/zfsify/main/SHA256SUMS
+sha256sum -c SHA256SUMS
+less install.sh
+sudo sh install.sh
 ```
 
-Optionally, you can specify a custom pool name:
+For a fixed version, replace `main` in both URLs with the same full commit SHA.
+The checksum detects mismatched or corrupted downloads; it is not an independent
+signature. The installer is a readable shell script containing both installation
+stages. Ubuntu packages come from signed Ubuntu APT repositories.
 
-```bash
-sudo ./main.sh --poolname mypool
+</details>
+
+## Why zfsify?
+
+| | What you get |
+|---|---|
+| **Root on ZFS** | `/`, `/boot`, and kernel modules live in the same dataset. |
+| **Your included disk** | All filesystem storage is ZFS; no attached Volume is required. |
+| **Whole-system snapshots** | Capture boot files and the root filesystem together. |
+| **Familiar Ubuntu** | Ubuntu 24.04, APT, systemd, OpenSSH, Netplan, and cloud-init. |
+| **Small, inspectable installer** | Two shell stages packaged into a single download. |
+| **Access preserved** | Keep root authorized keys, SSH host keys, and network configuration. |
+
+## How it works
+
+```mermaid
+flowchart LR
+    A["Fresh Ubuntu VPS<br/>ext4 root"] --> B["Stage Ubuntu + ZFS<br/>and a RAM installer"]
+    B -->|Reboot 1| C["Run entirely in RAM<br/>Erase + repartition disk"]
+    C --> D["Copy Ubuntu to ZFS<br/>Install GRUB + initramfs"]
+    D -->|Reboot 2| E["Ubuntu on ZFS<br/>Same IP + SSH keys"]
+    style A fill:#334155,color:#fff,stroke:#64748b
+    style B fill:#1e3a8a,color:#fff,stroke:#3b82f6
+    style C fill:#78350f,color:#fff,stroke:#f59e0b
+    style D fill:#1e3a8a,color:#fff,stroke:#3b82f6
+    style E fill:#064e3b,color:#fff,stroke:#10b981
 ```
 
-## Component Scripts
+The original OS builds and checks a self-contained RAM environment before setting
+a one-shot GRUB boot entry. The RAM OS can then rewrite the disk it booted from.
+It copies the new Ubuntu installation onto ZFS and installs the permanent bootloader.
 
-The toolkit includes the following micro-scripts:
+No custom ISO upload, extra disk, cloud API token, or provider recovery boot is
+needed for installation. The cloud API is used only by the optional test harness.
 
-| Script | Description |
-|--------|-------------|
-| `terraform_list_volumes.sh` | Lists all DigitalOcean volumes in a specific region |
-| `terraform_get_droplet_metadata.sh` | Retrieves metadata about the current DigitalOcean droplet |
-| `zfs_list_disks.sh` | Lists all disks used by ZFS pools |
-| `summarize_storage.sh` | Displays a summary of ZFS pools and DigitalOcean volumes |
-| `find_new_disks.sh` | Finds new unformatted disks that are not part of any ZFS pool |
-| `terraform_create_new_volume.sh` | Creates a new DigitalOcean volume and attaches it to a droplet |
-| `zfs_create_pool.sh` | Creates a new ZFS pool using the specified disk |
-| `zfs_add_stripe.sh` | Adds a new device as a stripe vdev to an existing ZFS pool |
-| `zfs_add_mirror.sh` | Adds a new device as a mirror to an existing device in a ZFS pool |
-| `speedtest.sh` | Performs a read/write speed test on a ZFS pool |
+## Disk layout
 
-Each script can be run independently for specific tasks, or together via the main script for a complete workflow.
-
-## Workflow
-
-The main script (`main.sh`) provides a guided workflow:
-
-1. Collects droplet metadata
-2. Checks current storage status
-3. Scans for new disks
-4. Creates a new volume if no new disks are found
-5. Offers options to:
-   - Add the new disk as a stripe to an existing pool (to increase capacity)
-   - Add the new disk as a mirror to an existing pool (to increase redundancy)
-   - Create a new pool with the new disk
-6. Displays updated storage status
-7. Offers to run a speed test
-8. Shows ZFS usage examples
-
-## Usage Examples
-
-### Create a New Volume and ZFS Pool
-
-```bash
-sudo ./main.sh --poolname datapool
+```text
+Included VPS disk · GPT
+┌─────────────────────────────────────────────────────────────┐
+│ 1 MiB BIOS boot code │ ZFS rpool · all remaining usable space │
+└─────────────────────────────────────────────────────────────┘
+                       └── rpool/ROOT/ubuntu → /
+                           ├── boot/       kernel + initramfs
+                           ├── usr/        system + modules
+                           ├── etc/        configuration
+                           └── var/ …      everything else
 ```
 
-### List Available Volumes
+The tiny BIOS partition contains GRUB boot code, **no filesystem**. GRUB reads
+`/boot` directly from ZFS; there is no ext4/FAT filesystem or separate boot pool.
+Ubuntu's `zfs-initramfs` imports the root pool during boot.
 
-```bash
-./terraform_list_volumes.sh
+> [!IMPORTANT]
+> The pool uses `compatibility=grub2`. Keep that restriction: enabling features
+> GRUB cannot read can make the machine unbootable. Native ZFS encryption is not
+> supported by this boot layout.
+
+## Requirements
+
+| Component | Supported baseline |
+|---|---|
+| Provider | **DigitalOcean**, tested on `s-2vcpu-4gb` in SFO3 with an 80 GB included disk |
+| OS | Ubuntu Server **24.04**, **amd64/x86_64** |
+| Boot | **Legacy BIOS + GRUB** |
+| Source storage | One disk, plain **ext4** root; separate ext4 `/boot` on the same disk is accepted |
+| Memory | **4 GiB RAM** minimum |
+| Space | **16 GB disk**, **8 GB free on `/`**, **500 MB free in `/boot`**; final archive must also fit |
+| Access | Root `/root/.ssh/authorized_keys`, working Netplan, package repository access |
+
+A small ISO metadata disk is allowed. Detach additional data disks before use.
+The installer rejects unsupported OS, architecture, firmware, and storage layouts
+before erasure. These checks do not make it safe to run on a machine with valuable data.
+
+**Currently outside the supported scope:** UEFI, ARM, LVM, RAID, encrypted root,
+smaller-memory VPS plans, and providers other than DigitalOcean. The minimum disk
+size is a preflight threshold; the recorded live test used 80 GB.
+
+## 📸 First snapshot
+
+After installation, take a snapshot of the root dataset:
+
+```sh
+sudo zfs snapshot rpool/ROOT/ubuntu@fresh-install
+sudo zfs list -t snapshot
 ```
 
-### Find New Disks
+Snapshots include `/boot` and matching kernel modules. Quiesce applications when
+you need application-consistent snapshots. Snapshots on the same disk do not
+protect against losing that disk, and zfsify does not yet provide a boot-environment
+selector or automated rollback workflow.
 
-```bash
-./find_new_disks.sh --largest
+## FAQ
+
+<details>
+<summary><strong>Can it preserve my existing applications and data?</strong></summary>
+
+**No. This release performs a fresh reinstall.** It carries over root authorized
+SSH keys, SSH host keys, hostname, `/etc/hosts`, machine ID, and Netplan configuration.
+Everything else on the old disk is erased. Being less than 50% full does not change
+this behavior. In-place ext4-to-ZFS migration is a possible future direction, not
+an available mode.
+
+</details>
+
+<details>
+<summary><strong>Will the pool grow automatically when I resize my Droplet?</strong></summary>
+
+No. Automatic disk expansion is not implemented. Growing the disk requires
+expanding the last partition and then its ZFS vdev. Cloud-init's `growpart` and
+`resize_rootfs` are disabled because the stock ext4 expansion flow is not used.
+Do not assume a provider resize expands the pool, or that setting `autoexpand`
+alone would resize the partition.
+
+</details>
+
+<details>
+<summary><strong>What happens if installation fails?</strong></summary>
+
+Before reboot, staging installs prerequisites and creates a one-shot GRUB entry;
+it does not erase the source filesystem. Inspect staging logs and any mounts below
+`/var/lib/zfs-on-boot/root` before cleaning up or retrying.
+
+During installation, the RAM OS provides SSH with the original keys. On failure
+it stays running with a console shell. If networking fails, use DigitalOcean's
+Recovery Console. **After erasure, do not reboot a failed install:** the RAM OS
+may be your only remaining recovery environment. A power loss may require a
+provider recovery boot or rebuilding the Droplet. One-shot GRUB fallback cannot
+restore an erased disk.
+
+| Stage | Log |
+|---|---|
+| Preparation | `/var/lib/zfs-on-boot/stage.log` |
+| RAM installer | `/run/zfs-on-boot.log` |
+| Installed system | `/var/log/zfs-on-boot/install.log` |
+
+Re-running the installer on an already installed system exits without reinstalling.
+Internal paths retain the original `zfs-on-boot` name to preserve the tested code.
+
+</details>
+
+<details>
+<summary><strong>What defaults does it configure?</strong></summary>
+
+ZFS uses `lz4` compression, `ashift=12`, POSIX ACLs, `xattr=sa`, and `atime=off`.
+The ARC is capped at 256 MiB and no swap is configured. To change the ARC cap,
+edit `/etc/modprobe.d/zfs-on-boot.conf`, run `sudo update-initramfs -u -k all`,
+and reboot. Ubuntu's `linux-image-virtual` metapackage supplies the kernel.
+
+Cloud-init remains installed, but network regeneration and automatic root expansion
+are disabled. This is an installation for one specific VPS: do not distribute its
+snapshot without generalizing SSH keys, network settings, machine identity, and
+cloud-init state. The generated RAM image includes private SSH host keys and must
+never be uploaded as a public release artifact.
+
+</details>
+
+## Validation & development
+
+The first installer was validated on a real DigitalOcean Droplet: installation,
+root and boot mounts, SSH continuity, networking, cloud-init, snapshots, kernel
+package reinstallation, and subsequent reboot. See the [validation report](docs/validation.md)
+for versions, sanitized evidence, and the exact tested checksum. This is an
+**experimental release**, not a claim of broad cloud compatibility.
+
+```text
+src/stage.sh              build and stage the RAM environment
+src/ram-init.sh           boot in RAM, format, install, reboot
+scripts/package.py       package both stages into one shell script
+scripts/do-e2e.sh         disposable DigitalOcean installation + reboot test
+scripts/verify*.sh        checks executed inside a test Droplet
+install.sh               published standalone installer
+SHA256SUMS               checksum of the published installer
 ```
 
-### Add a New Disk as a Mirror
+See [CONTRIBUTING.md](CONTRIBUTING.md) for packaging and DigitalOcean testing.
+Ideas for future work include data-preserving migration, automatic disk growth,
+UEFI support, and additional providers. None of these are implemented in this release.
 
-```bash
-./zfs_add_mirror.sh tank /dev/disk/by-id/scsi-0DO_Volume_volume-nyc1-02
-```
+## 🧰 Cloud volume toolkit
 
-### Run a Speed Test on a Pool
+The original **zfs.wizard** tools for attached DigitalOcean block-storage volumes
+are still included at their existing paths. They provide storage inspection,
+pool creation, stripe/mirror helpers, and interactive wizards. They do not replace
+the root filesystem and are independent of `install.sh`.
 
-```bash
-./speedtest.sh tank
-```
+See the [volume toolkit guide](docs/volumes.md) for setup, all script entry points,
+examples, Terraform behavior, and known limitations. These legacy workflows have
+not been revalidated as part of the root installer release.
 
-## Notes
+## Related projects
 
-- All the scripts require root privileges
-- The scripts automatically install any missing dependencies
-- The main workflow is designed for DigitalOcean, but individual scripts may work on other cloud providers with minimal modifications
+- [**zfsbox**](https://github.com/pirate/zfsbox) — the sibling project: virtualized ZFS from userspace on macOS, Linux, and Docker.
+- [**OpenZFS**](https://openzfs.org/) — the filesystem powering zfsify; see its [Ubuntu root-on-ZFS guide](https://openzfs.github.io/openzfs-docs/Getting%20Started/Ubuntu/Ubuntu%2022.04%20Root%20on%20ZFS.html) for a manual installation reference with a different layout.
+- [**ZFSBootMenu**](https://zfsbootmenu.org/) — an alternative boot manager with ZFS boot-environment features. zfsify currently uses GRUB.
+- [**debootstrap**](https://wiki.debian.org/Debootstrap) and [**cloud-init**](https://cloud-init.io/) — the tools behind the Ubuntu bootstrap and cloud integration.
 
-## Troubleshooting
+---
 
-- If a script fails, check the error message for details
-- Make sure your DigitalOcean API token has the necessary permissions
-- Verify that you're running the scripts on a DigitalOcean droplet
-- Check that the required dependencies are installed
+<div align="center">
 
-## License
+Built by [@pirate](https://github.com/pirate) · [MIT licensed](LICENSE) · Powered by OpenZFS
 
-This toolkit is open-source software licensed under the MIT license.
+</div>
