@@ -23,7 +23,7 @@ the following command as root. Take a provider snapshot before migrating valuabl
 data, since the process repartitions the disk and takes services offline.
 
 ```sh
-curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sh
+curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/main/reformat.sh | sh
 ```
 
 With **less than 50% of the root filesystem used**, this selects preservation
@@ -41,7 +41,7 @@ To erase application data and install a fresh Ubuntu base while keeping accounts
 and configuration, use `--erase`:
 
 ```sh
-curl -fsSL https://pirate.github.io/zfsify/reformat.sh | bash -s -- --erase
+curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/main/reformat.sh | bash -s -- --erase
 ```
 
 This option authorizes erasure without a confirmation prompt and includes the
