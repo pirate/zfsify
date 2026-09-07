@@ -68,14 +68,7 @@ from RAM. It can then unmount and modify the disk while providing SSH access.
 3. **Transfer the data back onto ZFS**, keeping ownership, permissions, and
    filesystem metadata.
 
-```text
-                     Start of disk                         End of disk
-Before               [          existing filesystem                  ]
-Temporary copy       [ existing filesystem ][ verified copy at end    ]
-Create ZFS           [      empty ZFS      ][ verified copy at end    ]
-Restore              [    restored ZFS     ][ verified copy at end    ]
-Finish               [              ZFS uses the disk                 ]
-```
+![Disk conversion: copy data to the end, create ZFS at the start, restore, and expand](docs/assets/disk-conversion.svg)
 
 After verifying the transfer, zfsify removes temporary storage and expands ZFS
 to fill the disk. Boot-drive conversions also configure the bootloader and

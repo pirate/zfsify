@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1060" height="590" viewBox="0 0 1060 590" role="img" aria-labelledby="title desc">
+  <title id="title">Converting a disk to ZFS while keeping its data</title>
+  <desc id="desc">Five disk layouts from top to bottom. The existing filesystem has data at the start and free space at the end. Copy and verify the data at the end, create ZFS at the start, restore data to ZFS, then remove temporary storage and expand ZFS across the disk. Sizes are illustrative and bootloader space is omitted.</desc>
+  <defs>
+    <pattern id="free" width="10" height="10" patternUnits="userSpaceOnUse"><path d="M-2 2L2-2M0 10L10 0M8 12L12 8" stroke="#394557" stroke-width="1"/></pattern>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10" fill="none" stroke="#b8c6d9" stroke-width="1.8"/></marker>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+      .label { fill: #eef3fa; font-size: 20px; font-weight: 600; }
+      .sub { fill: #a7b5c9; font-size: 15px; }
+      .inside { font-size: 19px; font-weight: 600; text-anchor: middle; }
+      .small { font-size: 14px; text-anchor: middle; }
+    </style>
+  </defs>
+  <rect width="1060" height="590" rx="18" fill="#111923"/>
+  <text x="32" y="43" fill="#f0f5fc" font-size="25" font-weight="650">Your data stays on the same disk</text>
+  <text x="268" y="82" class="sub">Start of disk</text>
+  <text x="1018" y="82" class="sub" text-anchor="end">End of disk</text>
+
+  <text x="32" y="127" class="label">Before</text>
+  <text x="32" y="151" class="sub">Existing filesystem</text>
+  <rect x="268" y="99" width="750" height="66" rx="9" fill="#1d2b40" stroke="#6b9eff" stroke-width="1.5"/>
+  <path d="M277 100H643V164H277Q269 164 269 156V108Q269 100 277 100" fill="#263f65"/>
+  <path d="M644 100H1009Q1017 100 1017 109V155Q1017 164 1009 164H644Z" fill="url(#free)"/>
+  <text x="456" y="138" class="inside" fill="#c3d8ff">Your data · ext4</text>
+  <text x="830" y="138" class="inside" fill="#bac5d6">At least 50% free</text>
+
+  <text x="32" y="217" class="label">1. Copy to the end</text>
+  <text x="32" y="241" class="sub">Shrink, copy, verify</text>
+  <rect x="268" y="189" width="366" height="66" rx="9" fill="#263f65" stroke="#6b9eff"/>
+  <rect x="652" y="189" width="366" height="66" rx="9" fill="#49371d" stroke="#dba958"/>
+  <text x="451" y="228" class="inside" fill="#c3d8ff">Your data · ext4</text>
+  <text x="835" y="217" class="inside" fill="#f3cd8b">Verified copy</text>
+  <text x="835" y="239" class="small" fill="#d6b781">Temporary storage</text>
+  <path d="M520 178H806" stroke="#b8c6d9" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <text x="32" y="307" class="label">2. Create ZFS</text>
+  <text x="32" y="331" class="sub">Reformat the start</text>
+  <rect x="268" y="279" width="366" height="66" rx="9" fill="#172b29" stroke="#55cba7" stroke-dasharray="5 4"/>
+  <rect x="652" y="279" width="366" height="66" rx="9" fill="#49371d" stroke="#dba958"/>
+  <text x="451" y="318" class="inside" fill="#a0decb">Empty ZFS</text>
+  <text x="835" y="318" class="inside" fill="#f3cd8b">Verified copy</text>
+
+  <text x="32" y="397" class="label">3. Restore to ZFS</text>
+  <text x="32" y="421" class="sub">Transfer and verify</text>
+  <rect x="268" y="369" width="366" height="66" rx="9" fill="#194639" stroke="#55cba7"/>
+  <rect x="652" y="369" width="366" height="66" rx="9" fill="#49371d" stroke="#dba958"/>
+  <text x="451" y="408" class="inside" fill="#b5f3dc">Your data · ZFS</text>
+  <text x="835" y="408" class="inside" fill="#f3cd8b">Verified copy</text>
+  <path d="M806 358H520" stroke="#b8c6d9" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <text x="32" y="487" class="label">4. Expand ZFS</text>
+  <text x="32" y="511" class="sub">Reclaim temporary space</text>
+  <rect x="268" y="459" width="750" height="66" rx="9" fill="#194639" stroke="#55cba7" stroke-width="1.5"/>
+  <text x="643" y="487" class="inside" fill="#b5f3dc">ZFS uses the whole disk</text>
+  <text x="643" y="509" class="small" fill="#97c9b8">Your restored data + remaining free capacity</text>
+
+  <text x="32" y="562" class="sub">Illustrative sizes; small bootloader partitions omitted.</text>
+</svg>
