@@ -1,0 +1,21 @@
+README.md
+  s_bf4d7bf3e729b5::t_231d4acbed1463 71
+docs/assets/disk-conversion.svg
+  s_bf4d7bf3e729b5::t_c77b29a2f25dfe 1-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "6a8dd8d3d9397e34a51fb5f99e7719d30758f708",
+  "prompts": {},
+  "sessions": {
+    "s_bf4d7bf3e729b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a07a0d-c86e-7291-a9be-d901ef91e73c",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
