@@ -14,6 +14,8 @@
 
 set -e
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 # Colors
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -30,23 +32,13 @@ echo ""
 # Check if running as root
 if [ "$(id -u)" -ne 0 ]; then
   echo -e "${RED}Error: This script must be run as root${NC}"
-  echo -e "Please run again with: ${YELLOW}sudo ./setup.sh${NC}"
+  echo -e "Please run again with: ${YELLOW}sudo $SCRIPT_DIR/setup.sh${NC}"
   exit 1
 fi
 
 # Make all component scripts executable
 echo -e "${BLUE}Making all scripts executable...${NC}"
-chmod +x terraform_list_volumes.sh 2>/dev/null || true
-chmod +x terraform_get_droplet_metadata.sh 2>/dev/null || true
-chmod +x zfs_list_disks.sh 2>/dev/null || true
-chmod +x summarize_storage.sh 2>/dev/null || true
-chmod +x find_new_disks.sh 2>/dev/null || true
-chmod +x terraform_create_new_volume.sh 2>/dev/null || true
-chmod +x zfs_create_pool.sh 2>/dev/null || true
-chmod +x zfs_add_stripe.sh 2>/dev/null || true
-chmod +x zfs_add_mirror.sh 2>/dev/null || true
-chmod +x speedtest.sh 2>/dev/null || true
-chmod +x main.sh 2>/dev/null || true
+chmod +x "$SCRIPT_DIR"/*.sh "$SCRIPT_DIR"/../digitalocean/*.sh
 
 # Check for required tools
 echo -e "${BLUE}Checking for required tools...${NC}"
@@ -107,5 +99,5 @@ fi
 
 echo ""
 echo -e "${GREEN}Setup completed successfully!${NC}"
-echo -e "${BLUE}You can now run the main script with: ${YELLOW}./main.sh${NC}"
+echo -e "${BLUE}You can now run the volume wizard with: ${YELLOW}$SCRIPT_DIR/main.sh${NC}"
 echo -e "${BOLD}${BLUE}=========================================${NC}"

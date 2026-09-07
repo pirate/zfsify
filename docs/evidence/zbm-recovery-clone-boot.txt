@@ -1,0 +1,10 @@
+TARGET SOURCE                   FSTYPE OPTIONS
+/      rpool/ROOT/recovery-test zfs    rw,relatime,xattr,posixacl,casesensitive
+root=zfs:rpool/ROOT/recovery-test console=ttyS0,115200n8 console=tty0 spl.spl_hostid=0x00bab10c
+SNAPSHOT_INIT_PRESENT
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.

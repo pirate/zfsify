@@ -1,0 +1,40 @@
+active
+active
+active
+status: done
+<test-droplet-id>
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              1.44G  21.8G    96K  none
+rpool/ROOT         1.44G  21.8G    96K  none
+rpool/ROOT/ubuntu  1.44G  21.8G  1.44G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed   824K      -  1.44G  -
+enabled
+ZFS root verification passed.
+/root/backup-fixture/data: OK
+/root/backup-fixture/hardlink: OK
+/root/backup-fixture/sparse: OK
+/root/backup-fixture/data inode=117808 links=2 size=67108864 blocks=131169
+/root/backup-fixture/hardlink inode=117808 links=2 size=67108864 blocks=131169
+/root/backup-fixture/sparse inode=117809 links=1 size=1073741824 blocks=1
+-rw-r--r-- 1 root root 992M Sep  7 06:28 /mnt/zfsify-backup/zfsify-20260907T062515-b88ac7e7-8d01-4dc6-a75e-fdc975a29bdf/root.tar.gz
+-rw-r--r-- 1 root root   68 Sep  7 06:30 /mnt/zfsify-backup/zfsify-20260907T062515-b88ac7e7-8d01-4dc6-a75e-fdc975a29bdf/root.tar.gz.sha256
+4737df7cd681361b6a175427dc33ae28c88d32db5d4d570248cec2b56f788d5a  -

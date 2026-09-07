@@ -1,0 +1,42 @@
+active
+active
+active
+status: done
+[test Droplet ID]
+2.1.5-1ubuntu6~22.04.6
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL     REFER  MOUNTPOINT
+rpool               307M  8.42G       96K  none
+rpool/ROOT          306M  8.42G       96K  none
+rpool/ROOT/ubuntu   306M  8.42G      305M  /
+5.15.0-191-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+0 loaded units listed.
+NAME                                 USED  AVAIL     REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.01M      -      304M  -
+enabled
+ZFS root verification passed.
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+/home/erasetest/.ssh/authorized_keys: OK
+/usr/bin/awk
+active
+active
+active
+ERASE VERIFIED: fresh ZFS root, retained accounts/configuration/SSH access, bounded priority restore, large omitted file removed.

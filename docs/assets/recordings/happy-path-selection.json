@@ -1,0 +1,264 @@
+{
+  "description": "Editorial headings and selected exact captured output. Countdown accelerated; idle waits and package chatter omitted. source_time is seconds into happy-path-full.cast.",
+  "duration": 41.0,
+  "frames": [
+    {
+      "title": "01  Start with a normal Ubuntu VPS",
+      "body": "Existing Ubuntu installation\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/vda1        24G  2.0G   22G   9% /\n\ntotal 129M\n-rw-r--r-- 1 root root   32 Sep  7 07:08 README.txt\n-rw-r--r-- 1 root root 128M Sep  7 07:08 database.bin\n\nDevelopment build served from this Droplet; exact SHA256 in recording notes.\n+ curl -fsSL http://127.0.0.1:8765/reformat.sh\n+ bash\nRoot filesystem: /dev/vda1 on /dev/vda | used 8.50% (2115194880 / 24883167232 bytes)",
+      "duration": 3,
+      "source_time": null
+    },
+    {
+      "title": "02  Review the plan before any changes",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.",
+      "duration": 4,
+      "source_time": null
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in 15s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 8.323
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in 14s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 9.326
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in 13s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 10.328
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in 12s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 11.331
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in 11s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 12.333
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in 10s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 13.335
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  9s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 14.338
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  8s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 15.34
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  7s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 16.344
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  6s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 17.346
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  5s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 18.349
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  4s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 19.351
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  3s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 20.354
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  2s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 21.356
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.\nDevices: source /dev/vda1; temporary /dev/vda32; final /dev/vda2.\n/dev/vda (512 MiB ZFSBootMenu partition omitted):\n  [              original ext4              ]\n  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify\n  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver\n  [       new ZFS member    ][ free space    ]  detach temporary member\n  [                   ZFS                   ]  grow; / and /boot on ZFS\nThe server reboots into RAM. Services are offline during migration.\nOriginal ext4 is removed only after the copy is checksum-verified.\nPower loss during repartitioning can require provider recovery.\n\nStarting preserve in  1s. Press Ctrl-C to cancel. ",
+      "duration": 0.12,
+      "source_time": 22.359
+    },
+    {
+      "title": "01/10  Live installer output \u00b7 selected excerpts",
+      "body": "[------------------------] phase 1/10: Preflight passed; permission and countdown complete [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 22.428
+    },
+    {
+      "title": "01/10  Live installer output \u00b7 selected excerpts",
+      "body": "[------------------------] phase 1/10: Preflight passed; permission and countdown complete [complete]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 5.6 W 0.0 MB/s 341 IOPS | /dev/vda1: R 5.6 W 0.0 MB/s 341 IOPS",
+      "duration": 1.0,
+      "source_time": 22.431
+    },
+    {
+      "title": "02/10  Live installer output \u00b7 selected excerpts",
+      "body": "[##----------------------] phase 2/10: Update Ubuntu package indexes [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 22.513
+    },
+    {
+      "title": "02/10  Live installer output \u00b7 selected excerpts",
+      "body": "[##----------------------] phase 2/10: Download verified ZFSBootMenu 3.1.0 for bios [complete]\n  devices: /dev/vda,/dev/vda1 | elapsed 2s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 236.348
+    },
+    {
+      "title": "03/10  Live installer output \u00b7 selected excerpts",
+      "body": "[####--------------------] phase 3/10: Compress rescue filesystem (one worker, bounded memory) [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 236.848
+    },
+    {
+      "title": "03/10  Live installer output \u00b7 selected excerpts",
+      "body": "[####--------------------] phase 3/10: Compress rescue filesystem (one worker, bounded memory) [complete]\n  devices: /dev/vda,/dev/vda1 | elapsed 179s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.5 W 0.0 MB/s 28 IOPS | /dev/vda1: R 0.5 W 0.0 MB/s 28 IOPS",
+      "duration": 1.0,
+      "source_time": 416.061
+    },
+    {
+      "title": "Reconnect after the first reboot",
+      "body": "The installer has staged its compressed rescue system.\n\nSSH disconnects during reboot, then returns in RAM.\n\nThe capture reconnects and runs zfs-on-boot-status.\n\n[Editorial transition: reboot wait removed]",
+      "duration": 1.7,
+      "source_time": null
+    },
+    {
+      "title": "04/10  Live installer output \u00b7 selected excerpts",
+      "body": "[#######-----------------] phase 4/10: Check offline ext4 /dev/vda1 [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 434.443
+    },
+    {
+      "title": "04/10  Live installer output \u00b7 selected excerpts",
+      "body": "[#######-----------------] phase 4/10: Create rpool on /dev/vda32 [complete]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 54.1 W 25.2 MB/s 2421 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 54.1 W 25.2 MB/s 2421 IOPS",
+      "duration": 1.0,
+      "source_time": 440.447
+    },
+    {
+      "title": "05/10  Live installer output \u00b7 selected excerpts",
+      "body": "[#########---------------] phase 5/10: Copy /old/ to /dev/vda32 [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 0s\n  0.0/2,384.2 MB (0.0%) | 0.0 MB/s logical\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 441.448
+    },
+    {
+      "title": "05/10  Live installer output \u00b7 selected excerpts",
+      "body": "[###########-------------] phase 5/10: Copy /old/ to /dev/vda32 [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 69s\n  1,695.0/2,384.2 MB (71.1%) | 10.6 MB/s logical\n  /dev/vda: R 12.8 W 5.9 MB/s 1259 IOPS | /dev/vda1: R 12.8 W 0.0 MB/s 893 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 5.9 MB/s 371 IOPS",
+      "duration": 1.0,
+      "source_time": 510.625
+    },
+    {
+      "title": "05/10  Live installer output \u00b7 selected excerpts",
+      "body": "[###########-------------] phase 5/10: Copy /old/ to /dev/vda32 [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 138s\n  2,368.5/2,384.2 MB (99.3%) | 16.5 MB/s logical\n  /dev/vda: R 24.7 W 10.8 MB/s 2310 IOPS | /dev/vda1: R 24.7 W 0.0 MB/s 1687 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 10.8 MB/s 624 IOPS",
+      "duration": 1.0,
+      "source_time": 579.785
+    },
+    {
+      "title": "06/10  Live installer output \u00b7 selected excerpts",
+      "body": "[############------------] phase 6/10: Checksum and metadata verification: /dev/vda1 -> /dev/vda32 [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 580.785
+    },
+    {
+      "title": "06/10  Live installer output \u00b7 selected excerpts",
+      "body": "[############------------] phase 6/10: Checksum and metadata verification: /dev/vda1 -> /dev/vda32 [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 45s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 155.3 W 0.0 MB/s 4218 IOPS | /dev/vda1: R 74.1 W 0.0 MB/s 3260 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 81.5 W 0.0 MB/s 960 IOPS",
+      "duration": 1.0,
+      "source_time": 625.82
+    },
+    {
+      "title": "07/10  Live installer output \u00b7 selected excerpts",
+      "body": "[##############----------] phase 7/10: Configure ZFS root, initramfs and boot services [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 626.82
+    },
+    {
+      "title": "07/10  Live installer output \u00b7 selected excerpts",
+      "body": "[##############----------] phase 7/10: Configure ZFS root, initramfs and boot services [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda32 | elapsed 28s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 20.6 W 18.8 MB/s 619 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 20.6 W 18.8 MB/s 619 IOPS",
+      "duration": 1.0,
+      "source_time": 654.855
+    },
+    {
+      "title": "08/10  Live installer output \u00b7 selected excerpts",
+      "body": "[#################-------] phase 8/10: Relocate via mirror: /dev/vda32 -> /dev/vda2 [running]\n  devices: /dev/vda,/dev/vda2,/dev/vda32 | elapsed 1s\n  ~170.9/1,610.6 MB (10.6%) | 165.6 MB/s logical\n  /dev/vda: R 195.0 W 180.4 MB/s 4644 IOPS | /dev/vda2: R 4.0 W 178.4 MB/s 2115 IOPS | /dev/vda32: R 191.0 W 2.0 MB/s 2528 IOPS",
+      "duration": 1.0,
+      "source_time": 657.862
+    },
+    {
+      "title": "08/10  Live installer output \u00b7 selected excerpts",
+      "body": "[##################------] phase 8/10: Relocate via mirror: /dev/vda32 -> /dev/vda2 [running]\n  devices: /dev/vda,/dev/vda2,/dev/vda32 | elapsed 3s\n  ~1,022.4/1,610.6 MB (63.5%) | 434.5 MB/s logical\n  /dev/vda: R 440.5 W 455.4 MB/s 6461 IOPS | /dev/vda2: R 0.0 W 455.4 MB/s 4967 IOPS | /dev/vda32: R 440.5 W 0.0 MB/s 1494 IOPS",
+      "duration": 1.0,
+      "source_time": 659.871
+    },
+    {
+      "title": "08/10  Live installer output \u00b7 selected excerpts",
+      "body": "[##################------] phase 8/10: Relocate via mirror: /dev/vda32 -> /dev/vda2 [running]\n  devices: /dev/vda,/dev/vda2,/dev/vda32 | elapsed 4s\n  ~1,363.7/1,610.6 MB (84.7%) | 334.3 MB/s logical\n  /dev/vda: R 335.3 W 340.7 MB/s 5517 IOPS | /dev/vda2: R 0.0 W 340.7 MB/s 3905 IOPS | /dev/vda32: R 335.3 W 0.0 MB/s 1612 IOPS",
+      "duration": 1.0,
+      "source_time": 660.872
+    },
+    {
+      "title": "09/10  Live installer output \u00b7 selected excerpts",
+      "body": "[###################-----] phase 9/10: Remove temporary partition /dev/vda32 [running]\n  devices: /dev/vda,/dev/vda2,/dev/vda32 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda32: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 661.873
+    },
+    {
+      "title": "09/10  Live installer output \u00b7 selected excerpts",
+      "body": "[###################-----] phase 9/10: Grow final ZFS partition /dev/vda2 to fill /dev/vda [running]\n  devices: /dev/vda,/dev/vda2 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 662.873
+    },
+    {
+      "title": "10/10  Live installer output \u00b7 selected excerpts",
+      "body": "[#####################---] phase 10/10: Install ZFSBootMenu on /dev/vda1; Ubuntu /boot remains on ZFS [running]\n  devices: /dev/vda,/dev/vda2 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.0,
+      "source_time": 663.877
+    },
+    {
+      "title": "10/10  Live installer output \u00b7 selected excerpts",
+      "body": "[#####################---] phase 10/10: Install ZFSBootMenu on /dev/vda1; Ubuntu /boot remains on ZFS [complete]\n  devices: /dev/vda,/dev/vda2 | elapsed 2s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 3.3 W 100.0 MB/s 326 IOPS | /dev/vda2: R 0.5 W 0.0 MB/s 46 IOPS",
+      "duration": 1.0,
+      "source_time": 664.877
+    },
+    {
+      "title": "Reconnect into Ubuntu on ZFS",
+      "body": "Installation finished. The server reboots through ZFSBootMenu.\n\n[Editorial transition: reboot wait removed]",
+      "duration": 1.5,
+      "source_time": null
+    },
+    {
+      "title": "Ubuntu is now running from ZFS",
+      "body": "$ findmnt / /boot\nTARGET\n  SOURCE            FSTYPE\n/ rpool/ROOT/ubuntu zfs\nTARGET\n  SOURCE            FSTYPE\n/ rpool/ROOT/ubuntu zfs\n\n$ zpool status\n  pool: rpool\n state: ONLINE\n  scan: resilvered 1.57G in 00:00:05 with 0 errors on Mon Sep  7 07:22:03 2026\nconfig:\n\n\tNAME        STATE     READ WRITE CKSUM\n\trpool       ONLINE       0     0     0\n\t  vda2      ONLINE       0     0     0\n\nerrors: No known data errors",
+      "duration": 3,
+      "source_time": null
+    },
+    {
+      "title": "Existing project survived \u00b7 recovery snapshot ready",
+      "body": "$ sha256sum -c /root/demo-data.sha256\n/srv/demo-project/README.txt: OK\n/srv/demo-project/database.bin: OK\n\n$ zfs list -t snapshot\nNAME                                 USED  AVAIL  REFER  MOUNTPOINT\nrpool/ROOT/ubuntu@zfsify-installed   812K      -  1.50G  -\n\n$ systemctl --failed --no-legend\n\nExisting project preserved. Root and Ubuntu /boot now use ZFS.\nConnection to 64.23.249.59 closed.",
+      "duration": 4,
+      "source_time": null
+    }
+  ]
+}

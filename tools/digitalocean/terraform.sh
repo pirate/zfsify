@@ -1,6 +1,8 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+
 # Colors for better output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
@@ -354,7 +356,7 @@ main() {
   
   echo -e "\n${GREEN}Volume creation and attachment completed successfully!${NC}"
 
-  exec ./zfs-wizard.sh
+  exec "$SCRIPT_DIR/../volumes/zfs-wizard.sh"
 }
 
 # Run the main function

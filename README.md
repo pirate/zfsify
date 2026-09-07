@@ -6,12 +6,22 @@ Convert an Ubuntu VPS or attached volume to ZFS with one command,
 using the disks and data you already have.
 
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#requirements)
-[![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#implementation-status)
+[![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#compatibility-and-validation)
 [![MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 
-[Quick start](#quick-start) · [How it works](#how-it-works) · [Space requirements](#why-is-50-free-space-needed) · [Recovery options](#when-the-disk-is-more-than-half-full)
+[Choose a setup](#choose-a-setup) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Snapshots and recovery](#recover-from-an-unbootable-ubuntu-installation)
 
 </div>
+
+[![Ubuntu root conversion to ZFS on a real DigitalOcean Droplet](docs/assets/recordings/happy-path.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)
+
+**Watch a real conversion:** Ubuntu 24.04, 1 GiB RAM, existing files preserved.
+[Replay highlights](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)
+· [Full terminal recording](https://pirate.github.io/zfsify/docs/recordings.html?demo=root&view=full)
+· [Capture notes](docs/assets/recordings/happy-path.md)
+
+The GIFs show selected actual output with shortened waits. Full asciinema captures
+include package output, progress, and SSH reconnects; each run records its installer version.
 
 Cloud providers usually ship Ubuntu with ext4. Getting ZFS means building a
 custom boot image or manually partitioning disks and migrating your files.
@@ -22,18 +32,45 @@ Create a normal Ubuntu VPS or volume on DigitalOcean, Vultr, Hetzner, AWS, GCP,
 Azure, or another provider, then run zfsify inside Ubuntu. It transfers your
 installation onto ZFS so you can use snapshots, compression, and checksums.
 
+## Choose a setup
+
+| Your server or disk | Use | What it does |
+|---|---|---|
+| Ubuntu is already running; put `/` on ZFS | [Live root conversion](#quick-start) — `reformat.sh` | Preserves the installation when space allows, installs ZFSBootMenu, and reboots onto ZFS |
+| An attached ext4 volume contains files to keep | [Data-volume conversion](#data-volumes) — `reformat.sh /mnt/data` | Converts that disk and keeps its mount point; the OS keeps running |
+| An attached disk can be erased | [Empty ZFS volume](docs/volumes.md) — `reformat.sh --erase /dev/disk/by-id/…` | Creates an empty ZFS data filesystem on the selected disk |
+| Provision a new Ubuntu VPS with user-data | [Cloud-init templates](docs/cloud-init.md) | Schedules root or volume conversion after cloud-init finishes |
+| Build or extend a named pool with multiple disks | [Advanced volume tools](docs/volumes.md#advanced-pool-and-provisioning-helpers) | Creates pools or adds mirror/stripe devices using explicit disk choices |
+| Create and attach a new DigitalOcean Volume | [DigitalOcean provisioning](docs/volumes.md#interactive-setup-and-digitalocean-provisioning) | Uses the provider API through Terraform, then opens the volume wizard |
+
+`reformat.sh` is the standalone entry point for both root and data-disk conversion.
+`install.sh` contains the same installer. The cloud-init templates call that same
+entry point; conversion itself needs no cloud API token.
+
 ## Quick start
 
 Connect to your Ubuntu VPS over SSH and run:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/main/reformat.sh | sudo sh
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 ```
 
-Choose the boot drive or an attached volume. The installer shows its disk usage
-and the planned changes before starting.
+The default target is `/`. To select an attached volume, append its mount point
+or block device. One invocation converts one disk:
 
-With at least half the filesystem free, zfsify makes a temporary copy of your
+```sh
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /mnt/data
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --erase /
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --backup=myremote:zfsify /
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --backup=/mnt/backup /
+```
+
+The installer prints disk usage, device names, a diagram, and a 15-second
+countdown. Below 50% used, preservation proceeds without input. At 50% or more,
+it requires an explicit backup or erase choice. `--erase` never means preservation;
+on a data volume it creates an empty ZFS filesystem.
+
+With more than half the filesystem free, zfsify makes a temporary copy of your
 files on the same disk, then converts it while keeping your applications,
 accounts, and configuration. Boot-drive conversion requires two reboots and
 downtime; applications using a data volume must stop during its conversion.
@@ -47,14 +84,24 @@ A disk failure or interrupted repartitioning can affect both local copies.
 ## Requirements
 
 - **Ubuntu 22.04 or later**, with root access.
-- **At least 50% free space** on `/` or the volume being converted for migration
+- **More than 50% free space** on `/` or the volume being converted for migration
   within that disk. The installer also checks space for metadata and temporary files.
 - A supported, shrinkable source filesystem and disk layout, checked by the installer.
-- SSH access and access to Ubuntu package repositories.
+- SSH access and access to Ubuntu package repositories. Root conversion requires
+  your public key in `/root/.ssh/authorized_keys` for access to the RAM environment.
 
-Boot-drive conversion uses a temporary RAM environment. The tested configuration
-requires **4 GiB RAM**, a **16 GB disk**, **8 GB free on `/`** for staging, and
-**500 MB free in `/boot`**.
+Boot-drive conversion uses a compressed RAM environment. The current preflight
+requires **512 MiB RAM**, a **10 GB disk**, **3.5 GB free on `/`** for staging,
+and **500 MB free in `/boot`**. It checks the actual compressed rescue size before
+changing the boot entry. Package preparation may temporarily use a 512 MiB swap
+file on the original disk; offline conversion uses no disk swap.
+
+Root conversion accepts Ubuntu 22.04, 24.04, and 26.04 **amd64**, a direct ext4
+root partition on a GPT disk, and optional separate ext4 `/boot`. LVM, encrypted
+source disks, RAID, multiple data partitions on the root disk, and 4K logical
+sectors are refused. UEFI requires Secure Boot disabled. See the validation
+record for tested releases and firmware; provider names above describe the goal,
+not a claim that every provider layout has been tested.
 
 ## How it works
 
@@ -65,8 +112,9 @@ from RAM. It can then unmount and modify the disk while providing SSH access.
    then copy and verify the files in temporary storage.
 2. **Set up ZFS at the start of the drive.** Reformat the front of the disk once
    the temporary copy is verified.
-3. **Transfer the data back onto ZFS**, keeping ownership, permissions, and
-   filesystem metadata.
+3. **Resilver a temporary ZFS mirror onto the front partition.** Wait for the
+   complete verified copy, detach the temporary member, and expand the final
+   partition. This keeps ownership, permissions, and filesystem metadata.
 
 ![Disk conversion: copy data to the end, create ZFS at the start, restore, and expand](docs/assets/disk-conversion.svg)
 
@@ -86,6 +134,11 @@ Boot and mount configuration is updated for ZFS, with the previous filesystem
 table saved as `/etc/fstab.before-zfsify`. Files are verified before reclaiming
 their source storage; the first boot follows the completed conversion.
 
+The old root, separate `/boot`, EFI, and swap entries are replaced as needed.
+zfsify rebuilds initramfs with ZFS support, disables resume from the old swap,
+replaces GRUB and its update hooks with ZFSBootMenu, and records the new firmware
+partition UUID. Its growth service replaces cloud-init's ext4 resize operation.
+
 </details>
 
 ## Why is 50% free space needed?
@@ -94,13 +147,15 @@ their source storage; the first boot follows the completed conversion.
 reformatted. An 80 GB disk with 35 GB of data has room for another copy; one
 holding 60 GB does not.
 
-Metadata and working space also count, so zfsify checks the actual space needed
-before repartitioning. A disk exactly half full may still need more room.
+Metadata and boot partitions also take space. Below 50% used is an eligibility
+check; a tightly packed filesystem can still fail the offline shrink or run out
+of temporary ZFS space. Such a failure stops before deleting the original ext4
+data. A filesystem exactly half full requires an explicit backup or erase choice.
 
 ## When the disk is more than half full
 
 Choose one of these options after reviewing how much data it can retain.
-Both require approval before erasing the disk.
+Both require an explicit choice before erasing the disk; command-line flags supply that choice.
 
 ### Option A: Back up elsewhere, convert, and restore everything
 
@@ -111,12 +166,30 @@ choose and configure the destination, then uses rclone to transfer the backup.
 After verifying the backup, zfsify reformats the disk as ZFS and restores the
 installation. Allow time and bandwidth for uploading and downloading the backup.
 
+[![A more than half-full Ubuntu root is backed up with rclone and restored onto ZFS](docs/assets/recordings/rclone-root.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=rclone)
+
+Real DigitalOcean run with 61% of `/` used: choose **A**, configure rclone's SFTP
+remote, upload and verify the archive, then restore and boot into ZFS. The fixture
+includes compressible data; transfer times depend on your data and destination.
+[Replay](https://pirate.github.io/zfsify/docs/recordings.html?demo=rclone)
+· [Full cast](docs/assets/recordings/rclone-root-full.cast)
+· [Run details](docs/assets/recordings/rclone-root-provenance.md)
+
 <details>
 <summary>Backup format and credentials</summary>
 
 The backup archive retains Linux ownership, permissions, ACLs, extended
 attributes, and links. rclone handles transfers, remote configuration, and
-credentials through its standard CLI or UI.
+credentials through its standard CLI. `--backup` opens `rclone config` on
+`/dev/tty`; `--backup=remote:path` uses an existing configuration without prompts.
+A local destination must be an existing directory on a separate ext4 disk.
+Remote credentials must be self-contained in rclone's configuration; external
+credential files are refused. Encrypted configurations can use
+`RCLONE_CONFIG_PASS`.
+
+zfsify streams a sparse-aware tar archive, downloads it completely to verify
+SHA-256 before erasing, and verifies the restored stream again. No uncompressed
+copy is kept in RAM. The backup stays at a unique destination after conversion.
 
 Keep the backup until the restored system is verified. Use a private destination
 because the archive contains system configuration and credentials.
@@ -136,9 +209,12 @@ It saves complete files in this priority order:
 | 1 | Accounts and access: user/group/password records, users' SSH configuration and keys, networking, and information needed to configure a bootable system |
 | 2 | The rest of `/etc` |
 | 3 | `/root` and `/home` |
-| 4 | `/var`, `/opt`, `/lib`, installed software, application data, and other files |
+| 4 | `/var`, `/opt`, `/srv`, `/usr/local`, and other application data that fits |
 
-zfsify installs your selected Ubuntu release and restores the saved files.
+zfsify installs the same Ubuntu release and restores the saved files. Core
+libraries, kernels, `/usr` package files, and package databases come from the fresh
+OS. The preview reports eligible optional logical bytes separately from mandatory
+identity data; on a 512 MiB server the optional budget is only tens of megabytes.
 **Omitted files are lost unless you have another backup.** If essential account,
 access, and boot information cannot fit, it stops before erasure.
 
@@ -166,16 +242,46 @@ sudo zfs list -t snapshot
 
 After a provider disk resize, the next boot expands the partition and ZFS pool.
 zfsify handles partition growth and enables ZFS `autoexpand`.
+This was verified on DigitalOcean with a 25 → 50 GiB boot-disk resize and a
+2 → 3 GiB Volume resize, with no special guest commands.
 
 <details>
 <summary>Boot compatibility</summary>
 
-The tested BIOS layout uses a 1 MiB partition for GRUB boot code and the rest of the
-usable disk for ZFS. GRUB reads `/boot` directly from the pool, which uses
-`compatibility=grub2`. Keep that compatibility setting so the bootloader can read
-the pool. Native ZFS encryption requires a different boot arrangement.
+GRUB is replaced by **ZFSBootMenu 3.1.0**. The BIOS layout has a 512 MiB ext4
+partition at `/boot/syslinux`, loaded by Syslinux; UEFI uses a 512 MiB FAT32 ESP at
+`/boot/efi`. All remaining usable space belongs to the ZFS root partition.
+Ubuntu's `/boot` itself is inside ZFS, including its kernels and initramfs files.
+The pool uses `compatibility=openzfs-2.1-linux`, not GRUB's restricted feature set.
+Firmware still needs a small readable boot partition; ZFS does not own the GPT.
+The installer does not enable native encryption.
 
 </details>
+
+### Recover from an unbootable Ubuntu installation
+
+ZFSBootMenu appears before Ubuntu starts and normally boots after 15 seconds.
+Use the provider's preboot console to interrupt that timer. On DigitalOcean this
+is **Settings → Recovery console → Launch Console**, not the SSH-based Droplet
+Console. ZFSBootMenu itself does not require an Ubuntu password to use its menu.
+
+![ZFSBootMenu snapshots displayed in DigitalOcean's Recovery Console](docs/assets/screenshots/digitalocean-snapshots.jpg)
+
+Actual DigitalOcean Recovery Console on the converted 1 GiB Ubuntu Droplet.
+The list includes the installation snapshot and a named pre-upgrade snapshot.
+[View the boot menu and Droplet settings](docs/recovery.md#digitalocean-console-screenshots).
+
+Select the boot environment, open its snapshot list with the displayed
+**Snapshots** shortcut, select a known-good snapshot, and use **Clone**. Boot that
+clone; it gives you a writable recovery environment while retaining the original.
+The menu displays the current key bindings. Avoid **Rollback** unless you intend
+to discard newer changes. See the [upstream snapshot guide](https://docs.zfsbootmenu.org/en/v3.1.x/online/snapshot-management.html).
+
+zfsify creates an initial installation snapshot, then snapshots daily (keeps 7)
+and before APT invokes dpkg (keeps 14). Only its own named snapshots are pruned;
+the initial snapshot is retained. These snapshots complement provider backups.
+A failure of the disk or firmware partition still needs provider recovery.
+See the [recovery guide](docs/recovery.md) for the console workflow and screenshot details.
 
 ## Progress and recovery
 
@@ -197,18 +303,70 @@ removed**, since the RAM environment may be the only working system at that poin
 | RAM environment | `/run/zfs-on-boot.log` |
 | Progress and completed installation | `/var/log/zfs-on-boot/` |
 
-## 🧰 Volume tools
+## Data volumes
+
+Convert an existing ext4 data volume using the same command with its mount point:
+
+```sh
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /mnt/data
+```
+
+[![An ext4 DigitalOcean Volume becomes ZFS while its files are preserved](docs/assets/recordings/volume.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=volume)
+
+Real DigitalOcean run: 1 GiB Volume, 20% used, no reboot. The 45-second excerpt
+shows preservation and checks of hashes, hard links, ACLs, xattrs, and sparse files.
+[Replay](https://pirate.github.io/zfsify/docs/recordings.html?demo=volume)
+· [Full cast](docs/assets/recordings/volume-full.cast)
+· [Run details](docs/assets/recordings/volume-provenance.md)
 
 The [volume toolkit](docs/volumes.md) provides commands for inspecting storage,
 creating ZFS data pools, and adding stripe or mirror devices. Its guide covers
 usage, requirements, and limitations.
 
-## Implementation status
+## Provision with cloud-init
 
-The [validation records](docs/validation.md) cover Ubuntu 24.04 amd64 with BIOS
-on DigitalOcean. Ubuntu 22.04, other providers, attached-volume conversion,
-rclone recovery, and priority-based restores are implementation targets.
-The current `--erase` option retains a fixed set of accounts and configuration.
+Paste one template into your provider's **user-data** field when creating an
+Ubuntu VPS:
+
+- [`cloud-init/root.yml`](cloud-init/root.yml): preserve and convert the new VPS's
+  boot disk, with two reboots after initial provisioning.
+- [`cloud-init/volume.yml`](cloud-init/volume.yml): convert one attached disk;
+  edit its target and explicitly choose whether it may be erased.
+
+Both schedule the installer after cloud-init completes and record an attempt
+marker to prevent reboot loops. See the [cloud-init guide](docs/cloud-init.md)
+for SSH keys, disk selection, status, and failure handling.
+
+## Repository map
+
+| Path | Purpose |
+|---|---|
+| [`reformat.sh`](reformat.sh), [`install.sh`](install.sh) | Standalone installer and identical alias |
+| [`cloud-init/`](cloud-init/) | First-boot provisioning templates |
+| [`src/`](src/) | Installer source: preflight, RAM environment, migration, boot, backup, and growth |
+| [`tools/volumes/`](tools/volumes/) | Advanced pool, inventory, and benchmark commands |
+| [`tools/digitalocean/`](tools/digitalocean/) | DigitalOcean Volume provisioning and metadata commands |
+| [`docs/`](docs/) | Usage guides, recordings, and validation evidence |
+| [`scripts/`](scripts/) | Packaging, disposable DigitalOcean tests, and recording production |
+
+## Compatibility and validation
+
+The implementation includes root and ext4 data-volume conversion, ZFSBootMenu,
+rclone archive recovery, and bounded priority restore. DigitalOcean runs have
+booted Ubuntu 22.04 with **512 MiB** and Ubuntu 24.04 with **1 GiB**, preserved
+files and metadata, restored backups, and expanded boot disks and Volumes after
+provider resizing. The 512 MiB preservation and priority-restore paths also
+passed subsequent reboots. See the [validation record](docs/validation-zfsbootmenu.md)
+for exact configurations, installer versions, and evidence.
+
+Providers other than DigitalOcean are not yet validated. DigitalOcean's browser
+Recovery Console displays the boot environments and snapshot picker shown above.
+Recovery-clone booting through ZFSBootMenu has separate boot evidence; the
+screenshots do not establish a complete interactive clone-and-boot recovery run.
+
+The [validation index](docs/validation.md) lists the supported configurations and
+available evidence. Cloud-init templates and advanced multi-disk helpers have
+separate coverage from the recorded root and single-volume conversions.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for implementation and testing instructions.
 

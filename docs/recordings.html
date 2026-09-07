@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Watch real DigitalOcean recordings of zfsify converting Ubuntu and attached data volumes to ZFS.">
+  <title>zfsify recordings</title>
+  <link rel="stylesheet" href="assets/asciinema-player/asciinema-player.css">
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; color: #e6edf3; background: #0d1117; }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 1180px; padding: 32px 24px 48px; margin: auto; }
+    a { color: #79c0ff; text-decoration-thickness: 1px; text-underline-offset: 4px; }
+    a:hover { color: #b6dcff; }
+    a:focus-visible { outline: 2px solid #79c0ff; outline-offset: 5px; }
+    .brand { font: 700 20px ui-monospace, monospace; text-decoration: none; }
+    .eyebrow { margin: 28px 0 8px; color: #7ee7d3; font-size: 13px; letter-spacing: .07em; text-transform: uppercase; }
+    h1 { font-size: clamp(26px, 4vw, 38px); line-height: 1.2; margin: 0 0 12px; letter-spacing: -.025em; }
+    p { line-height: 1.6; }
+    .muted { color: #9da7b3; }
+    nav { display: flex; flex-wrap: wrap; gap: 8px; margin: 24px 0 16px; }
+    nav a { padding: 10px 15px; border: 1px solid #30363d; border-radius: 7px; text-decoration: none; color: #c9d1d9; }
+    nav a[aria-current] { color: #e6edf3; border-color: #58a6ff; background: #15263c; }
+    .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin: 16px 0; }
+    .toolbar nav { margin: 0; }
+    .toolbar nav a { font-size: 14px; padding: 7px 12px; }
+    .links { display: flex; flex-wrap: wrap; gap: 18px; font-size: 14px; }
+    #player { overflow: hidden; border: 1px solid #30363d; border-radius: 9px; background: #121314; }
+    #caption { margin: 16px 0 8px; }
+    #notes { margin-top: 0; font-size: 14px; }
+    footer { margin-top: 32px; border-top: 1px solid #21262d; padding-top: 18px; font-size: 13px; }
+    #error { color: #ffa198; }
+    @media (max-width: 600px) { main { padding: 22px 12px 32px; } nav a { padding: 8px 10px; } }
+  </style>
+</head>
+<body>
+<main>
+  <a class="brand" href="../">⚡ zfsify</a>
+  <p class="eyebrow">Recorded on DigitalOcean</p>
+  <h1 id="title">Watch a conversion</h1>
+  <p id="description" class="muted">Real terminal output from disposable Ubuntu test machines.</p>
+  <nav aria-label="Choose a demonstration">
+    <a href="?demo=root" data-demo="root">Ubuntu root drive</a>
+    <a href="?demo=volume" data-demo="volume">Attached volume</a>
+    <a href="?demo=rclone" data-demo="rclone">Over 50% used · rclone</a>
+  </nav>
+  <div class="toolbar">
+    <nav aria-label="Recording version">
+      <a id="edited" href="?demo=root">Highlights</a>
+      <a id="full" href="?demo=root&amp;view=full">Full capture</a>
+    </nav>
+    <div class="links">
+      <a id="download" href="assets/recordings/happy-path.cast" download>Download .cast</a>
+      <a id="provenance" href="assets/recordings/happy-path.md">Capture notes</a>
+    </div>
+  </div>
+  <div id="player" aria-label="Terminal recording player"></div>
+  <p id="error" role="alert" hidden>The player could not load. You can still download the recording above.</p>
+  <noscript><p>JavaScript is needed for replay. Download a recording to view it with asciinema:</p>
+    <p><a href="assets/recordings/happy-path-full.cast" download>Root drive</a> ·
+       <a href="assets/recordings/volume-full.cast" download>Attached volume</a> ·
+       <a href="assets/recordings/rclone-root-full.cast" download>rclone backup</a></p>
+  </noscript>
+  <p id="caption"></p>
+  <p id="notes" class="muted"></p>
+  <footer class="muted">These recordings show development builds running on DigitalOcean. Read the capture notes
+    for installer versions, fixtures, verification, and editing details.
+    Player: <a href="assets/asciinema-player/SOURCE.md">asciinema-player 3.6.3</a>, hosted with this project.</footer>
+</main>
+<script src="assets/asciinema-player/asciinema-player.min.js"></script>
+<script>
+  (() => {
+    const demos = new Map([
+      ['root', {
+        title: 'Ubuntu root drive → ZFS',
+        description: 'Preserve an existing Ubuntu installation, then boot it through ZFSBootMenu.',
+        file: 'happy-path', provenance: 'happy-path.md',
+        notes: 'Root conversion crosses two reboots. The full capture includes SSH reconnection output; see the notes for how reboot waits were recorded.'
+      }],
+      ['volume', {
+        title: 'Attached ext4 volume → ZFS',
+        description: 'Keep the files and mount point on a data volume while Ubuntu continues running.',
+        file: 'volume', provenance: 'volume-provenance.md',
+        notes: 'A 1 GiB data volume with 20% used, converted without rebooting. The normal ext4 root drive stays online.'
+      }],
+      ['rclone', {
+        title: 'Over half full → back up, convert, restore',
+        description: 'Choose backup at the space warning, configure rclone, and restore the root filesystem onto ZFS.',
+        file: 'rclone-root', provenance: 'rclone-root-provenance.md',
+        notes: 'This run uses rclone’s native SFTP configuration flow. Root conversion crosses two reboots; the capture notes explain reconnection and timing.'
+      }]
+    ]);
+    const query = new URLSearchParams(location.search);
+    const key = demos.has(query.get('demo')) ? query.get('demo') : 'root';
+    const full = query.get('view') === 'full';
+    const demo = demos.get(key);
+    const cast = 'assets/recordings/' + demo.file + (full ? '-full' : '') + '.cast';
+    document.title = demo.title + ' · zfsify';
+    document.getElementById('title').textContent = demo.title;
+    document.getElementById('description').textContent = demo.description;
+    document.getElementById('notes').textContent = demo.notes;
+    document.getElementById('caption').textContent = full
+      ? 'Full capture · Recorded terminal output, including package output and progress. Playback starts at the recorded speed; use the controls to pause, seek, or change speed.'
+      : 'Highlights · Selected real output with editorial headings. Countdown and waits are shortened; package chatter is omitted. The full capture and notes are available above.';
+    document.getElementById('download').href = cast;
+    document.getElementById('provenance').href = 'assets/recordings/' + demo.provenance;
+    for (const link of document.querySelectorAll('[data-demo]')) {
+      link.href = '?demo=' + link.dataset.demo + (full ? '&view=full' : '');
+      if (link.dataset.demo === key) link.setAttribute('aria-current', 'page');
+    }
+    document.getElementById('edited').href = '?demo=' + key;
+    document.getElementById('full').href = '?demo=' + key + '&view=full';
+    document.getElementById(full ? 'full' : 'edited').setAttribute('aria-current', 'page');
+    try {
+      AsciinemaPlayer.create(cast, document.getElementById('player'), {
+        theme: 'asciinema', fit: 'width', controls: true,
+        preload: true, autoplay: false, poster: 'npt:0.1'
+      });
+    } catch (error) {
+      document.getElementById('error').hidden = false;
+      console.error('Could not initialize recording player', error);
+    }
+  })();
+</script>
+</body>
+</html>

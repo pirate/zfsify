@@ -1,0 +1,13 @@
+NAME                     PROPERTY    VALUE   SOURCE
+zfsify_3360b0a370d54c6d  autoexpand  on      local
+  pool: zfsify_3360b0a370d54c6d
+ state: ONLINE
+config:
+
+	NAME                     STATE     READ WRITE CKSUM
+	zfsify_3360b0a370d54c6d  ONLINE       0     0     0
+	  sdb1                   ONLINE       0     0     0
+
+errors: No known data errors
+enabled
+zfsify: The target belongs to an imported ZFS pool; export that pool before erasing its disk.

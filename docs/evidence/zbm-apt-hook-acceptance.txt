@@ -1,0 +1,31 @@
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages were automatically installed and are no longer required:
+  efibootmgr libfreetype6 mokutil
+Use 'apt autoremove' to remove them.
+0 upgraded, 0 newly installed, 1 reinstalled, 0 to remove and 92 not upgraded.
+Need to get 11.4 kB of archives.
+After this operation, 0 B of additional disk space will be used.
+Get:1 http://sfo3.clouds.archive.ubuntu.com/ubuntu jammy/main amd64 hostname amd64 3.23ubuntu2 [11.4 kB]
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T071630-1320
+Fetched 11.4 kB in 0s (30.4 kB/s)
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 94089 files and directories currently installed.)
+Preparing to unpack .../hostname_3.23ubuntu2_amd64.deb ...
+Unpacking hostname (3.23ubuntu2) over (3.23ubuntu2) ...
+Setting up hostname (3.23ubuntu2) ...
+Processing triggers for man-db (2.10.2-1) ...
+
+Running kernel seems to be up-to-date.
+
+No services need to be restarted.
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+rpool/ROOT/ubuntu@zfsify-apt-20260907T071630-1320
+rpool/ROOT/ubuntu@zfsify-apt-20260907T071630-1320
+active
+Actual APT package reinstall created a pre-dpkg root snapshot.

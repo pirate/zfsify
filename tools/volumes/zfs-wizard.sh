@@ -12,8 +12,8 @@ set -o errtrace
 set -o pipefail
 # IFS=$'\n'
 
-SCRIPT="${BASH_SOURCE[0]}"
-# SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT="$SCRIPT_DIR/$(basename -- "${BASH_SOURCE[0]}")"
 
 
 # Function to handle interruption
@@ -56,13 +56,13 @@ progress() {
 }
 
 # Install required packages
-echo "📦 Installing required packages (gawk fio zfsutils-linux parted pv jq ncurses-bin)..."
+echo "📦 Installing required packages (gawk fio zfsutils-linux parted pv jq ncurses-bin bc)..."
 apt-get update -qq > /dev/null 2>&1 &
 pid=$!
 progress $pid
 wait $pid
 
-apt-get install -y gawk fio zfsutils-linux parted pv jq ncurses-bin > /dev/null 2>&1 &
+apt-get install -y gawk fio zfsutils-linux parted pv jq ncurses-bin bc > /dev/null 2>&1 &
 pid=$!
 progress $pid
 wait $pid
@@ -79,7 +79,8 @@ NC='\033[0m' # No Color
 
 # Function for colored echo
 cecho() {
-  echo -e "$*${NC}"
+  # Diagnostics must not contaminate the device path returned by find_new_drive.
+  echo -e "$*${NC}" >&2
 }
 
 # Function for headers
@@ -431,7 +432,7 @@ else
       -O utf8only=on \
       -O normalization=formD \
       -O casesensitivity=sensitive \
-      -O autoexpand=on \
+      -o autoexpand=on \
       "$poolname" "$new_drive"
     
     # Create a test dataset

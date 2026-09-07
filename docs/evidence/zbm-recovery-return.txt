@@ -1,0 +1,13 @@
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+ORIGINAL_REPAIRED_AND_REBOOTED

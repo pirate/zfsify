@@ -1,0 +1,17 @@
+d485da9968b0db2237211c371cabdaf73db19cbf195af7eebf10b757fb394c81  /root/http-installer/reformat.sh
+/dev/vda1 ext4   /
+zfsify_7636b41dbce7430b/data zfs    /mnt/data
+  pool: zfsify_7636b41dbce7430b
+ state: ONLINE
+  scan: resilvered 182M in 00:00:01 with 0 errors on Mon Sep  7 07:14:24 2026
+config:
+
+	NAME                     STATE     READ WRITE CKSUM
+	zfsify_7636b41dbce7430b  ONLINE       0     0     0
+	  sda1                   ONLINE       0     0     0
+
+errors: No known data errors
+/mnt/data/releases/current.bin size=188743680 allocated_blocks=368913 inode=8
+/mnt/data/releases/payload.bin size=188743680 allocated_blocks=368913 inode=8
+/mnt/data/uploads/sparse.bin size=134217728 allocated_blocks=25 inode=9
+enabled

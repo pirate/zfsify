@@ -1,0 +1,27 @@
+Installed by zfsify (preserve) at 2026-09-07T07:35:16Z
+ZFSBootMenu 3.1.0; upstream UEFI linux6.6
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET    SOURCE    FSTYPE OPTIONS
+/boot/efi /dev/vda1 vfat   rw,relatime,fmask=0077,dmask=0077,codepage=437,iocharset=iso8859-1,shortname=mixed,errors=remount-ro
+BootCurrent: 0009
+Timeout: 0 seconds
+BootOrder: 0009,0008,0000,0001,0002,0003,0004,0005,0006,0007
+Boot0000* UiApp	FvVol(7cb8bdc9-f8eb-4f34-aaea-3ee4af6516a1)/FvFile(462caa21-7614-4503-836e-8ab6f4662331)
+Boot0001* UEFI QEMU DVD-ROM QM00001 	PciRoot(0x0)/Pci(0x1f,0x2)/Sata(0,65535,0){auto_created_boot_option}
+Boot0002* UEFI Misc Device	PciRoot(0x0)/Pci(0x3,0x0){auto_created_boot_option}
+Boot0003* UEFI PXEv4 (MAC:525400123456)	PciRoot(0x0)/Pci(0x2,0x0)/MAC(525400123456,1)/IPv4(0.0.0.00.0.0.0,0,0){auto_created_boot_option}
+Boot0004* UEFI PXEv6 (MAC:525400123456)	PciRoot(0x0)/Pci(0x2,0x0)/MAC(525400123456,1)/IPv6([::]:<->[::]:,0,0){auto_created_boot_option}
+Boot0005* UEFI HTTPv4 (MAC:525400123456)	PciRoot(0x0)/Pci(0x2,0x0)/MAC(525400123456,1)/IPv4(0.0.0.00.0.0.0,0,0)/Uri(){auto_created_boot_option}
+Boot0006* UEFI HTTPv6 (MAC:525400123456)	PciRoot(0x0)/Pci(0x2,0x0)/MAC(525400123456,1)/IPv6([::]:<->[::]:,0,0)/Uri(){auto_created_boot_option}
+Boot0007* EFI Internal Shell	FvVol(7cb8bdc9-f8eb-4f34-aaea-3ee4af6516a1)/FvFile(7c04a583-9e3e-4f1c-ad65-e05268d0b4d1)
+Boot0008* Ubuntu	HD(15,GPT,19588033-f04b-4b97-913d-a2d8ded073cd,0x2800,0x35000)/File(\EFI\ubuntu\shimx64.efi)
+Boot0009* ZFSBootMenu	HD(1,GPT,97b6c5b0-088d-458f-8224-1ae987b1fc83,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS
+[########################] phase 10/10: Ready to reboot [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 0s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS

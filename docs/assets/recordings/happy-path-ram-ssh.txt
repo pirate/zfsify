@@ -1,0 +1,7 @@
+RAM SSH evidence
+overlay overlay
+               total        used        free      shared  buff/cache   available
+Mem:             961         712          86         197         527         249
+Swap:              0           0           0
+UsePAM yes
+{"phase": 5, "label": "Copy /old/ to /dev/vda32", "devices": "/dev/vda,/dev/vda1,/dev/vda16,/dev/vda32", "total": 2384183603, "done": 1713448681, "speed": 15136534.785212386, "elapsed": 71.74642510999999, "status": "running", "io": {"/dev/vda": [15.532998350699271, 0.3796501567976432, 169.42972597341057], "/dev/vda1": [15.532998350699271, 0.0, 150.49346248226468], "/dev/vda16": [0.0, 0.0, 0.0], "/dev/vda32": [0.0, 0.3796501567976432, 18.936263491145887]}}

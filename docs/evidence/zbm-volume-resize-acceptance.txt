@@ -1,0 +1,14 @@
+/mnt/zfsify_data_conversion_test/hardlink.bin: OK
+/mnt/zfsify_data_conversion_test/random.bin: OK
+/mnt/zfsify_data_conversion_test/sparse.bin: OK
+NAME   MAJ:MIN RM       SIZE RO TYPE MOUNTPOINTS
+sda      8:0    0 3221225472  0 disk 
+└─sda1   8:1    0 3220160000  0 part 
+NAME                            SIZE       ALLOC         FREE  CKPOINT  EXPANDSZ   FRAG    CAP  DEDUP    HEALTH  ALTROOT
+rpool                    25769803776  2047709184  23722094592        -         -      0      7   1.00    ONLINE  -
+zfsify_445659a13135444d   3154116608    68067328   3086049280        -         -      0      2   1.00    ONLINE  -
+Sep 07 06:16:00 zfsify-small-1gb systemd[1]: Starting zfsify-volume-grow@zfsify_445659a13135444d.service - Expand an enrolled zfsify data pool after disk resize...
+NAME                                                  USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed                   1.11M      -  1.89G  -
+rpool/ROOT/ubuntu@zfsify-daily-20260907T061825-1442     0B      -  1.90G  -
+enabled

@@ -1,19 +1,38 @@
-# Validation records
+# Validation and recordings
 
-**DigitalOcean Ubuntu 24.04 amd64 is tested end-to-end**, including preservation,
-erase with retained identity, root and boot on the included disk's ZFS pool, and
-an automatic **80 GB → 160 GB** disk expansion after a normal provider resize and
-boot. No special guest commands were needed for expansion.
+The [ZFSBootMenu validation report](validation-zfsbootmenu.md) records the tested
+Ubuntu releases, memory sizes, disk layouts, installer checksums, and remaining
+limits. Runtime validation uses disposable DigitalOcean infrastructure.
 
-Runtime validation runs on real DigitalOcean Droplets. Each report identifies the
-installer checksum, machine configuration, checks performed, and remaining limits.
-
-| Report | Coverage |
+| Workflow | Evidence |
 |---|---|
-| [Preservation, erase, and automatic resizing](validation-preserve-erase.md) | Current conversion logic: retained file data and metadata, accounts and SSH access, erase semantics, usage gate/countdown/progress, root/boot ZFS, and real DO disk resize |
-| [Historical fresh reinstall](validation-reinstall.md) | Earlier checksum: Ubuntu 24.04 amd64, BIOS, 4 GiB RAM, 80 GB disk; root and boot on ZFS, SSH, networking, snapshots, kernel package reinstallation, and reboot |
+| Preserve Ubuntu and boot from ZFS | [Root conversion recording](recordings.html?demo=root), [512 MiB acceptance](validation-zfsbootmenu.md) |
+| Reinstall with bounded priority restoration | [Erase-mode acceptance](validation-zfsbootmenu.md) |
+| Back up a full root drive with rclone, convert, and restore | [Interactive recording](recordings.html?demo=rclone), [backup acceptance](validation-zfsbootmenu.md) |
+| Convert an attached ext4 Volume without rebooting | [Volume recording](recordings.html?demo=volume), [capture and verification notes](assets/recordings/volume-provenance.md) |
+| Initialize an empty attached Volume | [Explicit erase-mode acceptance](validation-zfsbootmenu.md) |
+| Expand root and data pools after a provider disk resize | [Automatic expansion evidence](validation-zfsbootmenu.md) |
+| Boot a snapshot clone and take automatic snapshots | [Recovery and snapshot evidence](validation-zfsbootmenu.md) |
 
-Support is scoped to the layouts and requirements in the README. Results from a
-historical checksum do not establish coverage of later code. The current report
-records the exact conversion-tested and published checksums and the final telemetry-only
-change, which received its own DigitalOcean regression check.
+The recordings offer selected highlights and full terminal captures. Their notes
+identify the installer build, fixture, timing edits, and acceptance results.
+They contain real command output; preview headings are editorial.
+
+The [cloud-init templates](cloud-init.md) invoke the same installer after first-boot
+configuration. Their first-boot scheduling has not been separately tested end to
+end. Advanced pool-management and provisioning helpers have separate limitations
+in the [volume guide](volumes.md).
+
+DigitalOcean resize tests included enlarging the actual disk and booting normally;
+the installed services expanded the partition and ZFS pool without guest growth
+commands. CPU/RAM-only resizes do not increase disk capacity. Provider support is
+limited to the configurations actually recorded, rather than every image or VPS
+layout offered by a provider.
+
+## Archived test records
+
+These reports retain results for their identified checksums and configurations.
+They are evidence, not setup instructions or claims about the current installer.
+
+- [GRUB-based preservation, erase, and disk expansion](evidence/archive/validation-preserve-erase.md)
+- [GRUB-based fresh installation and kernel maintenance](evidence/archive/validation-reinstall.md)

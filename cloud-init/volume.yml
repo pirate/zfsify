@@ -1,0 +1,46 @@
+#cloud-config
+# Convert one attached data disk after cloud-init finishes.
+# Edit TARGET below to an existing mount point or a stable /dev/disk/by-id path.
+# Preservation is the default. Set ERASE=yes only for a disk you intend to wipe.
+write_files:
+  - path: /usr/local/sbin/zfsify-first-boot
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      set -Eeuo pipefail
+      TARGET=/dev/disk/by-id/REPLACE_WITH_YOUR_VOLUME
+      ERASE=no
+      [[ $TARGET != / && $TARGET != *REPLACE_WITH* ]] || {
+        echo 'Edit TARGET to identify the attached data disk explicitly.' >&2
+        exit 1
+      }
+      install -d -m 700 /var/lib/zfsify
+      touch /var/lib/zfsify/first-boot.started
+      installer=$(mktemp /var/tmp/zfsify.XXXXXXXX.sh)
+      trap 'rm -f "$installer"' EXIT
+      curl --fail --silent --show-error --location --retry 5 \
+        https://pirate.github.io/zfsify/reformat.sh -o "$installer"
+      args=("$TARGET")
+      case $ERASE in
+        no) ;;
+        yes) args=(--erase "$TARGET");;
+        *) echo 'ERASE must be yes or no.' >&2; exit 1;;
+      esac
+      bash "$installer" "${args[@]}"
+  - path: /etc/systemd/system/zfsify-first-boot.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Convert an attached data disk to ZFS
+      Wants=network-online.target
+      After=network-online.target cloud-final.service
+      ConditionPathExists=!/var/lib/zfsify/first-boot.started
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/zfsify-first-boot
+      TimeoutStartSec=infinity
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - [systemctl, daemon-reload]
+  - [systemctl, enable, --now, --no-block, zfsify-first-boot.service]

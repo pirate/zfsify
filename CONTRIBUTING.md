@@ -1,68 +1,108 @@
 # Contributing
 
-Small, inspectable changes and evidence from disposable DigitalOcean Droplets
-are welcome. Keep destructive behavior explicit and document the exact supported
-configuration. Never test this installer on a workstation or a valuable server.
+Contributions should make ZFS on Ubuntu easier to set up, operate, and recover.
+Keep destructive behavior explicit, make supported inputs clear, and back changes
+to conversion behavior with evidence from disposable DigitalOcean machines.
 
-The root and data-volume installer lives in `src/` and is distributed as `reformat.sh` and its
-`install.sh` alias. The [volume toolkit](docs/volumes.md) lives in the root-level
-shell scripts and uses `DO_API_TOKEN` for provider operations. The installer test
-harness uses `DIGITALOCEAN_TOKEN`; installation itself needs no cloud API token.
+## Repository map
+
+| Path | Purpose |
+|---|---|
+| `reformat.sh` | Self-contained installer for an existing root drive or attached data disk |
+| `install.sh` | Generated alias of `reformat.sh` |
+| `src/` | Installer source: preflight, RAM boot, migration, backup, boot setup, snapshots, and growth |
+| `cloud-init/` | First-boot templates that schedule the same installer |
+| `tools/volumes/` | Advanced inspection, named-pool, vdev, wizard, and benchmark helpers |
+| `tools/digitalocean/` | DigitalOcean metadata, Volume listing, and Terraform provisioning |
+| `scripts/` | Packaging and DigitalOcean acceptance harness |
+| `scripts/recordings/` | Recording and presentation helpers |
+| `docs/` | Usage guides and validation index |
+| `docs/assets/recordings/` | Captured terminal output, previews, and provenance |
+| `docs/evidence/` | Sanitized acceptance results; archived reports under `archive/` |
+
+User-facing documentation should explain which command to choose and what it
+will do. Keep descriptions self-contained; avoid assuming the reader knows other
+scripts or the implementation history. The [README](README.md) is the starting
+point, with focused guides for [cloud-init](docs/cloud-init.md) and
+[data volumes](docs/volumes.md).
 
 ## Package the installer
 
-The source of truth is the files in `src/`. Packaging only embeds
-those files; it does not install Ubuntu or change the controller's disk layout.
+Edit `src/`, then regenerate both distributed entry points and their checksum:
 
 ```sh
 python3 scripts/package.py
 ```
 
-Commit the generated installer and checksum together with their source changes.
-The installed Ubuntu package set can change as signed Ubuntu
-repositories publish updates, even when the shell script is unchanged.
+Packaging embeds the source files; it does not run the installer or change disk
+layouts. Commit generated installers and `SHA256SUMS` with their source changes.
+The disposable `dist/` packaging output is ignored by Git. Signed Ubuntu
+repositories can supply newer packages even when the installer checksum stays
+unchanged, so preserve package versions with runtime evidence.
 
-## Test on DigitalOcean
+## Validate on DigitalOcean
 
-The harness creates a billable `s-1vcpu-1gb` Ubuntu 24.04 Droplet and a temporary SSH
-key, creates a data/account fixture, installs the packaged script there, verifies
-the result and another reboot,
-then deletes its recorded cloud resources. Requires Python 3, curl, OpenSSH, and a
-DigitalOcean token supplied through `DIGITALOCEAN_TOKEN`. Set it in your environment
-without putting the value in source, command examples, or logs.
+Installer runtime testing belongs on disposable DigitalOcean infrastructure.
+Do not run formatting, migration, RAM-boot, or installer tests on a workstation
+or a server holding needed data. The acceptance harness requires Python 3, curl,
+OpenSSH, and an API token supplied privately as `DIGITALOCEAN_TOKEN`.
 
 ```sh
 bash scripts/do-e2e.sh preserve
 bash scripts/do-e2e.sh erase
-DO_TEST_SIZE=s-1vcpu-512mb-10gb DO_TEST_IMAGE=ubuntu-22-04-x64 bash scripts/do-e2e.sh preserve
+DO_TEST_SIZE=s-1vcpu-512mb-10gb DO_TEST_IMAGE=ubuntu-22-04-x64 \
+  bash scripts/do-e2e.sh preserve
 ```
 
-All installer runtime testing belongs on DigitalOcean; do not run the installer
-locally. `scripts/verify-snapshot.sh` is an additional check to run on the owned test
-Droplet: it creates a test snapshot and clone, verifies their contents, and removes
-those objects. The automated harness does not cover every manual check in the
-[recorded validation](docs/validation.md), such as kernel package reinstallation.
+By default, the harness creates a billable Ubuntu 24.04 `s-1vcpu-1gb` Droplet and
+a temporary SSH key. It installs a data/account fixture, runs the packaged
+installer, verifies the result and another reboot, then deletes the resources
+recorded in its state file. The smaller-plan override above exercises Ubuntu
+22.04 with 512 MiB RAM.
 
-For debugging, `KEEP_TEST_DROPLET=1 bash scripts/do-e2e.sh` retains resources. They
-continue to incur charges until deleted. The harness prints a private evidence
-directory containing `resources.json` and the temporary SSH key. Clean up using:
+The harness does not cover every workflow in the [validation index](docs/validation.md).
+For example, provider disk growth, console recovery, attached data disks, and
+first-boot templates require evidence for their own behavior. Run only checks
+appropriate to the change; record failures and limitations rather than broadening
+a success claim to untested layouts.
+
+`scripts/verify-snapshot.sh` is an additional owned-Droplet check: it creates a
+snapshot and clone, verifies their contents, and removes those test objects.
+When reporting a completed run, include the installer checksum, Ubuntu image,
+RAM/disk size, firmware, kernel and ZFS versions, and post-reboot results.
+
+## Credentials and cleanup
+
+The installer itself needs no cloud API token. The two provider tooling contexts
+use distinct environment variables:
+
+| Variable | Consumer |
+|---|---|
+| `DIGITALOCEAN_TOKEN` | Disposable test harness under `scripts/` |
+| `DO_API_TOKEN` | Metadata/API/provisioning helpers under `tools/` |
+
+For debugging, `KEEP_TEST_DROPLET=1 bash scripts/do-e2e.sh` retains cloud resources.
+They continue to incur charges. The harness prints a private evidence directory
+containing `resources.json` and the temporary SSH key. Delete those owned cloud
+resources using:
 
 ```sh
 python3 scripts/do-test.py destroy --state /path/to/evidence/resources.json
 ```
 
-Inspect any cleanup failure and delete remaining owned resources through
-DigitalOcean if needed. Never publish API tokens, temporary private keys,
-machine-specific RAM archives, or unreviewed logs. Sanitize provider identifiers
-and network details before adding evidence to a pull request.
+Investigate cleanup failures and remove any remaining owned resources through
+DigitalOcean. Preserve useful sanitized evidence before removing temporary
+controller keys and state. Never publish tokens, private keys, machine-specific
+rescue images, backup archives, rclone credentials, or unreviewed logs.
 
 ## Useful contributions
 
-- A reproducible DigitalOcean failure with sanitized logs and image/plan details.
-- Migration recovery and interrupted-operation handling.
-- Additional disk layouts backed by migration and expansion evidence.
-- UEFI or additional provider support backed by real deployment evidence.
+- Reproducible failures with sanitized logs and precise image/layout details.
+- Recovery from interrupted migrations and failed boots.
+- Additional disk layouts or providers backed by real migration and growth evidence.
+- Clearer first-run explanations, progress reporting, and operating guides.
+- Reliable advanced helpers for managing data pools without surprising side effects.
 
-Keep unvalidated configurations labeled as such. Include the packaged installer
-checksum, package/kernel versions, disk layout, and post-reboot results when
-reporting a successful installation.
+Keep setup examples aligned with the actual entry points. Preserve raw recording
+captures and disclose shortened waits, selected excerpts, preparation outside the
+capture, and the exact installer build shown in each preview.

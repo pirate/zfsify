@@ -1,0 +1,40 @@
+#cloud-config
+# Convert a fresh Ubuntu root disk after cloud-init finishes.
+# Select an SSH key when creating the VPS. The installer requires that key in
+# /root/.ssh/authorized_keys; configure root's keys explicitly on providers that
+# inject keys only into an account such as ubuntu. See docs/cloud-init.md.
+disable_root: false
+ssh_pwauth: false
+write_files:
+  - path: /usr/local/sbin/zfsify-first-boot
+    permissions: '0700'
+    content: |
+      #!/bin/bash
+      set -Eeuo pipefail
+      install -d -m 700 /var/lib/zfsify
+      # Attempt once; inspect the journal and remove this marker to retry.
+      touch /var/lib/zfsify/first-boot.started
+      installer=$(mktemp /var/tmp/zfsify.XXXXXXXX.sh)
+      trap 'rm -f "$installer"' EXIT
+      curl --fail --silent --show-error --location --retry 5 \
+        https://pirate.github.io/zfsify/reformat.sh -o "$installer"
+      bash "$installer" /
+  - path: /etc/systemd/system/zfsify-first-boot.service
+    permissions: '0644'
+    content: |
+      [Unit]
+      Description=Convert the Ubuntu root disk to ZFS
+      Wants=network-online.target
+      After=network-online.target cloud-final.service
+      ConditionPathExists=!/var/lib/zfsify/first-boot.started
+      ConditionPathExists=!/etc/zfs-on-boot-installed
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/zfsify-first-boot
+      TimeoutStartSec=infinity
+      [Install]
+      WantedBy=multi-user.target
+runcmd:
+  - [systemctl, daemon-reload]
+  # Do not wait here: the conversion must start after cloud-final exits.
+  - [systemctl, enable, --now, --no-block, zfsify-first-boot.service]

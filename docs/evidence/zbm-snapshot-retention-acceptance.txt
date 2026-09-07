@@ -1,0 +1,18 @@
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1237
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1246
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1255
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1264
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1273
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1282
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1291
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1300
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064705-1309
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064706-1318
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064706-1327
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064706-1336
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064706-1345
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064706-1354
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064706-1363
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260907T064706-1373
+NAME                                   USED  AVAIL     REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@manual-retain-test     0B      -     1.88G  -

@@ -1,0 +1,46 @@
+  pool: zfsify_fae4d864b51e438d
+ state: ONLINE
+config:
+	NAME                     STATE     READ WRITE CKSUM
+	zfsify_fae4d864b51e438d  ONLINE       0     0     0
+	  sdb1                   ONLINE       0     0     0
+errors: No known data errors
+[########################] phase 10/10: Ready: data volume converted [complete]
+  devices: /dev/sdb | elapsed 0s
+  data total: n/a (streaming or metadata operation)
+  /dev/sdb: R 0.0 W 0.0 MB/s 0 IOPS
+ZFS data mounted at /mnt/zfsify_backup_data_test; original fstab and logs saved in /var/lib/zfsify-volume.wxknf8VI.
+/mnt/zfsify_backup_data_test/random: OK
+/mnt/zfsify_backup_data_test/hardlink: OK
+/mnt/zfsify_backup_data_test/proc/kept: OK
+# file: mnt/zfsify_backup_data_test/random
+user.zfsify="retained"
+
+# file: mnt/zfsify_backup_data_test/random
+# owner: root
+# group: root
+user::rw-
+user:nobody:r--
+group::r--
+mask::r--
+other::r--
+
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+
+  pool: zfsify_fae4d864b51e438d
+ state: ONLINE
+config:
+
+	NAME                     STATE     READ WRITE CKSUM
+	zfsify_fae4d864b51e438d  ONLINE       0     0     0
+	  sdb1                   ONLINE       0     0     0
+
+errors: No known data errors

@@ -1,0 +1,36 @@
+active
+active
+active
+status: done
+598403298
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: resilvered 1.57G in 00:00:05 with 0 errors on Mon Sep  7 07:22:03 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              1.50G  21.7G    96K  none
+rpool/ROOT         1.50G  21.7G    96K  none
+rpool/ROOT/ubuntu  1.50G  21.7G  1.50G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed   892K      -  1.50G  -
+enabled
+ZFS root verification passed.
+/srv/demo-project/README.txt: OK
+/srv/demo-project/database.bin: OK
+d485da9968b0db2237211c371cabdaf73db19cbf195af7eebf10b757fb394c81  /root/reformat.sh
+root=zfs:rpool/ROOT/ubuntu console=ttyS0,115200n8 console=tty0 spl.spl_hostid=0x00bab10c

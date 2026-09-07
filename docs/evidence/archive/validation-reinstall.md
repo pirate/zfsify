@@ -1,5 +1,9 @@
 # DigitalOcean validation
 
+Archived test record for the exact installer checksums below. These results
+do not describe the current boot layout or minimum requirements. See the
+[current validation index](../../validation.md) for supported workflows and evidence.
+
 Passed on 2026-09-07 UTC (2026-09-06 Pacific). All runtime testing was performed
 on a live DigitalOcean Droplet. No local runtime or VM tests were used.
 
@@ -67,9 +71,9 @@ Running kernel: `6.8.0-139-generic`. ZFS: `2.2.2-0ubuntu9.4`.
 This was a package reinstallation/reboot test, not an upgrade to a later ABI or
 an Ubuntu release upgrade.
 
-Evidence: [installation log](evidence/digitalocean-install.log),
-[kernel package log](evidence/digitalocean-kernel-maintenance.log), and
-[post-reboot checks](evidence/digitalocean-after-kernel-reboot.txt).
+Evidence: [installation log](../digitalocean-install.log),
+[kernel package log](../digitalocean-kernel-maintenance.log), and
+[post-reboot checks](../digitalocean-after-kernel-reboot.txt).
 
 Evidence files are sanitized for public distribution: test Droplet IDs and
 UUIDs are redacted; terminal carriage returns are normalized.

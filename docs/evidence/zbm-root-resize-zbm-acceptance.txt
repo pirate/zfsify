@@ -1,0 +1,49 @@
+active
+active
+active
+status: done
+<test-droplet-id>
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              1.44G  46.0G    96K  none
+rpool/ROOT         1.44G  46.0G    96K  none
+rpool/ROOT/ubuntu  1.44G  46.0G  1.44G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed   924K      -  1.44G  -
+enabled
+ZFS root verification passed.
+/root/backup-fixture/data: OK
+/root/backup-fixture/hardlink: OK
+/root/backup-fixture/sparse: OK
+NAME   MAJ:MIN RM        SIZE RO TYPE MOUNTPOINTS
+sda      8:0    0  3221225472  0 disk 
+└─sda1   8:1    0  3220160000  0 part 
+sdb      8:16   0  1073741824  0 disk /mnt/zfsify_backup_data_test
+vda    253:0    0 53687091200  0 disk 
+├─vda1 253:1    0   536870912  0 part /boot/syslinux
+└─vda2 253:2    0 53149154816  0 part 
+vdb    253:16   0      493568  1 disk 
+Sep 07 06:38:53 zfsify-small-1gb systemd[1]: Starting zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize...
+Sep 07 06:39:04 zfsify-small-1gb zfs-on-boot-grow[991]: CHANGED: partition=2 start=1050624 old: size=51378143 end=52428766 new: size=103806943 end=104857566
+Sep 07 06:39:04 zfsify-small-1gb zfs-on-boot-grow[1220]: rpool        52613349376        ONLINE
+Sep 07 06:39:04 zfsify-small-1gb systemd[1]: zfs-on-boot-grow.service: Deactivated successfully.
+Sep 07 06:39:04 zfsify-small-1gb systemd[1]: Finished zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize.
+fa531a4d1aac02faa63bb1ccfe2513ff896110e7ff7f79bd6d980f86b2360386  /root/pages-install.sh
+KVM_AVAILABLE

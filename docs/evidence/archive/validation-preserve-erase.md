@@ -1,5 +1,9 @@
 # DigitalOcean: preservation, erase, and automatic disk resizing
 
+Archived test record for the exact installer checksums below. These results
+do not describe the current boot layout or minimum requirements. See the
+[current validation index](../../validation.md) for supported workflows and evidence.
+
 Validation date: **2026-09-07 UTC** (2026-09-06 Pacific).
 All installer executions and acceptance checks ran on real DigitalOcean Droplets;
 no local VM or local installer runtime tests were used.
@@ -28,7 +32,7 @@ The final clean conversion runs used this frozen self-contained bundle:
 An intermediate published bundle (`38e6cae41e467229b1e781b8334c36d07dcfe4790c0abfc5b375ac114babd0ea`)
 differed only by removal of one trailing space in `ram-init.sh` and the resulting
 generated heredoc delimiter hashes. Its public download and already-installed
-guard were checked on a converted Droplet. [Intermediate endpoint evidence](evidence/published-check.txt).
+guard were checked on a converted Droplet. [Intermediate endpoint evidence](../published-check.txt).
 
 The final bundle is:
 
@@ -46,9 +50,9 @@ GUID or creating staging files. The full conversions and resize used the frozen
 checksum above; they were not repeated for this display-only change. Disk,
 copy, identity-restoration, boot, and growth logic did not change.
 
-[Telemetry regression checks](evidence/telemetry-regression.txt) ·
-[Final bundle guard](evidence/final-bundle-check.txt) ·
-[Final public download and guard](evidence/published-final-check.txt)
+[Telemetry regression checks](../telemetry-regression.txt) ·
+[Final bundle guard](../final-bundle-check.txt) ·
+[Final public download and guard](../published-final-check.txt)
 
 ## Preservation: passed
 
@@ -69,10 +73,10 @@ worked, with no failed systemd units. A further ordinary reboot passed the
 root/boot, complete preservation fixture, service health, and automatic-growth
 checks again.
 
-[Preservation acceptance](evidence/preserve-final-acceptance.txt) ·
-[Additional reboot acceptance](evidence/preserve-final-reboot.txt) ·
-[Retained user SSH login](evidence/preserve-user-login.txt) ·
-[Phase and throughput excerpts](evidence/preserve-progress-excerpts.txt)
+[Preservation acceptance](../preserve-final-acceptance.txt) ·
+[Additional reboot acceptance](../preserve-final-reboot.txt) ·
+[Retained user SSH login](../preserve-user-login.txt) ·
+[Phase and throughput excerpts](../preserve-progress-excerpts.txt)
 
 ## Erase and identity restoration: passed
 
@@ -92,8 +96,8 @@ Checks confirmed:
 - The status viewer reported all ten phases complete, and the normal boot-time
   growth service completed successfully with `NOCHANGE` on the original disk.
 
-[Clean erase acceptance](evidence/erase-final-acceptance.txt) ·
-[Retained user SSH login](evidence/erase-user-login.txt)
+[Clean erase acceptance](../erase-final-acceptance.txt) ·
+[Retained user SSH login](../erase-user-login.txt)
 
 ## DigitalOcean disk resize: passed, no guest commands
 
@@ -117,7 +121,7 @@ partition's old and new sector counts and the expanded pool size.
 
 **Users only need to perform the normal DigitalOcean disk resize and boot the
 Droplet. No special commands are needed inside the VPS.** CPU/RAM-only resizes
-do not add disk space. [Resize acceptance and service journal](evidence/final-resize.txt).
+do not add disk space. [Resize acceptance and service journal](../final-resize.txt).
 
 ## Usage gate, consent, and progress: passed
 

@@ -1,0 +1,6 @@
+/mnt/zfsify_data_conversion_test/hardlink.bin size=67108864 allocated=131185 inode=3 links=2
+/mnt/zfsify_data_conversion_test/random.bin size=67108864 allocated=131185 inode=3 links=2
+/mnt/zfsify_data_conversion_test/sparse.bin size=134217728 allocated=1 inode=4 links=1
+/mnt/zfsify_data_conversion_test/hardlink.bin: OK
+/mnt/zfsify_data_conversion_test/random.bin: OK
+/mnt/zfsify_data_conversion_test/sparse.bin: OK

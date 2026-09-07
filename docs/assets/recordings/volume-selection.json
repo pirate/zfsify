@@ -1,0 +1,210 @@
+{
+  "description": "Editorial headings; selected verbatim terminal output. Countdown accelerated, waits and package-manager chatter omitted. source_time refers to volume-full.cast.",
+  "duration": 47.85000000000001,
+  "frames": [
+    {
+      "title": "01  A normal attached ext4 volume",
+      "body": "$ lsblk -o NAME,SIZE,FSTYPE,MOUNTPOINTS\nNAME     SIZE FSTYPE  MOUNTPOINTS\nsda        1G ext4    /mnt/data\nvda       25G         \n|-vda1    24G ext4    /\n|-vda14    4M         \n|-vda15  106M vfat    /boot/efi\n`-vda16  913M ext4    /boot\nvdb      488K iso9660 \n\n$ df -h /mnt/data\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/sda        974M  181M  727M  20% /mnt/data",
+      "duration": 4,
+      "source_time": null
+    },
+    {
+      "title": "02  Existing application files",
+      "body": "$ find /mnt/data -maxdepth 2 -type f | sort\n/mnt/data/README.txt\n/mnt/data/config/application.env\n/mnt/data/releases/current.bin\n/mnt/data/releases/payload.bin\n/mnt/data/uploads/sparse.bin",
+      "duration": 2.5,
+      "source_time": null
+    },
+    {
+      "title": "03  One command; review the plan",
+      "body": "$ curl -fsSL http://127.0.0.1:8765/reformat.sh | bash -s -- /mnt/data\nNAME\n    PATH     SIZE FSTYPE MOUNTPOINTS\nsda /dev/sda   1G ext4   /mnt/data\npreserve data volume: /dev/sda on /dev/sda; final pool zfsify_7636b41dbce7430b at /mnt/data\n[ ext4 ] -> [ smaller ext4 | temporary ZFS ] -> [ ZFS mirror | temporary ZFS ] -> [ full ZFS ]",
+      "duration": 4,
+      "source_time": null
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in 15s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 7.291366
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in 14s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 8.299276
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in 13s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 9.302429
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in 12s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 10.306622
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in 11s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 11.308033
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in 10s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 12.310932
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  9s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 13.313898
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  8s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 14.318644
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  7s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 15.320633
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  6s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 16.323507
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  5s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 17.327268
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  4s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 18.329677
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  3s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 19.333272
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  2s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 20.336851
+    },
+    {
+      "title": "15-second cancellation window \u00b7 accelerated playback",
+      "body": "Starting in  1s; Ctrl-C cancels. ",
+      "duration": 0.13,
+      "source_time": 21.339056
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[##----------------------] phase 2/10: Update Ubuntu package indexes [complete]\n  devices: /dev/sda | elapsed 3s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.8,
+      "source_time": 24.890666
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[##----------------------] phase 2/10: Install data migration tools [complete]\n  devices: /dev/sda | elapsed 1s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.8,
+      "source_time": 25.91225
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[#######-----------------] phase 4/10: Check /dev/sda offline [complete]\n  devices: /dev/sda | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 32.2 W 0.6 MB/s 966 IOPS",
+      "duration": 1.8,
+      "source_time": 26.051271
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[#######-----------------] phase 4/10: Shrink /dev/sda [complete]\n  devices: /dev/sda | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 191.3 W 177.0 MB/s 741 IOPS",
+      "duration": 1.8,
+      "source_time": 26.376258
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[#######-----------------] phase 4/10: Create temporary ZFS on /dev/loop0 [complete]\n  devices: /dev/sda | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 0.0 W 16.5 MB/s 356 IOPS",
+      "duration": 1.8,
+      "source_time": 26.712239
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[#########---------------] phase 5/10: Copy /dev/sda to /dev/loop0 [running]\n  devices: /dev/sda,/dev/loop0 | elapsed 0s\n  0.0/323.0 MB (0.0%) | 0.0 MB/s logical\n  /dev/sda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/loop0: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.8,
+      "source_time": 26.952072
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[###########-------------] phase 5/10: Copy /dev/sda to /dev/loop0 [complete]\n  devices: /dev/sda,/dev/loop0 | elapsed 4s\n  323.0/323.0 MB (100.0%) | 92.2 MB/s logical (phase average)\n  /dev/sda: R 0.0 W 0.0 MB/s 3 IOPS | /dev/loop0: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.8,
+      "source_time": 30.454056
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[############------------] phase 6/10: Verify every copied file and its metadata [complete]\n  devices: /dev/sda | elapsed 1s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 117.4 W 0.0 MB/s 1032 IOPS",
+      "duration": 1.8,
+      "source_time": 31.863436
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[################--------] phase 8/10: Create the final GPT on /dev/sda [complete]\n  devices: /dev/sda | elapsed 1s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 0.3 W 0.0 MB/s 93 IOPS",
+      "duration": 1.8,
+      "source_time": 33.122972
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[################--------] phase 8/10: Resilver /dev/loop0 to /dev/sda1 [running]\n  devices: /dev/sda | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.8,
+      "source_time": 33.50556
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[################--------] phase 8/10: Resilver /dev/loop0 to /dev/sda1 [complete]\n  devices: /dev/sda | elapsed 1s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 183.7 W 183.6 MB/s 3176 IOPS",
+      "duration": 1.8,
+      "source_time": 34.78544
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[###################-----] phase 9/10: Expand the final data partition [complete]\n  devices: /dev/sda | elapsed 1s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 1.7 W 2.1 MB/s 122 IOPS",
+      "duration": 1.8,
+      "source_time": 35.577294
+    },
+    {
+      "title": "Live installer output \u00b7 selected excerpts",
+      "body": "[########################] phase 10/10: Ready: data volume converted [complete]\n  devices: /dev/sda | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/sda: R 0.0 W 0.0 MB/s 0 IOPS",
+      "duration": 1.8,
+      "source_time": 38.409528
+    },
+    {
+      "title": "04  Same mount point; all content verified",
+      "body": "$ findmnt -no SOURCE,FSTYPE,TARGET --target /mnt/data\nzfsify_7636b41dbce7430b/data zfs    /mnt/data\n\n$ (cd /mnt/data && sha256sum --check /root/data.sha256)\nREADME.txt: OK\nconfig/application.env: OK\nreleases/payload.bin: OK\nreleases/current.bin: OK\nuploads/sparse.bin: OK",
+      "duration": 4,
+      "source_time": null
+    },
+    {
+      "title": "05  Healthy pool; automatic expansion enabled",
+      "body": "$ zpool list -o name,size,alloc,free,health\nNAME                      SIZE  ALLOC   FREE    HEALTH\nzfsify_7636b41dbce7430b   992M   181M   811M    ONLINE\n\n$ zpool get autoexpand\nNAME                     PROPERTY    VALUE   SOURCE\nzfsify_7636b41dbce7430b  autoexpand  on      local",
+      "duration": 4,
+      "source_time": null
+    },
+    {
+      "title": "06  Metadata preserved; no reboot needed",
+      "body": "$ getfattr --only-values -n user.demo /mnt/data/README.txt\ngetfattr: Removing leading '/' from absolute path names\npreserved\nPASS: hashes, hard links, ACLs, xattrs. Root stays ext4; no reboot.",
+      "duration": 4,
+      "source_time": null
+    }
+  ]
+}
