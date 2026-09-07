@@ -13,8 +13,8 @@ getfacl -cp /root/migration-fixture/random.bin | grep -q '^user:migrationtest:r-
 grep -qx 'retained config' /etc/zfsify-test.conf
 [[ $(zpool get -H -o value autoexpand rpool) = on ]]
 [[ $(zpool status -P rpool | awk '$1 ~ /^\/dev\// {n++} END {print n}') = 1 ]]
-[[ $(lsblk -nr -o FSTYPE /dev/vda | awk 'NF && $1!="zfs_member" {n++} END {print n+0}') = 0 ]]
-[[ $(zpool list -Hp -o size rpool) -gt 80000000000 ]]
+[[ $(lsblk -nr -o FSTYPE /dev/vda | awk 'NF && $1!="zfs_member" && $1!="ext4" {n++} END {print n+0}') = 0 ]]
+[[ $(zpool list -Hp -o size rpool) -gt 8000000000 ]]
 systemctl is-enabled zfs-on-boot-grow.service
 systemctl show zfs-on-boot-grow -p Result
 printf 'PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.\n'

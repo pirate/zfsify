@@ -18,6 +18,8 @@ p.add_argument('action', choices=['create', 'status', 'destroy'])
 p.add_argument('--state', type=Path, required=True)
 p.add_argument('--key-file', type=Path)
 p.add_argument('--region', default='sfo3')
+p.add_argument('--size', default='s-1vcpu-1gb')
+p.add_argument('--image', default='ubuntu-24-04-x64')
 args = p.parse_args()
 token = os.environ.get('DIGITALOCEAN_TOKEN')
 if not token:
@@ -53,7 +55,7 @@ if args.action == 'create':
     state = {'name': name, 'ssh_key_id': key['id']}
     save(state)  # Record ownership before creating another billable resource.
     d = api('/droplets', 'POST', {'name': name, 'region': args.region,
-        'size': 's-2vcpu-4gb', 'image': 'ubuntu-24-04-x64', 'ssh_keys': [key['id']],
+        'size': args.size, 'image': args.image, 'ssh_keys': [key['id']],
         'ipv6': True, 'backups': False, 'monitoring': False})['droplet']
     state['droplet_id'] = d['id']
     save(state)

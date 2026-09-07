@@ -16,9 +16,10 @@ for part in parts:
         '21686148-6449-6E6F-744E-656564454649', 'C12A7328-F81F-11D2-BA4B-00A0C93EC93B'), 'Unrecognized data partition: '+part['node']
     assert re.search(r'(\d+)$', part['node'])[1] != '32', 'Partition 32 must be unused'
 last = source['start'] + source['size'] - 1
-split = ((last * 51 // 100) // 2048) * 2048
-assert split > source['start'] + 8*1024**3//512, 'Insufficient front space'
-assert split - 4096 >= last - split + 1, 'Front mirror member must be at least as large as temporary member'
+front_start = 1050624  # 1 MiB alignment + 512 MiB ZFSBootMenu partition
+split = ((last + 1 + front_start) // 2 // 2048 + 2) * 2048
+assert split > source['start'] + 3*1024**3//512, 'Insufficient front space'
+assert split - front_start >= last - split + 1, 'Front mirror member must be at least as large as temporary member'
 number = re.search(r'(\d+)$', root)[1]
 # Names from the kernel are validated without evaluating arbitrary partition labels.
 assert number.isdigit()

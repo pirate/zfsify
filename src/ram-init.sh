@@ -1,4 +1,5 @@
 #!/bin/bash
+export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export LC_ALL=C
 mount -t devtmpfs devtmpfs /dev
@@ -26,20 +27,45 @@ exec > >(tee -a /run/zfs-on-boot.log) 2>&1
 udevadm trigger --action=add
 udevadm settle
 modprobe zfs
+# ZFS 2.1 inode caches can outgrow a 512 MiB rescue OS during large file trees.
+# Flush and evict clean caches under pressure; never use the source disk as swap.
+if [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -lt 750000 ]]; then
+    echo 16777216 > /sys/module/zfs/parameters/zfs_arc_min
+    echo 33554432 > /sys/module/zfs/parameters/zfs_arc_max
+    echo 16777216 > /sys/module/zfs/parameters/zfs_dirty_data_max
+    (
+        while sleep 2; do
+            if [[ $(awk '/MemAvailable/ {print $2}' /proc/meminfo) -lt 80000 ]]; then
+                sync
+                echo 3 > /proc/sys/vm/drop_caches
+            fi
+        done
+    ) & CACHE_GUARD=$!
+fi
 mkdir -p /run/sshd
 /usr/sbin/sshd -E /run/sshd.log
 bash /etc/zfs-on-boot/network.sh
 DISK=$(cat /etc/zfs-on-boot/disk)
 MODE=$(cat /etc/zfs-on-boot/mode)
+BOOT_TYPE=8300
+BOOT_ATTR=(-A 1:set:2)
+if [[ $(cat /etc/zfs-on-boot/firmware) = uefi ]]; then
+    BOOT_TYPE=EF00
+    BOOT_ATTR=()
+    mount -t efivarfs efivarfs /sys/firmware/efi/efivars
+fi
 ROOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-root-uuid)")
-DEVICES=$DISK,$ROOTDEV
+BACKUPDEV=
+if [[ -f /etc/zfs-on-boot/backup/volume-uuid ]]; then
+    BACKUPDEV=$(blkid -U "$(cat /etc/zfs-on-boot/backup/volume-uuid)")
+fi
+DEVICES=$DISK,$ROOTDEV${BACKUPDEV:+,$BACKUPDEV}
 phase() { local n=$1 label=$2; shift 2; python3 /usr/local/lib/zfs-on-boot/progress.py run --phase "$n" --label "$label" --devices "$DEVICES" -- "$@"; }
-part() { lsblk -nrpo NAME,PARTN "$DISK" | awk -v n="$1" '$2==n {print $1}'; }
+part() { local name; while read -r name; do [[ $(cat "/sys/class/block/${name##*/}/partition" 2>/dev/null || true) != "$1" ]] || printf '%s\n' "$name"; done < <(lsblk -nrpo NAME "$DISK"); }
 [[ -b $DISK && -b $ROOTDEV ]]
 [[ $ROOTDEV = "$(cat /etc/zfs-on-boot/old-root-device)" ]]
 [[ $(blockdev --getsize64 "$DISK") = "$(cat /etc/zfs-on-boot/disk-size)" ]]
-[[ $(lsblk -dn -o TYPE,FSTYPE | awk '$1=="disk" && $2!="iso9660" {n++} END {print n+0}') = 1 ]]
-[[ $(findmnt -n -o FSTYPE /) = rootfs || $(findmnt -n -o FSTYPE /) = tmpfs ]]
+[[ $(findmnt -n -o FSTYPE /) = rootfs || $(findmnt -n -o FSTYPE /) = tmpfs || $(findmnt -n -o FSTYPE /) = overlay ]]
 [[ -z $(lsblk -nr -o MOUNTPOINTS "$DISK" | tr -d '[:space:]') ]]
 [[ $(uname -r) = "$(cat /etc/zfs-on-boot/kernel)" ]]
 [[ -s /root/.ssh/authorized_keys && -s /boot/vmlinuz-$(uname -r) ]]
@@ -71,39 +97,63 @@ if [[ $MODE = preserve ]]; then
     mount -o ro "$ROOTDEV" /old
     [[ -z ${BOOTDEV:-} ]] || mount -o ro "$BOOTDEV" /old/boot
     SOURCE=/old/
-else
-    phase 4 "Erase $DISK and create BIOS + ZFS partitions" bash -e -c 'sgdisk --zap-all "$1"; sgdisk -n 1:1MiB:+1MiB -t 1:EF02 -n 2:0:0 -t 2:BF01 "$1"' _ "$DISK"
+elif [[ $MODE = backup ]]; then
+    mount -o ro "$ROOTDEV" /old
+    if [[ -f /etc/zfs-on-boot/old-boot-uuid ]]; then
+        BOOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-boot-uuid)")
+        mount -o ro "$BOOTDEV" /old/boot
+    fi
+    phase 4 'Archive the offline installation with rclone and verify a full download' bash /etc/zfs-on-boot/backup.sh save
+    [[ -z ${BOOTDEV:-} ]] || umount /old/boot
+    umount /old
+fi
+if [[ $MODE = erase ]]; then
+    mount -o ro "$ROOTDEV" /old
+    phase 4 'Save the selected priority files from the offline source' tar --sparse --numeric-owner --acls --xattrs --no-recursion --null -cpf /run/priority.tar -C /old -T /etc/zfs-on-boot/priority-files
+    [[ $(stat -c %s /run/priority.tar) -le $(( $(cat /etc/zfs-on-boot/priority-budget) + 1048576 )) ]]
+    umount /old
+fi
+if [[ $MODE != preserve ]]; then
+    phase 4 "Erase $DISK and create ZFSBootMenu + ZFS partitions" bash -e -c 'disk=$1; type=$2; shift 2; sgdisk --zap-all "$disk"; sgdisk -n 1:1MiB:+512MiB -t "1:$type" "$@" -n 2:0:0 -t 2:BF01 "$disk"' _ "$DISK" "$BOOT_TYPE" "${BOOT_ATTR[@]}"
     partprobe "$DISK"
     udevadm settle
     ZPART=$(part 2)
-    SOURCE=/
+    # A fresh install comes from the immutable SquashFS, not its live overlay.
+    # SSH sessions can update PAM logs/cache files without racing copy verification.
+    SOURCE=/rescue-media/lower/
+    [[ $(findmnt -n -o FSTYPE --target "$SOURCE") = squashfs ]]
 fi
 [[ -b $ZPART ]]
-DEVICES=$DISK,$ROOTDEV,${BOOTDEV:-$ROOTDEV},$ZPART
-phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o compatibility=grub2 -o autoexpand=on -o cachefile=none -O compression=lz4 -O atime=off -O xattr=sa -O acltype=posixacl -O mountpoint=none -R /target rpool "$ZPART"
+DEVICES=$DISK,$ROOTDEV,${BOOTDEV:-$ROOTDEV},$ZPART${BACKUPDEV:+,$BACKUPDEV}
+phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O atime=off -O xattr=sa -O acltype=posixacl -O mountpoint=none -R /target rpool "$ZPART"
 zfs create -o mountpoint=none rpool/ROOT
 zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
 zfs mount rpool/ROOT/ubuntu
 zpool set bootfs=rpool/ROOT/ubuntu rpool
 # Do not traverse virtual filesystems or include our RAM installer/staging data.
 # A separate source /boot is deliberately included; unsupported mounts were refused.
-EXCLUDES=(--exclude=/proc/*** --exclude=/sys/*** --exclude=/dev/*** --exclude=/run/*** --exclude=/target/*** --exclude=/old/*** --exclude=/tmp/*** --exclude=/init --exclude=/etc/zfs-on-boot/*** --exclude=/var/lib/zfs-on-boot/*** --exclude=/boot/zfs-on-boot/*** --exclude=/boot/efi/*** --exclude=/var/log/zfs-on-boot/*** --exclude=/swapfile --exclude=/swap.img)
+EXCLUDES=(--exclude=/proc/*** --exclude=/sys/*** --exclude=/dev/*** --exclude=/run/*** --exclude=/target/*** --exclude=/old/*** --exclude=/tmp/*** --exclude=/init --exclude=/rescue-media/*** --exclude=/etc/zfs-on-boot/*** --exclude=/var/lib/zfs-on-boot/*** --exclude=/boot/zfs-on-boot/*** --exclude=/boot/efi/*** --exclude=/var/log/zfs-on-boot/*** --exclude=/swapfile --exclude=/swap.img)
+if [[ $MODE = backup ]]; then
+    phase 5 'Restore and checksum-check the rclone archive' bash /etc/zfs-on-boot/backup.sh restore
+    phase 6 'Remote archive checksum and extraction verified' true
+else
 rsync -aHAXS --numeric-ids --dry-run --stats "${EXCLUDES[@]}" "$SOURCE" /target/ > /run/copy-size.txt
 TOTAL=$(awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2); print $2}' /run/copy-size.txt)
 # Real copy errors (including ENOSPC) stop before original data is deleted.
 python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 5 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
 phase 6 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
+fi
 phase 7 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
 if [[ $MODE = preserve ]]; then
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
     # Keep the verified temporary ZFS partition intact. Remove every other GPT
     # entry and make the final front member larger than the temporary member.
-    mapfile -t PARTS < <(lsblk -nr -o PARTN "$DISK" | awk 'NF && $1!=32 {print $1}')
+    mapfile -t PARTS < <(while read -r name; do cat "/sys/class/block/$name/partition" 2>/dev/null || true; done < <(lsblk -nr -o NAME "$DISK") | awk '$1!=32')
     ARGS=()
     for number in "${PARTS[@]}"; do ARGS+=(-d "$number"); done
-    phase 8 "Replace original ext4 with front mirror member on $DISK" sgdisk "${ARGS[@]}" -n 1:2048:4095 -t 1:EF02 -n "2:4096:$((SPLIT-1))" -t 2:BF01 "$DISK"
+    phase 8 "Replace original ext4 with front mirror member on $DISK" sgdisk "${ARGS[@]}" -n 1:2048:1050623 -t "1:$BOOT_TYPE" "${BOOT_ATTR[@]}" -n "2:1050624:$((SPLIT-1))" -t 2:BF01 "$DISK"
     # Remove obsolete kernel partition mappings before installing the new ones.
     for number in "${PARTS[@]}"; do partx -d --nr "$number" "$DISK"; done
     partx -a --nr 1:2 "$DISK"
@@ -139,9 +189,9 @@ mount --rbind /dev /target/dev
 mount --make-rslave /target/dev
 mount -t proc proc /target/proc
 mount -t sysfs sysfs /target/sys
-phase 10 "Install GRUB on $DISK; /boot is on ZFS" chroot /target grub-install --target=i386-pc --recheck "$DISK"
-phase 10 'Finalize GRUB configuration' chroot /target update-grub
-umount /target/proc /target/sys
+phase 10 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
+umount /target/proc
+umount -R /target/sys
 umount -R /target/dev
 ln -sf /run/systemd/resolve/stub-resolv.conf /target/etc/resolv.conf
 touch /target/etc/machine-id
@@ -154,6 +204,8 @@ cp /run/zfs-on-boot.log /target/var/log/zfs-on-boot/install.log
 cp /var/log/zfs-on-boot/*.log /target/var/log/zfs-on-boot/
 cp /run/zfs-on-boot-progress.json /target/var/log/zfs-on-boot/last-progress.json
 sync
+zfs snapshot rpool/ROOT/ubuntu@zfsify-installed
+[[ -z ${CACHE_GUARD:-} ]] || kill "$CACHE_GUARD"
 zpool export rpool
 echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync

@@ -1,10 +1,12 @@
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
 set -Eeuo pipefail
+export DEBIAN_FRONTEND=noninteractive
 MODE=$(cat /etc/zfs-on-boot/mode)
 DISK=$(cat /etc/zfs-on-boot/disk)
 if [[ $MODE = erase ]]; then
     python3 /etc/zfs-on-boot/identity.py /target /etc/zfs-on-boot/identity.tar
+    tar --numeric-owner --acls --xattrs -xpf /run/priority.tar -C /target
 fi
 # Both modes retain the old /etc; replace only disk/boot-specific configuration.
 rm -f /target/etc/grub.d/41_zfs_on_boot
@@ -22,12 +24,20 @@ cp /target/etc/fstab /target/etc/fstab.before-zfsify
 { printf '# / and /boot are on rpool/ROOT/ubuntu, mounted by zfs-initramfs.\n';
   awk '$1 ~ /^#/ || NF == 0 || ($2 != "/" && $2 != "/boot" && $2 != "/boot/efi" && $3 != "swap")' /target/etc/fstab.before-zfsify;
 } > /target/etc/fstab
-cat > /target/etc/default/grub.d/99-zfs-on-boot.cfg <<'EOF'
-GRUB_CMDLINE_LINUX="root=ZFS=rpool/ROOT/ubuntu"
-GRUB_CMDLINE_LINUX_DEFAULT="console=tty0 console=ttyS0,115200n8"
-GRUB_DISABLE_OS_PROBER=true
-GRUB_TIMEOUT=2
-EOF
+# ZFSBootMenu supplies root= dynamically, including for recovery clones.
+zfs set org.zfsbootmenu:commandline="console=ttyS0,115200n8 console=tty0" rpool/ROOT
+# Remove GRUB's package hooks so future kernel updates cannot reinstall it.
+mapfile -t OLD_BOOT_PACKAGES < <(chroot /target dpkg-query -W -f='${db:Status-Status} ${binary:Package}\n' 'grub*' 'shim-signed*' 2>/dev/null | awk '$1!="not-installed" {print $2}')
+if (( ${#OLD_BOOT_PACKAGES[@]} )); then
+    # Ubuntu cloud images mark shim-signed essential. Authorize replacing only
+    # the old boot stack; abort if APT proposes removing unrelated packages.
+    chroot /target apt-get -s purge "${OLD_BOOT_PACKAGES[@]}" > /run/zfsify-boot-removal.plan
+    while read -r package; do
+        case $package in grub-*|grub2-*|shim-signed*|os-prober) ;; *) echo "Unexpected package removal: $package" >&2; exit 1;; esac
+    done < <(awk '$1=="Remv" || $1=="Purg" {print $2}' /run/zfsify-boot-removal.plan)
+    chroot /target apt-get purge -y --allow-remove-essential "${OLD_BOOT_PACKAGES[@]}"
+fi
+rm -rf /target/boot/grub
 cat > /target/etc/cloud/cloud.cfg.d/99-zfs-on-boot.cfg <<'EOF'
 network: {config: disabled}
 growpart: {mode: 'off'}
@@ -52,8 +62,28 @@ for kernel in /target/boot/vmlinuz-*; do
         chroot /target update-initramfs -c -k "$version"
     fi
 done
-[[ $(chroot /target grub-probe /boot) = zfs ]]
-# GRUB is installed after the final GPT layout has been created.
-chroot /target update-grub
-umount /target/run /target/proc /target/sys
+cp /usr/local/sbin/zfsify-snapshot /target/usr/local/sbin/
+mkdir -p /target/etc/apt/apt.conf.d
+printf 'DPkg::Pre-Invoke { "/usr/local/sbin/zfsify-snapshot apt"; };\n' > /target/etc/apt/apt.conf.d/80-zfsify-snapshot
+cat > /target/etc/systemd/system/zfsify-snapshot.service <<'UNIT'
+[Unit]
+Description=Create a daily ZFS root recovery snapshot
+After=zfs-mount.service
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/zfsify-snapshot daily
+UNIT
+cat > /target/etc/systemd/system/zfsify-snapshot.timer <<'UNIT'
+[Unit]
+Description=Daily ZFS root recovery snapshot
+[Timer]
+OnCalendar=daily
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+chroot /target systemctl enable zfsify-snapshot.timer
+umount /target/run /target/proc
+# UEFI package hooks may mount efivarfs beneath the chroot's sysfs.
+umount -R /target/sys
 umount -R /target/dev

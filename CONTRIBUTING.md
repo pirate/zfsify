@@ -4,7 +4,7 @@ Small, inspectable changes and evidence from disposable DigitalOcean Droplets
 are welcome. Keep destructive behavior explicit and document the exact supported
 configuration. Never test this installer on a workstation or a valuable server.
 
-The root installer lives in `src/` and is distributed as `reformat.sh` and its
+The root and data-volume installer lives in `src/` and is distributed as `reformat.sh` and its
 `install.sh` alias. The [volume toolkit](docs/volumes.md) lives in the root-level
 shell scripts and uses `DO_API_TOKEN` for provider operations. The installer test
 harness uses `DIGITALOCEAN_TOKEN`; installation itself needs no cloud API token.
@@ -24,7 +24,7 @@ repositories publish updates, even when the shell script is unchanged.
 
 ## Test on DigitalOcean
 
-The harness creates a billable `s-2vcpu-4gb` Ubuntu 24.04 Droplet and a temporary SSH
+The harness creates a billable `s-1vcpu-1gb` Ubuntu 24.04 Droplet and a temporary SSH
 key, creates a data/account fixture, installs the packaged script there, verifies
 the result and another reboot,
 then deletes its recorded cloud resources. Requires Python 3, curl, OpenSSH, and a
@@ -34,6 +34,7 @@ without putting the value in source, command examples, or logs.
 ```sh
 bash scripts/do-e2e.sh preserve
 bash scripts/do-e2e.sh erase
+DO_TEST_SIZE=s-1vcpu-512mb-10gb DO_TEST_IMAGE=ubuntu-22-04-x64 bash scripts/do-e2e.sh preserve
 ```
 
 All installer runtime testing belongs on DigitalOcean; do not run the installer

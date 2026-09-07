@@ -33,7 +33,7 @@ cleanup() {
 trap cleanup EXIT
 ssh-keygen -q -t ed25519 -N '' -C zfs-on-boot-e2e -f "$STATE/key"
 python3 "$BASE/scripts/package.py"
-python3 "$BASE/scripts/do-test.py" create --state "$STATE/resources.json" --key-file "$STATE/key.pub"
+python3 "$BASE/scripts/do-test.py" create --state "$STATE/resources.json" --key-file "$STATE/key.pub" --size "${DO_TEST_SIZE:-s-1vcpu-1gb}" --image "${DO_TEST_IMAGE:-ubuntu-24-04-x64}"
 for attempt in {1..60}; do
     python3 "$BASE/scripts/do-test.py" status --state "$STATE/resources.json" > "$STATE/status.json"
     IP=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(next((n["ip_address"] for n in d["networks"]["v4"] if n["type"]=="public"),""))' "$STATE/status.json")

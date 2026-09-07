@@ -17,11 +17,11 @@ def render(s):
     fraction = min(1, s.get('done', 0) / s['total']) if s.get('total') else 0
     fraction = 1 if s.get('status') == 'complete' else fraction
     overall = ((s['phase'] - 1) + (fraction * .95 if s.get('total') else 0)) / 10
-    if s['label'] == 'Ready to reboot' and s['status'] == 'complete': overall = 1
+    if s['label'].startswith('Ready') and s['status'] == 'complete': overall = 1
     bar = '#' * int(overall * 24) + '-' * (24 - int(overall * 24))
     data = (f"{'~' if s.get('approximate') else ''}{s.get('done', 0)/1e6:,.1f}/{s['total']/1e6:,.1f} MB "
             f"({fraction*100:.1f}%) | {s.get('speed', 0)/1e6:,.1f} MB/s logical"
-            + (' (phase average)' if s['status'] != 'running' else '')) if s.get('total') else 'data total: n/a (metadata/package operation)'
+            + (' (phase average)' if s['status'] != 'running' else '')) if s.get('total') else 'data total: n/a (streaming or metadata operation)'
     io = ' | '.join(f"{d}: R {v[0]:.1f} W {v[1]:.1f} MB/s {v[2]:.0f} IOPS" for d, v in s.get('io', {}).items())
     return (f"[{bar}] phase {s['phase']}/10: {s['label']} [{s['status']}]\n"
             f"  devices: {s['devices']} | elapsed {s['elapsed']:.0f}s\n  {data}\n  {io}")
@@ -59,7 +59,7 @@ if a.action == 'watch':
             state = json.loads(source.read_text())
             if sys.stdout.isatty(): print('\033[H\033[2J', end='')
             print(render(state), flush=True)
-            if a.once or state['status'] == 'failed' or (state['label'] == 'Ready to reboot' and state['status'] == 'complete'):
+            if a.once or state['status'] == 'failed' or (state['label'].startswith('Ready') and state['status'] == 'complete'):
                 break
         except (OSError, ValueError):
             print('Waiting for installer status...', flush=True)

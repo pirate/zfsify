@@ -31,12 +31,13 @@ erase)
     chmod 700 /home/erasetest/.ssh
     chmod 600 /home/erasetest/.ssh/authorized_keys
     printf 'keep configuration\n' > /etc/zfsify-erase-test.conf
-    printf 'remove me\n' > /home/erasetest/delete-me
+    printf 'keep small priority file\n' > /home/erasetest/keep-me
+    printf 'keep complete SSH config\n' > /home/erasetest/.ssh/config
     cp /etc/passwd /etc/zfsify-passwd.before
     cp /etc/shadow /etc/zfsify-shadow.before
     sha256sum /etc/ssh/ssh_host_* /home/erasetest/.ssh/authorized_keys > /etc/zfsify-keys.before
-    size=$(df -B1 --output=size / | tail -1)
-    fallocate -l "$((size / 2))" /root/space-gate
+    read -r size used < <(df -B1 --output=size,used / | tail -1)
+    fallocate -l "$((size * 55 / 100 - used))" /root/space-gate
     ;;
 *) exit 2 ;;
 esac
