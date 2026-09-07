@@ -145,6 +145,7 @@ phase 6 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefai
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
 phase 7 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
+phase 7 'Flush the configured ZFS root to disk' zpool sync rpool
 if [[ $MODE = preserve ]]; then
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
@@ -161,6 +162,17 @@ if [[ $MODE = preserve ]]; then
     FRONT=$(part 2)
     [[ $(blockdev --getsize64 "$FRONT") -ge $(blockdev --getsize64 "$TEMP") ]]
     DEVICES=$DISK,$FRONT,$TEMP
+fi
+# Establish the boot path as soon as its partition exists, before relocation.
+mount --rbind /dev /target/dev
+mount --make-rslave /target/dev
+mount -t proc proc /target/proc
+mount -t sysfs sysfs /target/sys
+phase 8 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
+umount /target/proc
+umount -R /target/sys
+umount -R /target/dev
+if [[ $MODE = preserve ]]; then
     python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 8 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
     [[ $(zpool list -H -o health rpool) = ONLINE ]]
     zpool status -p rpool
@@ -185,14 +197,6 @@ if [ "$rc" != 0 ]; then [ "$rc" = 1 ] && [[ $output = *NOCHANGE:* ]]; fi
 partx -u --nr 2 "$1"
 zpool online -e rpool "$2"
 ' _ "$DISK" "$ZPART"
-mount --rbind /dev /target/dev
-mount --make-rslave /target/dev
-mount -t proc proc /target/proc
-mount -t sysfs sysfs /target/sys
-phase 10 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
-umount /target/proc
-umount -R /target/sys
-umount -R /target/dev
 ln -sf /run/systemd/resolve/stub-resolv.conf /target/etc/resolv.conf
 touch /target/etc/machine-id
 mkdir -p /target/var/lib/dbus

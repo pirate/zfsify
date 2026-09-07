@@ -32,11 +32,11 @@ if [[ $FIRMWARE = uefi ]]; then
     mkdir -p "$ROOT/boot/efi/EFI/BOOT" "$ROOT/boot/efi/EFI/ZFSBootMenu"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI"
-    efibootmgr --create --disk "$DISK" --part 1 --label ZFSBootMenu --loader '\EFI\ZFSBootMenu\zfsbootmenu.EFI'
     printf 'UUID=%s /boot/efi vfat defaults,umask=0077 0 2\n' "$(blkid -s UUID -o value "$BOOTDEV")" >> "$ROOT/etc/fstab"
     printf 'ZFSBootMenu 3.1.0; upstream UEFI linux6.6\n' > "$ROOT/etc/zfsbootmenu-version"
     sync
     umount "$ROOT/boot/efi"
+    efibootmgr --create --disk "$DISK" --part 1 --label ZFSBootMenu --loader '\EFI\ZFSBootMenu\zfsbootmenu.EFI'
     exit 0
 fi
 # Syslinux's GPT boot code finds partition attribute bit 2. Keep the GPT intact.
@@ -56,8 +56,9 @@ LABEL zfsbootmenu
     APPEND zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864 console=ttyS0,115200n8 console=tty0
 CFG
 extlinux --install "$ROOT/boot/syslinux"
-dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc
 printf 'UUID=%s /boot/syslinux ext4 defaults 0 2\n' "$(blkid -s UUID -o value "$BOOTDEV")" >> "$ROOT/etc/fstab"
 printf 'ZFSBootMenu 3.1.0; upstream release components linux6.6\n' > "$ROOT/etc/zfsbootmenu-version"
 sync
 umount "$ROOT/boot/syslinux"
+# Activate the BIOS loader only after its files are durable.
+dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc,fsync

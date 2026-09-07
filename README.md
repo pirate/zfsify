@@ -15,13 +15,8 @@ using the disks and data you already have.
 
 [![Ubuntu root conversion to ZFS on a real DigitalOcean Droplet](docs/assets/recordings/happy-path.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)
 
-**Watch a real conversion:** Ubuntu 24.04, 1 GiB RAM, existing files preserved.
-[Replay highlights](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)
-· [Full terminal recording](https://pirate.github.io/zfsify/docs/recordings.html?demo=root&view=full)
-· [Capture notes](docs/assets/recordings/happy-path.md)
-
-The GIFs show selected actual output with shortened waits. Full asciinema captures
-include package output, progress, and SSH reconnects; each run records its installer version.
+[Watch the conversion](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)
+— Ubuntu 24.04 on a 1 GiB DigitalOcean Droplet.
 
 Cloud providers usually ship Ubuntu with ext4. Getting ZFS means building a
 custom boot image or manually partitioning disks and migrating your files.
@@ -168,12 +163,7 @@ installation. Allow time and bandwidth for uploading and downloading the backup.
 
 [![A more than half-full Ubuntu root is backed up with rclone and restored onto ZFS](docs/assets/recordings/rclone-root.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=rclone)
 
-Real DigitalOcean run with 61% of `/` used: choose **A**, configure rclone's SFTP
-remote, upload and verify the archive, then restore and boot into ZFS. The fixture
-includes compressible data; transfer times depend on your data and destination.
-[Replay](https://pirate.github.io/zfsify/docs/recordings.html?demo=rclone)
-· [Full cast](docs/assets/recordings/rclone-root-full.cast)
-· [Run details](docs/assets/recordings/rclone-root-provenance.md)
+[Watch backup and restore with rclone](https://pirate.github.io/zfsify/docs/recordings.html?demo=rclone).
 
 <details>
 <summary>Backup format and credentials</summary>
@@ -267,8 +257,6 @@ Console. ZFSBootMenu itself does not require an Ubuntu password to use its menu.
 
 ![ZFSBootMenu snapshots displayed in DigitalOcean's Recovery Console](docs/assets/screenshots/digitalocean-snapshots.jpg)
 
-Actual DigitalOcean Recovery Console on the converted 1 GiB Ubuntu Droplet.
-The list includes the installation snapshot and a named pre-upgrade snapshot.
 [View the boot menu and Droplet settings](docs/recovery.md#digitalocean-console-screenshots).
 
 Select the boot environment, open its snapshot list with the displayed
@@ -281,7 +269,7 @@ zfsify creates an initial installation snapshot, then snapshots daily (keeps 7)
 and before APT invokes dpkg (keeps 14). Only its own named snapshots are pruned;
 the initial snapshot is retained. These snapshots complement provider backups.
 A failure of the disk or firmware partition still needs provider recovery.
-See the [recovery guide](docs/recovery.md) for the console workflow and screenshot details.
+See the [recovery guide](docs/recovery.md) for the console workflow.
 
 ## Progress and recovery
 
@@ -313,11 +301,7 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /mnt/da
 
 [![An ext4 DigitalOcean Volume becomes ZFS while its files are preserved](docs/assets/recordings/volume.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=volume)
 
-Real DigitalOcean run: 1 GiB Volume, 20% used, no reboot. The 45-second excerpt
-shows preservation and checks of hashes, hard links, ACLs, xattrs, and sparse files.
-[Replay](https://pirate.github.io/zfsify/docs/recordings.html?demo=volume)
-· [Full cast](docs/assets/recordings/volume-full.cast)
-· [Run details](docs/assets/recordings/volume-provenance.md)
+[Watch a data-volume conversion](https://pirate.github.io/zfsify/docs/recordings.html?demo=volume).
 
 The [volume toolkit](docs/volumes.md) provides commands for inspecting storage,
 creating ZFS data pools, and adding stripe or mirror devices. Its guide covers
@@ -359,10 +343,8 @@ provider resizing. The 512 MiB preservation and priority-restore paths also
 passed subsequent reboots. See the [validation record](docs/validation-zfsbootmenu.md)
 for exact configurations, installer versions, and evidence.
 
-Providers other than DigitalOcean are not yet validated. DigitalOcean's browser
-Recovery Console displays the boot environments and snapshot picker shown above.
-Recovery-clone booting through ZFSBootMenu has separate boot evidence; the
-screenshots do not establish a complete interactive clone-and-boot recovery run.
+Other providers and a complete interactive recovery through DigitalOcean's
+browser console are not yet validated.
 
 The [validation index](docs/validation.md) lists the supported configurations and
 available evidence. Cloud-init templates and advanced multi-disk helpers have

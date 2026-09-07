@@ -374,7 +374,7 @@ sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
 ZFS_ON_BOOT_97c0f683c289bc118e91c7564c9d969f7bf5a5630c85f11e910ffcfdf34b750c
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_3e92df3b0ecdd7a8cef28c120f2a7a74dde87b4ff855429c76676037753a26a3'
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_491886382d7bc5107634e77dade50ada29953bc6a5f8c0a6d2e669aaaee32257'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -522,6 +522,7 @@ phase 6 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefai
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
 phase 7 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
+phase 7 'Flush the configured ZFS root to disk' zpool sync rpool
 if [[ $MODE = preserve ]]; then
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
@@ -538,6 +539,17 @@ if [[ $MODE = preserve ]]; then
     FRONT=$(part 2)
     [[ $(blockdev --getsize64 "$FRONT") -ge $(blockdev --getsize64 "$TEMP") ]]
     DEVICES=$DISK,$FRONT,$TEMP
+fi
+# Establish the boot path as soon as its partition exists, before relocation.
+mount --rbind /dev /target/dev
+mount --make-rslave /target/dev
+mount -t proc proc /target/proc
+mount -t sysfs sysfs /target/sys
+phase 8 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
+umount /target/proc
+umount -R /target/sys
+umount -R /target/dev
+if [[ $MODE = preserve ]]; then
     python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 8 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
     [[ $(zpool list -H -o health rpool) = ONLINE ]]
     zpool status -p rpool
@@ -562,14 +574,6 @@ if [ "$rc" != 0 ]; then [ "$rc" = 1 ] && [[ $output = *NOCHANGE:* ]]; fi
 partx -u --nr 2 "$1"
 zpool online -e rpool "$2"
 ' _ "$DISK" "$ZPART"
-mount --rbind /dev /target/dev
-mount --make-rslave /target/dev
-mount -t proc proc /target/proc
-mount -t sysfs sysfs /target/sys
-phase 10 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
-umount /target/proc
-umount -R /target/sys
-umount -R /target/dev
 ln -sf /run/systemd/resolve/stub-resolv.conf /target/etc/resolv.conf
 touch /target/etc/machine-id
 mkdir -p /target/var/lib/dbus
@@ -588,7 +592,7 @@ echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_3e92df3b0ecdd7a8cef28c120f2a7a74dde87b4ff855429c76676037753a26a3
+ZFS_ON_BOOT_491886382d7bc5107634e77dade50ada29953bc6a5f8c0a6d2e669aaaee32257
 cat > "$work/target.sh" <<'ZFS_ON_BOOT_7c3138cbab8a048de8971e39a8b5ca24917e2907f5115c91ddd96ff6920c9c57'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
@@ -1088,7 +1092,7 @@ with image.open('rb') as stream:
 (shim/'config').write_text(f'SOURCE_UUID={uuid}\nRESCUE_SHA={digest}\nMODULES="{" ".join(modules)}"\n')
 
 ZFS_ON_BOOT_f24c263d32e9c3f16233736955cd5f9e26248abee1c45160d09b696ddf7308b3
-cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_70bd6b79261bc41faefa8914f8702f03a8b6daaafad2dd18bc86667454667ae2'
+cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_9b0d3e3af73c62681e392d73a420f7e7b116ebd554e138ad116601d92ea6c9bc'
 #!/bin/bash
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -1123,11 +1127,11 @@ if [[ $FIRMWARE = uefi ]]; then
     mkdir -p "$ROOT/boot/efi/EFI/BOOT" "$ROOT/boot/efi/EFI/ZFSBootMenu"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI"
-    efibootmgr --create --disk "$DISK" --part 1 --label ZFSBootMenu --loader '\EFI\ZFSBootMenu\zfsbootmenu.EFI'
     printf 'UUID=%s /boot/efi vfat defaults,umask=0077 0 2\n' "$(blkid -s UUID -o value "$BOOTDEV")" >> "$ROOT/etc/fstab"
     printf 'ZFSBootMenu 3.1.0; upstream UEFI linux6.6\n' > "$ROOT/etc/zfsbootmenu-version"
     sync
     umount "$ROOT/boot/efi"
+    efibootmgr --create --disk "$DISK" --part 1 --label ZFSBootMenu --loader '\EFI\ZFSBootMenu\zfsbootmenu.EFI'
     exit 0
 fi
 # Syslinux's GPT boot code finds partition attribute bit 2. Keep the GPT intact.
@@ -1147,13 +1151,14 @@ LABEL zfsbootmenu
     APPEND zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864 console=ttyS0,115200n8 console=tty0
 CFG
 extlinux --install "$ROOT/boot/syslinux"
-dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc
 printf 'UUID=%s /boot/syslinux ext4 defaults 0 2\n' "$(blkid -s UUID -o value "$BOOTDEV")" >> "$ROOT/etc/fstab"
 printf 'ZFSBootMenu 3.1.0; upstream release components linux6.6\n' > "$ROOT/etc/zfsbootmenu-version"
 sync
 umount "$ROOT/boot/syslinux"
+# Activate the BIOS loader only after its files are durable.
+dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc,fsync
 
-ZFS_ON_BOOT_70bd6b79261bc41faefa8914f8702f03a8b6daaafad2dd18bc86667454667ae2
+ZFS_ON_BOOT_9b0d3e3af73c62681e392d73a420f7e7b116ebd554e138ad116601d92ea6c9bc
 cat > "$work/snapshot.sh" <<'ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717'
 #!/bin/bash
 # Own only zfsify-{apt,daily,boot}-* snapshots; never remove user snapshots.
