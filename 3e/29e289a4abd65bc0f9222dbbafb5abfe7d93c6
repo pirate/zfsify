@@ -1,0 +1,30 @@
+src/zbm-install.sh
+  s_3dff2a00c4a5b5::t_8eaaee84502f15 39,63-64
+src/ram-init.sh
+  s_3dff2a00c4a5b5::t_2df28bac4ea066 148,165-175
+README.md
+  s_3dff2a00c4a5b5::t_2df28bac4ea066 18-19,166,272,304
+  s_3dff2a00c4a5b5::t_b13a9ffed0870d 346-347
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_33cd73207fd1d7 1
+install.sh
+  s_3dff2a00c4a5b5::t_7759a6f4d03c49 377,525,542-552,595,1095,1134,1158-1159,1161
+reformat.sh
+  s_3dff2a00c4a5b5::t_bf7d55507412ec 377,525,542-552,595,1095,1134,1158-1159,1161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "3e29e289a4abd65bc0f9222dbbafb5abfe7d93c6",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
