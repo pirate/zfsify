@@ -1,0 +1,39 @@
+src/backup.sh
+  s_3dff2a00c4a5b5::t_d148231297247e 9-11,24,26-40,42-63,65-105,107-108,113,134-135,177,191-202,204
+  s_3dff2a00c4a5b5::t_651ee7d6b71ea7 12-23,41,64,179,203
+src/stage.sh
+  s_3dff2a00c4a5b5::t_e2dab01856e74e 18-34,101-106,111,158-160,233,292
+src/volume.sh
+  s_3dff2a00c4a5b5::t_651ee7d6b71ea7 205
+  s_3dff2a00c4a5b5::t_e2dab01856e74e 92-94,96,109,120
+README.md
+  s_3dff2a00c4a5b5::t_d5b765c5259866 157-160,174-175
+src/progress.py
+  s_3dff2a00c4a5b5::t_651ee7d6b71ea7 62-64
+docs/volumes.md
+  s_3dff2a00c4a5b5::t_d5b765c5259866 66-69
+docs/backup.md
+  s_3dff2a00c4a5b5::t_d5b765c5259866 1-94
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_fbd77aa1f59b37 1
+install.sh
+  s_3dff2a00c4a5b5::t_8e317fcd8a84c2 8,26-42,109-114,119,166-168,241,300,398,710,772-774,861,1207,1299-1301,1303,1316,1327,1412,1414-1415,1424-1439,1441-1520,1522-1523,1528,1549-1550,1592,1594,1606-1619,1624
+reformat.sh
+  s_3dff2a00c4a5b5::t_6b54077cbf6fa1 8,26-42,109-114,119,166-168,241,300,398,710,772-774,861,1207,1299-1301,1303,1316,1327,1412,1414-1415,1424-1439,1441-1520,1522-1523,1528,1549-1550,1592,1594,1606-1619,1624
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "acc77482668ffea7f1539538c7ac262282e12ae1",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
