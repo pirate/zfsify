@@ -34,7 +34,24 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 The installer captures the server's current routes. Direct routes, including
 gateway host routes for `/32` addresses, are restored before routes through a
 gateway. Interface matching uses MAC addresses rather than provider-specific
-interface names or hardcoded gateways.
+interface names or hardcoded gateways, and NIC MTUs are retained.
+
+## Kernel and console settings
+
+Existing kernel options for consoles, interface naming, CPU, display, and I/O
+are carried into the new boot configuration. Old root-filesystem, swap-resume,
+and one-time installer settings are removed. The RAM image includes the detected
+boot-disk controller modules and their dependencies. Existing `/etc/sysctl*`
+and module configuration remain part of the migrated Ubuntu installation.
+
+To inspect the Ubuntu kernel arguments used for ZFS boot:
+
+```sh
+zfs get org.zfsbootmenu:commandline rpool/ROOT
+```
+
+ZFSBootMenu supplies `root=` for the selected dataset or snapshot clone;
+do not add a fixed `root=` value to that property.
 
 ## Create recovery points
 

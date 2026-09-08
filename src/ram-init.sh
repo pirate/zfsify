@@ -12,7 +12,7 @@ ln -sfn /proc/self/fd/2 /dev/stderr
 mount -t sysfs sysfs /sys
 mount -t tmpfs -o mode=755 tmpfs /run
 mount -t devpts devpts /dev/pts
-exec </dev/tty0 >/dev/tty0 2>&1
+exec </dev/console >/dev/console 2>&1
 set -Eeuo pipefail
 MIGRATION_STARTED=0
 rescue() {
@@ -24,7 +24,7 @@ rescue() {
     else
         echo 'Do not reboot after source removal. Inspect the migration logs before taking action.'
     fi
-    while true; do /bin/bash </dev/tty0 >/dev/tty0 2>&1 || true; sleep 2; done
+    while true; do /bin/bash </dev/console >/dev/console 2>&1 || true; sleep 2; done
 }
 trap 'rescue "$LINENO"' ERR
 exec > >(tee -a /run/zfs-on-boot.log) 2>&1

@@ -34,7 +34,15 @@ else
     [[ -s /boot/syslinux/vmlinuz-bootmenu && -s /boot/syslinux/initramfs-bootmenu.img ]]
     grep -q 'zbm.timeout=15' /boot/syslinux/syslinux.cfg
 fi
-[[ $(zfs get -H -o value org.zfsbootmenu:commandline rpool/ROOT) = *console=tty0* ]]
+python3 - "$(zfs get -H -o value org.zfsbootmenu:commandline rpool/ROOT)" <<'PY'
+from pathlib import Path
+import shlex, sys
+expected = shlex.split(sys.argv[1])
+actual = shlex.split(Path('/proc/cmdline').read_text())
+assert any(arg.startswith('console=') for arg in expected)
+assert not any(arg.startswith('root=') for arg in expected)
+assert all(arg in actual for arg in expected), (expected, actual)
+PY
 zfs list -t snapshot rpool/ROOT/ubuntu@zfsify-installed
 systemctl is-enabled zfsify-snapshot.timer
 ! command -v grub-install

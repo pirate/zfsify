@@ -14,6 +14,7 @@ limits. Runtime validation uses disposable DigitalOcean infrastructure.
 | Expand root and data pools after a provider disk resize | [Automatic expansion evidence](validation-zfsbootmenu.md) |
 | Boot a snapshot clone and take automatic snapshots | [Recovery and snapshot evidence](validation-zfsbootmenu.md) |
 | Restore RAM networking with gateway host routes and renamed NICs | [DigitalOcean network regression](evidence/network-route-replay.txt) — targeted route replay, not a full conversion |
+| Preserve hardware/console boot arguments and NIC MTUs | [Boot portability acceptance](evidence/boot-portability.txt) — full DigitalOcean conversion and subsequent reboot |
 
 The recordings offer selected highlights and full terminal captures. Their notes
 identify the installer build, fixture, timing edits, and acceptance results.

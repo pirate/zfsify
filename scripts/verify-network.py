@@ -28,7 +28,7 @@ def check_case(label, prefix, gateway_protocol=None, onlink=False, ipv6=False):
     run('ip', 'netns', 'add', ns)
     try:
         ip('link', 'add', 'net0', 'type', 'dummy')
-        ip('link', 'set', 'net0', 'up')
+        ip('link', 'set', 'net0', 'mtu', '1400', 'up')
         # Keep DAD from delaying this isolated test; no outside network is attached.
         run('ip', 'netns', 'exec', ns, 'sysctl', '-qw', 'net.ipv6.conf.net0.accept_dad=0')
         ip('addr', 'add', f'{address}/{prefix}', 'dev', 'net0')
@@ -42,6 +42,7 @@ def check_case(label, prefix, gateway_protocol=None, onlink=False, ipv6=False):
         script = render(links, routes)
         ip(family, 'route', 'flush', 'dev', 'net0')
         ip('addr', 'flush', 'dev', 'net0', 'scope', 'global')
+        ip('link', 'set', 'net0', 'mtu', '1500')
         if prefix == 32 and gateway_protocol:
             # The old default-first replay hits the same kernel error as issue #1.
             ip('addr', 'add', f'{address}/{prefix}', 'dev', 'net0')
@@ -58,7 +59,8 @@ def check_case(label, prefix, gateway_protocol=None, onlink=False, ipv6=False):
         default = json.loads(ip('-j', family, 'route', 'show', 'default'))[0]
         assert default['metric'] == 123, default
         assert ('onlink' in default.get('flags', [])) == onlink, default
-        print(f'PASS: {label} (kernel route lookup and repeat replay)', flush=True)
+        assert json.loads(ip('-j', 'link', 'show', 'net0'))[0]['mtu'] == 1400
+        print(f'PASS: {label} (kernel route lookup, repeat replay, MTU)', flush=True)
     finally:
         run('ip', 'netns', 'delete', ns)
 

@@ -68,9 +68,11 @@ a success claim to untested layouts.
 
 For RAM networking changes, copy the checkout to a disposable DigitalOcean VM and
 run `sudo python3 scripts/verify-network.py` there. It exercises IPv4/IPv6 gateway
-dependencies, connected subnets, `onlink`, and replay after NIC renaming in
+dependencies, connected subnets, `onlink`, MTUs, and replay after NIC renaming in
 isolated network namespaces. It also captures the VM's actual NICs and routes;
 it does not change the host's network or test a complete conversion.
+`sudo python3 scripts/verify-boot-config.py` checks boot-argument filtering and
+GRUB syntax on that VM. Boot/shim changes also need a full conversion and reboot.
 
 `scripts/verify-snapshot.sh` is an additional owned-Droplet check: it creates a
 snapshot and clone, verifies their contents, and removes those test objects.

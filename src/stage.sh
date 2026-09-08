@@ -255,6 +255,7 @@ phase 2 'Update rescue package indexes' chroot "$ROOT" apt-get update
 phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual zfs-initramfs zfsutils-linux grub-pc-bin grub2-common openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static extlinux syslinux-common rclone binutils efibootmgr </dev/null
 mkdir -p "$ROOT/etc/zfs-on-boot"
 printf '%s\n' "$FIRMWARE" > "$ROOT/etc/zfs-on-boot/firmware"
+python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
 phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
 mkdir -p "$ROOT/root/.ssh" "$ROOT/etc/zfs-on-boot" "$ROOT/etc/ssh/sshd_config.d"
 chmod 700 "$ROOT/root/.ssh"
@@ -331,7 +332,7 @@ phase 3 'Compress rescue filesystem (one worker, bounded memory)' mksquashfs "$R
 RAM_BYTES=$(awk '/MemTotal/ {printf "%.0f", $2*1024}' /proc/meminfo)
 RESCUE_BYTES=$(stat -c %s "$WORK/rescue.squashfs")
 (( RESCUE_BYTES + 230000000 < RAM_BYTES )) || die "Compressed rescue ($RESCUE_BYTES bytes) leaves insufficient working RAM; no boot entry changed."
-phase 3 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" "$WORK/shim" "$SOURCE" "$KVER" "$(blkid -s UUID -o value "$ROOTDEV")"
+phase 3 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" "$WORK/shim" "$SOURCE" "$KVER" "$(blkid -s UUID -o value "$ROOTDEV")" "$DISK"
 phase 3 'Pack minimal RAM boot shim' bash -o pipefail -c 'cd "$1"; find . -xdev -print0 | cpio --null -o --format=newc | gzip -1 > "$2"' _ "$WORK/shim" "$WORK/installer.img"
 gzip -t "$WORK/installer.img"
 IMAGE_BYTES=$(stat -c %s "$WORK/installer.img")
@@ -342,12 +343,13 @@ cp "$KERNEL" /boot/zfs-on-boot/vmlinuz
 cp "$WORK/installer.img" /boot/zfs-on-boot/installer.img
 sha256sum /boot/zfs-on-boot/vmlinuz /boot/zfs-on-boot/installer.img > "$WORK/SHA256SUMS"
 BOOT_UUID=$(findmnt -n -o UUID --target /boot)
+RESCUE_CMDLINE=$(cat "$ROOT/etc/zfs-on-boot/boot/cmdline-grub")
 cat > /etc/grub.d/09_zfs_on_boot <<EOF
 #!/bin/sh
 cat <<'GRUB'
 menuentry 'ZFS on boot installer ($MODE)'  --id zfs-on-boot-install {
     search --no-floppy --fs-uuid --set=root $BOOT_UUID
-    linux $BOOT_PREFIX/zfs-on-boot/vmlinuz rdinit=/init console=ttyS0,115200n8 console=tty0 panic=0
+    linux $BOOT_PREFIX/zfs-on-boot/vmlinuz $RESCUE_CMDLINE rdinit=/init panic=0
     initrd $BOOT_PREFIX/zfs-on-boot/installer.img
 }
 GRUB

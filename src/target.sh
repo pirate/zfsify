@@ -25,7 +25,7 @@ cp /target/etc/fstab /target/etc/fstab.before-zfsify
   awk '$1 ~ /^#/ || NF == 0 || ($2 != "/" && $2 != "/boot" && $2 != "/boot/efi" && $3 != "swap")' /target/etc/fstab.before-zfsify;
 } > /target/etc/fstab
 # ZFSBootMenu supplies root= dynamically, including for recovery clones.
-zfs set org.zfsbootmenu:commandline="console=ttyS0,115200n8 console=tty0" rpool/ROOT
+zfs set org.zfsbootmenu:commandline="$(cat /etc/zfs-on-boot/boot/cmdline-ubuntu)" rpool/ROOT
 # Remove GRUB's package hooks so future kernel updates cannot reinstall it.
 mapfile -t OLD_BOOT_PACKAGES < <(chroot /target dpkg-query -W -f='${db:Status-Status} ${binary:Package}\n' 'grub*' 'shim-signed*' 2>/dev/null | awk '$1!="not-installed" {print $2}')
 if (( ${#OLD_BOOT_PACKAGES[@]} )); then

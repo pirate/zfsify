@@ -19,7 +19,7 @@ def render(links, routes):
         lines += [
             f'iface=$(for p in /sys/class/net/*; do if [ "$(cat "$p/address")" = {q(mac)} ]; then basename "$p"; break; fi; done)',
             '[ -n "$iface" ]',
-            'ip link set "$iface" up',
+            f'ip link set "$iface" mtu {int(link["mtu"])} up',
         ]
         for addr in link.get('addr_info', []):
             if addr['scope'] == 'global':

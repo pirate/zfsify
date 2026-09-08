@@ -25,10 +25,19 @@ for binary, alias in [('/usr/bin/kmod', '/sbin/modprobe'), ('/usr/sbin/blkid', '
 modules = []
 required = ['ext4', 'loop', 'squashfs', 'overlay']
 controllers = ['virtio_pci', 'virtio_blk', 'virtio_scsi', 'scsi_mod', 'sd_mod', 'nvme', 'nvme_core', 'ahci', 'libata', 'hv_vmbus', 'hv_storvsc']
-for module in controllers + required:
+# Discover the running boot disk's driver chain as well as common fallback
+# controllers. This covers another hypervisor/controller without naming a cloud.
+disk = Path('/sys/class/block') / Path(sys.argv[6]).name
+device = disk.resolve(strict=True)
+detected = []
+for parent in [device, *device.parents]:
+    module = parent/'driver/module'
+    if module.exists() and module.resolve().name not in detected:
+        detected.append(module.resolve().name)
+for module in dict.fromkeys(detected + controllers + required):
     deps = subprocess.run(['chroot', str(root), 'modprobe', '--show-depends', '--set-version', kernel, module], text=True, capture_output=True)
     if deps.returncode:
-        if module in required: raise RuntimeError('Missing required rescue module: '+module)
+        if module in required + detected: raise RuntimeError('Missing required rescue module: '+module)
         continue
     modules.append(module)
     for line in deps.stdout.splitlines():

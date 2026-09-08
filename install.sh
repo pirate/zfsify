@@ -5,7 +5,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; e
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_529264478a71fc4219d0e912258f854490fc376dd154589ba7d60f6dc62a5bed'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_ab25b010f98f36b4a2c5f3e58ef4ca34eedfd05d0f195e7c0a48f3ee108100a0'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -263,6 +263,7 @@ phase 2 'Update rescue package indexes' chroot "$ROOT" apt-get update
 phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual zfs-initramfs zfsutils-linux grub-pc-bin grub2-common openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static extlinux syslinux-common rclone binutils efibootmgr </dev/null
 mkdir -p "$ROOT/etc/zfs-on-boot"
 printf '%s\n' "$FIRMWARE" > "$ROOT/etc/zfs-on-boot/firmware"
+python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
 phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
 mkdir -p "$ROOT/root/.ssh" "$ROOT/etc/zfs-on-boot" "$ROOT/etc/ssh/sshd_config.d"
 chmod 700 "$ROOT/root/.ssh"
@@ -339,7 +340,7 @@ phase 3 'Compress rescue filesystem (one worker, bounded memory)' mksquashfs "$R
 RAM_BYTES=$(awk '/MemTotal/ {printf "%.0f", $2*1024}' /proc/meminfo)
 RESCUE_BYTES=$(stat -c %s "$WORK/rescue.squashfs")
 (( RESCUE_BYTES + 230000000 < RAM_BYTES )) || die "Compressed rescue ($RESCUE_BYTES bytes) leaves insufficient working RAM; no boot entry changed."
-phase 3 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" "$WORK/shim" "$SOURCE" "$KVER" "$(blkid -s UUID -o value "$ROOTDEV")"
+phase 3 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" "$WORK/shim" "$SOURCE" "$KVER" "$(blkid -s UUID -o value "$ROOTDEV")" "$DISK"
 phase 3 'Pack minimal RAM boot shim' bash -o pipefail -c 'cd "$1"; find . -xdev -print0 | cpio --null -o --format=newc | gzip -1 > "$2"' _ "$WORK/shim" "$WORK/installer.img"
 gzip -t "$WORK/installer.img"
 IMAGE_BYTES=$(stat -c %s "$WORK/installer.img")
@@ -350,12 +351,13 @@ cp "$KERNEL" /boot/zfs-on-boot/vmlinuz
 cp "$WORK/installer.img" /boot/zfs-on-boot/installer.img
 sha256sum /boot/zfs-on-boot/vmlinuz /boot/zfs-on-boot/installer.img > "$WORK/SHA256SUMS"
 BOOT_UUID=$(findmnt -n -o UUID --target /boot)
+RESCUE_CMDLINE=$(cat "$ROOT/etc/zfs-on-boot/boot/cmdline-grub")
 cat > /etc/grub.d/09_zfs_on_boot <<EOF
 #!/bin/sh
 cat <<'GRUB'
 menuentry 'ZFS on boot installer ($MODE)'  --id zfs-on-boot-install {
     search --no-floppy --fs-uuid --set=root $BOOT_UUID
-    linux $BOOT_PREFIX/zfs-on-boot/vmlinuz rdinit=/init console=ttyS0,115200n8 console=tty0 panic=0
+    linux $BOOT_PREFIX/zfs-on-boot/vmlinuz $RESCUE_CMDLINE rdinit=/init panic=0
     initrd $BOOT_PREFIX/zfs-on-boot/installer.img
 }
 GRUB
@@ -370,8 +372,8 @@ echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM instal
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_529264478a71fc4219d0e912258f854490fc376dd154589ba7d60f6dc62a5bed
-cat > "$work/network.py" <<'ZFS_ON_BOOT_7e06ed43c7d45717e7ac3695133ed133e5be02f0bc1a474af8891d2edd7810f6'
+ZFS_ON_BOOT_ab25b010f98f36b4a2c5f3e58ef4ca34eedfd05d0f195e7c0a48f3ee108100a0
+cat > "$work/network.py" <<'ZFS_ON_BOOT_19f036f4cc23e2fc077a320be1d8be051c0c1b507bd42a0680af16767c7f0594'
 #!/usr/bin/env python3
 """Capture hardware NIC addresses and main-table routes for the RAM installer."""
 import json
@@ -393,7 +395,7 @@ def render(links, routes):
         lines += [
             f'iface=$(for p in /sys/class/net/*; do if [ "$(cat "$p/address")" = {q(mac)} ]; then basename "$p"; break; fi; done)',
             '[ -n "$iface" ]',
-            'ip link set "$iface" up',
+            f'ip link set "$iface" mtu {int(link["mtu"])} up',
         ]
         for addr in link.get('addr_info', []):
             if addr['scope'] == 'global':
@@ -431,8 +433,55 @@ if __name__ == '__main__':
               for link in links for family in ['-4', '-6']}
     Path(sys.argv[1]).write_text(render(links, routes))
 
-ZFS_ON_BOOT_7e06ed43c7d45717e7ac3695133ed133e5be02f0bc1a474af8891d2edd7810f6
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_4eddd803492d1cc7be5c02c78beec23c9d9453066d7134b53cd9f9460bde2347'
+ZFS_ON_BOOT_19f036f4cc23e2fc077a320be1d8be051c0c1b507bd42a0680af16767c7f0594
+cat > "$work/boot-config.py" <<'ZFS_ON_BOOT_ca83e9c2a154721a2ee5317404bd077f2e2866829de270056668a855bdeb3925'
+#!/usr/bin/env python3
+"""Retain existing boot options while replacing the old root/initramfs contract."""
+from pathlib import Path
+import re
+import shlex
+import sys
+
+# These identify the old filesystem or a one-shot boot mode, not the hardware.
+REPLACED = {
+    'BOOT_IMAGE', 'BOOTIF', 'root', 'rootfstype', 'rootflags', 'rootdelay',
+    'rootwait', 'resume', 'resume_offset', 'initrd', 'init', 'rdinit', 'boot',
+    'ro', 'rw', 'single', 'emergency', 'rescue', 'rd.break', 'break',
+    'systemd.unit', 'rd.systemd.unit',
+}
+
+
+def commandlines(text):
+    # Linux command lines use double quotes, not shell evaluation. Retain their
+    # spelling, including quoted values containing spaces, for the final kernel.
+    tokens = re.findall(r'(?:[^\s"]|"[^"]*")+', text)
+    kept = []
+    for token in tokens:
+        if token == '--':
+            break  # Following words are init arguments, not kernel options.
+        key = token.split('=', 1)[0].strip('"')
+        if key in REPLACED or key.startswith(('zbm.', 'systemd.run')):
+            continue
+        kept.append(token)
+    if not any(t.split('=', 1)[0].strip('"') == 'console' for t in kept):
+        kept += ['console=ttyS0,115200n8', 'console=tty0']
+    # Keep diagnostics visible and leave the RAM/ZBM init program in control.
+    # All other existing CPU, PCI, I/O, display and driver options pass through.
+    rescue = [t for t in kept if t.split('=', 1)[0].strip('"') not in
+              {'quiet', 'splash', 'vt.handoff', 'panic'}
+              and not t.split('=', 1)[0].strip('"').startswith(('systemd.', 'rd.', 'zfs.', 'spl.'))]
+    return {'ubuntu': ' '.join(kept), 'rescue': ' '.join(rescue),
+            'grub': ' '.join(shlex.quote(t) for t in rescue)}
+
+
+if __name__ == '__main__':
+    out = Path(sys.argv[1])
+    out.mkdir(parents=True, exist_ok=True)
+    for name, value in commandlines(Path('/proc/cmdline').read_text()).items():
+        (out / ('cmdline-' + name)).write_text(value + '\n')
+
+ZFS_ON_BOOT_ca83e9c2a154721a2ee5317404bd077f2e2866829de270056668a855bdeb3925
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_9615a62d86e5f81d162ddd81f187d3b4e1fc2b756496ef0ad69736a822ae19c0'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -447,7 +496,7 @@ ln -sfn /proc/self/fd/2 /dev/stderr
 mount -t sysfs sysfs /sys
 mount -t tmpfs -o mode=755 tmpfs /run
 mount -t devpts devpts /dev/pts
-exec </dev/tty0 >/dev/tty0 2>&1
+exec </dev/console >/dev/console 2>&1
 set -Eeuo pipefail
 MIGRATION_STARTED=0
 rescue() {
@@ -459,7 +508,7 @@ rescue() {
     else
         echo 'Do not reboot after source removal. Inspect the migration logs before taking action.'
     fi
-    while true; do /bin/bash </dev/tty0 >/dev/tty0 2>&1 || true; sleep 2; done
+    while true; do /bin/bash </dev/console >/dev/console 2>&1 || true; sleep 2; done
 }
 trap 'rescue "$LINENO"' ERR
 exec > >(tee -a /run/zfs-on-boot.log) 2>&1
@@ -656,8 +705,8 @@ echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_4eddd803492d1cc7be5c02c78beec23c9d9453066d7134b53cd9f9460bde2347
-cat > "$work/target.sh" <<'ZFS_ON_BOOT_7c3138cbab8a048de8971e39a8b5ca24917e2907f5115c91ddd96ff6920c9c57'
+ZFS_ON_BOOT_9615a62d86e5f81d162ddd81f187d3b4e1fc2b756496ef0ad69736a822ae19c0
+cat > "$work/target.sh" <<'ZFS_ON_BOOT_e53132ebe849b94a27eaf88e04338d91ae196bc8a09f27cea87c46d3d47b36ba'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
 set -Eeuo pipefail
@@ -685,7 +734,7 @@ cp /target/etc/fstab /target/etc/fstab.before-zfsify
   awk '$1 ~ /^#/ || NF == 0 || ($2 != "/" && $2 != "/boot" && $2 != "/boot/efi" && $3 != "swap")' /target/etc/fstab.before-zfsify;
 } > /target/etc/fstab
 # ZFSBootMenu supplies root= dynamically, including for recovery clones.
-zfs set org.zfsbootmenu:commandline="console=ttyS0,115200n8 console=tty0" rpool/ROOT
+zfs set org.zfsbootmenu:commandline="$(cat /etc/zfs-on-boot/boot/cmdline-ubuntu)" rpool/ROOT
 # Remove GRUB's package hooks so future kernel updates cannot reinstall it.
 mapfile -t OLD_BOOT_PACKAGES < <(chroot /target dpkg-query -W -f='${db:Status-Status} ${binary:Package}\n' 'grub*' 'shim-signed*' 2>/dev/null | awk '$1!="not-installed" {print $2}')
 if (( ${#OLD_BOOT_PACKAGES[@]} )); then
@@ -748,7 +797,7 @@ umount /target/run /target/proc
 umount -R /target/sys
 umount -R /target/dev
 
-ZFS_ON_BOOT_7c3138cbab8a048de8971e39a8b5ca24917e2907f5115c91ddd96ff6920c9c57
+ZFS_ON_BOOT_e53132ebe849b94a27eaf88e04338d91ae196bc8a09f27cea87c46d3d47b36ba
 cat > "$work/progress.py" <<'ZFS_ON_BOOT_188b5977b14b29e4d6dc2addc0ea491f68961aae7e8a5926449ca330a3c4b6e0'
 #!/usr/bin/python3
 """Run a phase with live Linux disk telemetry, or follow it across SSH sessions."""
@@ -1111,7 +1160,7 @@ umount /dev
 exec switch_root /rescue /init
 
 ZFS_ON_BOOT_67f6d2616ea5352e8cc71452ba3951bd86e70af36c5e4b2707ac6f40f21e97c3
-cat > "$work/build-rescue.py" <<'ZFS_ON_BOOT_f24c263d32e9c3f16233736955cd5f9e26248abee1c45160d09b696ddf7308b3'
+cat > "$work/build-rescue.py" <<'ZFS_ON_BOOT_88bc0bc7e3934015c264b050943a85bccbb6873cc69c47b4ab0022a88ba6813c'
 #!/usr/bin/python3
 """Build a small disk-independent boot shim; execute only on the target Ubuntu VPS."""
 from pathlib import Path
@@ -1139,10 +1188,19 @@ for binary, alias in [('/usr/bin/kmod', '/sbin/modprobe'), ('/usr/sbin/blkid', '
 modules = []
 required = ['ext4', 'loop', 'squashfs', 'overlay']
 controllers = ['virtio_pci', 'virtio_blk', 'virtio_scsi', 'scsi_mod', 'sd_mod', 'nvme', 'nvme_core', 'ahci', 'libata', 'hv_vmbus', 'hv_storvsc']
-for module in controllers + required:
+# Discover the running boot disk's driver chain as well as common fallback
+# controllers. This covers another hypervisor/controller without naming a cloud.
+disk = Path('/sys/class/block') / Path(sys.argv[6]).name
+device = disk.resolve(strict=True)
+detected = []
+for parent in [device, *device.parents]:
+    module = parent/'driver/module'
+    if module.exists() and module.resolve().name not in detected:
+        detected.append(module.resolve().name)
+for module in dict.fromkeys(detected + controllers + required):
     deps = subprocess.run(['chroot', str(root), 'modprobe', '--show-depends', '--set-version', kernel, module], text=True, capture_output=True)
     if deps.returncode:
-        if module in required: raise RuntimeError('Missing required rescue module: '+module)
+        if module in required + detected: raise RuntimeError('Missing required rescue module: '+module)
         continue
     modules.append(module)
     for line in deps.stdout.splitlines():
@@ -1158,14 +1216,16 @@ with image.open('rb') as stream:
     digest = hasher.hexdigest()
 (shim/'config').write_text(f'SOURCE_UUID={uuid}\nRESCUE_SHA={digest}\nMODULES="{" ".join(modules)}"\n')
 
-ZFS_ON_BOOT_f24c263d32e9c3f16233736955cd5f9e26248abee1c45160d09b696ddf7308b3
-cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_9b0d3e3af73c62681e392d73a420f7e7b116ebd554e138ad116601d92ea6c9bc'
+ZFS_ON_BOOT_88bc0bc7e3934015c264b050943a85bccbb6873cc69c47b4ab0022a88ba6813c
+cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_a7bb9baa90bcf1738690116aae2c146018b662fbebc08c64d87dd9a2f4d9fae0'
 #!/bin/bash
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ACTION=${1:?} ROOT=${2:?}
 FIRMWARE=$(cat "$ROOT/etc/zfs-on-boot/firmware" 2>/dev/null || cat /etc/zfs-on-boot/firmware)
-KCL='zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864 console=ttyS0,115200n8 console=tty0'
+BOOT_CONFIG=$ROOT/etc/zfs-on-boot/boot
+[[ $ACTION = download ]] || BOOT_CONFIG=/etc/zfs-on-boot/boot
+KCL="$(cat "$BOOT_CONFIG/cmdline-rescue") zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864"
 if [[ $ACTION = download ]]; then
     DEST=$ROOT/etc/zfs-on-boot/zbm
     mkdir -p "$DEST"
@@ -1207,7 +1267,7 @@ mkdir -p "$ROOT/boot/syslinux"
 mount "$BOOTDEV" "$ROOT/boot/syslinux"
 cp /usr/lib/syslinux/modules/bios/ldlinux.c32 "$ROOT/boot/syslinux/"
 cp /etc/zfs-on-boot/zbm/{vmlinuz-bootmenu,initramfs-bootmenu.img} "$ROOT/boot/syslinux/"
-cat > "$ROOT/boot/syslinux/syslinux.cfg" <<'CFG'
+cat > "$ROOT/boot/syslinux/syslinux.cfg" <<CFG
 SERIAL 0 115200
 DEFAULT zfsbootmenu
 PROMPT 0
@@ -1215,7 +1275,7 @@ TIMEOUT 10
 LABEL zfsbootmenu
     LINUX /vmlinuz-bootmenu
     INITRD /initramfs-bootmenu.img
-    APPEND zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864 console=ttyS0,115200n8 console=tty0
+    APPEND $KCL
 CFG
 extlinux --install "$ROOT/boot/syslinux"
 printf 'UUID=%s /boot/syslinux ext4 defaults 0 2\n' "$(blkid -s UUID -o value "$BOOTDEV")" >> "$ROOT/etc/fstab"
@@ -1225,7 +1285,7 @@ umount "$ROOT/boot/syslinux"
 # Activate the BIOS loader only after its files are durable.
 dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc,fsync
 
-ZFS_ON_BOOT_9b0d3e3af73c62681e392d73a420f7e7b116ebd554e138ad116601d92ea6c9bc
+ZFS_ON_BOOT_a7bb9baa90bcf1738690116aae2c146018b662fbebc08c64d87dd9a2f4d9fae0
 cat > "$work/snapshot.sh" <<'ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717'
 #!/bin/bash
 # Own only zfsify-{apt,daily,boot}-* snapshots; never remove user snapshots.

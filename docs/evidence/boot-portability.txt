@@ -1,0 +1,28 @@
+Boot portability acceptance — 2026-09-08
+Disposable DigitalOcean Ubuntu 24.04 amd64, 1 GiB RAM, 25 GiB disk, BIOS
+Installer SHA-256: 6d87c47021ad2798badffa251d076460bb4704cef405dee2d0f8f353fc4b4fa3
+Source kernel: 6.8.0-124-generic; rescue/installed kernel: 6.8.0-139-generic
+
+PASS: six IPv4/IPv6 route cases, including gateway host routes, onlink, and MTU 1400
+PASS: capture and replay of both real NICs under changed names in a network namespace
+PASS: boot-option filtering, quoted arguments, console fallback and GRUB syntax
+PASS: original Ubuntu reboot with audit=1 and nvme_core.default_ps_max_latency_us=0
+PASS: standalone installer invoked through curl | sh on the test Droplet
+PASS: independent RAM boot using discovered boot-disk controller dependencies
+PASS: inherited console, audit and NVMe arguments in the RAM kernel command line
+PASS: copied-file checksum verification before removing the original ext4 filesystem
+PASS: original data moved onto a single full-size ZFS root vdev
+PASS: installed Ubuntu booted through ZFSBootMenu with / and /boot on ZFS
+PASS: accounts, password hashes, SSH keys, file hashes, ACLs, xattrs, hard links,
+      sparse files, and the configuration fixture retained
+PASS: subsequent reboot with a different boot ID and no failed systemd units
+
+Final command line includes:
+  root=zfs:rpool/ROOT/ubuntu audit=1 nvme_core.default_ps_max_latency_us=0
+  console=tty1 console=ttyS0 net.ifnames=0 biosdevname=0
+The old root UUID, BOOT_IMAGE and ext4 boot mode are absent from the saved
+ZFSBootMenu commandline property; ZFSBootMenu selects root dynamically.
+
+No workstation runtime tests. These results cover the recorded DO BIOS/virtio
+configuration; they do not establish GPU, other controller, UEFI, policy-routing,
+or other-provider acceptance. Temporary cloud resources are removed after testing.

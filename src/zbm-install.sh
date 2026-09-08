@@ -3,7 +3,9 @@ set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ACTION=${1:?} ROOT=${2:?}
 FIRMWARE=$(cat "$ROOT/etc/zfs-on-boot/firmware" 2>/dev/null || cat /etc/zfs-on-boot/firmware)
-KCL='zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864 console=ttyS0,115200n8 console=tty0'
+BOOT_CONFIG=$ROOT/etc/zfs-on-boot/boot
+[[ $ACTION = download ]] || BOOT_CONFIG=/etc/zfs-on-boot/boot
+KCL="$(cat "$BOOT_CONFIG/cmdline-rescue") zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864"
 if [[ $ACTION = download ]]; then
     DEST=$ROOT/etc/zfs-on-boot/zbm
     mkdir -p "$DEST"
@@ -45,7 +47,7 @@ mkdir -p "$ROOT/boot/syslinux"
 mount "$BOOTDEV" "$ROOT/boot/syslinux"
 cp /usr/lib/syslinux/modules/bios/ldlinux.c32 "$ROOT/boot/syslinux/"
 cp /etc/zfs-on-boot/zbm/{vmlinuz-bootmenu,initramfs-bootmenu.img} "$ROOT/boot/syslinux/"
-cat > "$ROOT/boot/syslinux/syslinux.cfg" <<'CFG'
+cat > "$ROOT/boot/syslinux/syslinux.cfg" <<CFG
 SERIAL 0 115200
 DEFAULT zfsbootmenu
 PROMPT 0
@@ -53,7 +55,7 @@ TIMEOUT 10
 LABEL zfsbootmenu
     LINUX /vmlinuz-bootmenu
     INITRD /initramfs-bootmenu.img
-    APPEND zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864 console=ttyS0,115200n8 console=tty0
+    APPEND $KCL
 CFG
 extlinux --install "$ROOT/boot/syslinux"
 printf 'UUID=%s /boot/syslinux ext4 defaults 0 2\n' "$(blkid -s UUID -o value "$BOOTDEV")" >> "$ROOT/etc/fstab"
