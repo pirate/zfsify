@@ -63,9 +63,10 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- \
   --backup=myremote:zfsify-data /mnt/data
 ```
 
-To open rclone's own interactive configuration, use `--backup` without a value.
-The automatic space prompt also offers this choice. For unattended use, configure
-the remote for the root process beforehand and pass `--backup=REMOTE:PATH`.
+Use `--backup` without a value for [guided destination setup](backup.md): attach
+a temporary ext4 Volume, open rclone's own configuration, or select an existing
+remote. The automatic space prompt also offers this choice. For unattended use,
+configure the remote for the root process beforehand and pass `--backup=REMOTE:PATH`.
 
 A separate mounted ext4 disk can hold the backup instead:
 

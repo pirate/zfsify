@@ -89,10 +89,11 @@ else
     FS_BYTES=$(blockdev --getsize64 "$DEV"); USED_BYTES=0
 fi
 if (( USED_BYTES*2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
-    echo 'WARNING: at least 50% is used. Data preservation is not eligible.'
-    echo 'Choose A for rclone backup/restore, or y to erase this DATA VOLUME and discard all its files.'
+    echo 'WARNING: at least 50% is used; not enough room for same-disk migration.'
+    echo 'A: KEEP ALL FILES using a temporary Volume or rclone remote; guided setup follows.'
+    echo 'y: ERASE this DATA VOLUME and discard all its files.'
     answer=
-    if { exec 3<>/dev/tty; } 2>/dev/null; then read -r -p 'Type A for backup, or y and Enter to erase: ' answer <&3; exec 3>&-; fi
+    if { exec 3<>/dev/tty; } 2>/dev/null; then printf 'Choose A for guided backup, y to ERASE, or Enter to cancel: ' >&3; IFS= read -r answer <&3 || true; exec 3>&-; fi
     case $answer in a|A) MODE=backup; BACKUP=ask;; y) MODE=erase;; *) die 'Cancelled; choose --backup or --erase explicitly.';; esac
 fi
 POOL=${ORIGINAL_UUID,,}; POOL=zfsify_${POOL//-/}; POOL=${POOL:0:23}
@@ -105,7 +106,7 @@ lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 echo "$MODE data volume: $DEV on $DISK; final pool $POOL at $DEFAULT_MOUNT"
 case $MODE in
 preserve) echo '[ ext4 ] -> [ smaller ext4 | temporary ZFS ] -> [ ZFS mirror | temporary ZFS ] -> [ full ZFS ]';;
-backup) echo '[ ext4 ] -> [ verified rclone archive elsewhere ] -> [ full ZFS ] -> [ restored data ]';;
+backup) echo '[ ext4 ] -> [ verified archive on separate Volume / remote ] -> [ full ZFS ] -> [ restored data ]';;
 erase) echo '[ ext4: all data discarded ] -> [ empty full-disk ZFS ]';;
 esac
 [[ $MODE != erase ]] || echo 'ERASE: no files from this data volume will be retained.'
@@ -116,7 +117,7 @@ phase() { local n=$1 label=$2; shift 2; python3 "$SOURCE/progress.py" run --phas
 phase 2 'Update Ubuntu package indexes' apt-get update
 phase 2 'Install data migration tools' apt-get install -y --no-install-recommends zfsutils-linux gdisk e2fsprogs rsync python3 cloud-guest-utils rclone
 if [[ $MODE = backup ]]; then
-    bash "$SOURCE/backup.sh" configure "$BACKUP" "$WORK/backup" "$DISK"
+    bash "$SOURCE/backup.sh" configure "$BACKUP" "$WORK/backup" "$DISK" "$USED_BYTES"
     export ZFSIFY_BACKUP_CONF=$WORK/backup ZFSIFY_BACKUP_SOURCE=$WORK/old
     export ZFSIFY_BACKUP_TARGET=$WORK/new ZFSIFY_BACKUP_STATE=$WORK ZFSIFY_BACKUP_LOG=$WORK
     export ZFSIFY_BACKUP_DATA=1
@@ -201,3 +202,4 @@ systemctl daemon-reload
 systemctl enable "zfsify-volume-grow@$POOL.service"
 phase 10 'Ready: data volume converted' zpool status "$POOL"
 echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
+[[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"

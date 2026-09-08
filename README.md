@@ -154,9 +154,10 @@ Both require an explicit choice before erasing the disk; command-line flags supp
 
 ### Option A: Back up elsewhere, convert, and restore everything
 
-Use an S3 bucket, another cloud storage service, or a separate volume with enough
-space to hold the backup. zfsify opens **rclone's own configuration flow** to
-choose and configure the destination, then uses rclone to transfer the backup.
+Run with `--backup` for guided setup: choose a temporary attached Volume, configure
+cloud storage with **rclone's own CLI**, or use an existing remote. The Volume
+option explains how to create and mount a disk, suggests a capacity, and lets you
+refresh the disk list while you attach it. See [backup setup and cleanup](docs/backup.md).
 
 After verifying the backup, zfsify reformats the disk as ZFS and restores the
 installation. Allow time and bandwidth for uploading and downloading the backup.
@@ -170,8 +171,8 @@ installation. Allow time and bandwidth for uploading and downloading the backup.
 
 The backup archive retains Linux ownership, permissions, ACLs, extended
 attributes, and links. rclone handles transfers, remote configuration, and
-credentials through its standard CLI. `--backup` opens `rclone config` on
-`/dev/tty`; `--backup=remote:path` uses an existing configuration without prompts.
+credentials through its standard CLI. `--backup` opens the destination wizard on
+`/dev/tty`; `--backup=remote:path` or `--backup=/mnt/backup` skips the wizard.
 A local destination must be an existing directory on a separate ext4 disk.
 Remote credentials must be self-contained in rclone's configuration; external
 credential files are refused. Encrypted configurations can use

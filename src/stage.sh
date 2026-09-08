@@ -15,7 +15,23 @@ for arg in "$@"; do
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup) MODE=backup; BACKUP=ask; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
-        --help|-h) echo 'Usage: curl -fsSL URL | sudo sh -s -- [--erase | --backup[=REMOTE:PATH|/MOUNT/DIR]] [/ | MOUNTPOINT | BLOCK_DEVICE]' ; exit 0 ;;
+        --help|-h)
+            cat <<'EOF'
+Usage: curl -fsSL URL | sudo sh -s -- [--erase | --backup[=REMOTE:PATH|/MOUNT/DIR]] [/ | MOUNTPOINT | BLOCK_DEVICE]
+
+Default: preserve your installation or data in place when less than 50% is used.
+  --backup                 Guide me through a temporary Volume or rclone remote.
+  --backup=/mnt/backup     Use a mounted, separate ext4 disk without prompts.
+  --backup=myremote:path   Use an existing root-user rclone configuration.
+  --erase                  Fresh Ubuntu with limited settings restore for /;
+                           discard ALL files when targeting a data volume.
+
+The positional path is the disk to CONVERT; --backup= is where to KEEP its backup.
+Examples: --backup=/mnt/backup /          (convert the boot disk)
+          --backup=/mnt/backup /mnt/data  (convert a data disk)
+Setup and cleanup: https://pirate.github.io/zfsify/docs/backup.html
+EOF
+            exit 0 ;;
         /*) TARGET_COUNT=$((TARGET_COUNT+1)); TARGET=$arg ;;
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
     esac
@@ -82,16 +98,17 @@ echo "Root filesystem: $ROOTDEV on $DISK | used $USED_PCT% ($USED_BYTES / $FS_BY
 if (( USED_BYTES * 2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
     cat <<'EOF'
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! WARNING: ROOT IS AT LEAST 50% USED. PRESERVATION IS NOT ELIGIBLE.     !!
-!! A: rclone backup, verify, reformat, then restore the full system.    !!
-!! B: erase and install fresh Ubuntu with a limited priority restore.   !!
-!! Applications and data are deleted. /etc, users, SSH keys and        !!
-!! basic settings survive. There is no automatic fallback to erasure. !!
+!! ROOT IS AT LEAST 50% USED: not enough room for same-disk migration. !!
+!! A: KEEP ALL FILES via a temporary Volume or rclone remote.          !!
+!!    Guided setup -> backup -> verify -> format ZFS -> restore.       !!
+!! B: ERASE for fresh Ubuntu with a limited priority restore.          !!
+!!    Only B discards applications/data outside the restore budget.   !!
+!!    /etc, users, SSH keys and basic settings are retained with B.    !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 EOF
     answer=
     if { exec 3<>/dev/tty; } 2>/dev/null; then
-        printf 'Choose A for rclone backup/restore, or B (or y) for an ERASE install: ' >&3
+        printf 'Choose A to keep everything (guided backup), B (or y) to ERASE, or Enter to cancel: ' >&3
         IFS= read -r answer <&3 || true
         exec 3>&-
     fi
@@ -138,8 +155,9 @@ Original ext4 is removed only after the copy is checksum-verified.
 Power loss during repartitioning can require provider recovery.
 EOF
 elif [[ $MODE = backup ]]; then
-    echo "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase $DISK -> ZFS -> restore archive."
-    echo 'The remote backup remains available after completion.'
+    echo "BACKUP AND RESTORE: $ROOTDEV -> archive on a separate Volume or rclone remote"
+    echo "                    -> read-back verification -> reformat $DISK as ZFS -> restore."
+    echo 'The backup remains available after completion. Destination setup follows before rescue preparation.'
 else
     cat <<EOF
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -212,6 +230,7 @@ install -m 755 "$SOURCE/status.sh" /usr/local/sbin/zfs-on-boot-status
 # Prevent inherited terminal input (including the rest of a curl pipe) reaching apt.
 phase 2 'Update Ubuntu package indexes' apt-get update
 phase 2 'Install staging tools' apt-get install -y --no-install-recommends debootstrap cpio gzip python3 squashfs-tools rclone
+[[ $MODE != backup ]] || bash "$SOURCE/backup.sh" configure "$BACKUP" "$WORK/backup" "$DISK" "$USED_BYTES"
 if [[ $MODE != erase ]]; then
     # Install boot support into the OS that will actually be migrated.
     phase 2 'Prepare existing Ubuntu for ZFS boot' apt-get install -y --no-install-recommends linux-image-virtual zfs-initramfs zfsutils-linux grub-pc-bin grub2-common cloud-guest-utils rsync extlinux syslinux-common
@@ -270,7 +289,7 @@ EOF
 printf '%s\n' "$DISK" > "$ROOT/etc/zfs-on-boot/disk"
 blockdev --getsize64 "$DISK" > "$ROOT/etc/zfs-on-boot/disk-size"
 blkid -s UUID -o value "$ROOTDEV" > "$ROOT/etc/zfs-on-boot/old-root-uuid"
-[[ $MODE != backup ]] || bash "$SOURCE/backup.sh" configure "$BACKUP" "$ROOT/etc/zfs-on-boot/backup" "$DISK"
+[[ $MODE != backup ]] || cp -a "$WORK/backup" "$ROOT/etc/zfs-on-boot/backup"
 if [[ $MODE = erase ]]; then
     cp "$WORK/identity.tar" "$ROOT/etc/zfs-on-boot/identity.tar"
     cp "$WORK/priority-files" "$WORK/priority-budget" "$ROOT/etc/zfs-on-boot/"

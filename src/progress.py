@@ -59,6 +59,9 @@ if a.action == 'watch':
             state = json.loads(source.read_text())
             if sys.stdout.isatty(): print('\033[H\033[2J', end='')
             print(render(state), flush=True)
+            if state['label'].startswith('Ready') and state['status'] == 'complete':
+                next_steps = Path('/var/log/zfs-on-boot/backup-next-steps.txt')
+                if next_steps.exists(): print('\n' + next_steps.read_text(), flush=True)
             if a.once or state['status'] == 'failed' or (state['label'].startswith('Ready') and state['status'] == 'complete'):
                 break
         except (OSError, ValueError):

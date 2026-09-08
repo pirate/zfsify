@@ -5,7 +5,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; e
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_f4ffb28e2f20baaf08612cf0906bc725dbaeaffdaf13d915407235b3c083904d'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_5e80bc4dc662423d8b75807195b57dcba2b03e130dc95c8915723b735d7dc1a2'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -23,7 +23,23 @@ for arg in "$@"; do
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup) MODE=backup; BACKUP=ask; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
-        --help|-h) echo 'Usage: curl -fsSL URL | sudo sh -s -- [--erase | --backup[=REMOTE:PATH|/MOUNT/DIR]] [/ | MOUNTPOINT | BLOCK_DEVICE]' ; exit 0 ;;
+        --help|-h)
+            cat <<'EOF'
+Usage: curl -fsSL URL | sudo sh -s -- [--erase | --backup[=REMOTE:PATH|/MOUNT/DIR]] [/ | MOUNTPOINT | BLOCK_DEVICE]
+
+Default: preserve your installation or data in place when less than 50% is used.
+  --backup                 Guide me through a temporary Volume or rclone remote.
+  --backup=/mnt/backup     Use a mounted, separate ext4 disk without prompts.
+  --backup=myremote:path   Use an existing root-user rclone configuration.
+  --erase                  Fresh Ubuntu with limited settings restore for /;
+                           discard ALL files when targeting a data volume.
+
+The positional path is the disk to CONVERT; --backup= is where to KEEP its backup.
+Examples: --backup=/mnt/backup /          (convert the boot disk)
+          --backup=/mnt/backup /mnt/data  (convert a data disk)
+Setup and cleanup: https://pirate.github.io/zfsify/docs/backup.html
+EOF
+            exit 0 ;;
         /*) TARGET_COUNT=$((TARGET_COUNT+1)); TARGET=$arg ;;
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
     esac
@@ -90,16 +106,17 @@ echo "Root filesystem: $ROOTDEV on $DISK | used $USED_PCT% ($USED_BYTES / $FS_BY
 if (( USED_BYTES * 2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
     cat <<'EOF'
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! WARNING: ROOT IS AT LEAST 50% USED. PRESERVATION IS NOT ELIGIBLE.     !!
-!! A: rclone backup, verify, reformat, then restore the full system.    !!
-!! B: erase and install fresh Ubuntu with a limited priority restore.   !!
-!! Applications and data are deleted. /etc, users, SSH keys and        !!
-!! basic settings survive. There is no automatic fallback to erasure. !!
+!! ROOT IS AT LEAST 50% USED: not enough room for same-disk migration. !!
+!! A: KEEP ALL FILES via a temporary Volume or rclone remote.          !!
+!!    Guided setup -> backup -> verify -> format ZFS -> restore.       !!
+!! B: ERASE for fresh Ubuntu with a limited priority restore.          !!
+!!    Only B discards applications/data outside the restore budget.   !!
+!!    /etc, users, SSH keys and basic settings are retained with B.    !!
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 EOF
     answer=
     if { exec 3<>/dev/tty; } 2>/dev/null; then
-        printf 'Choose A for rclone backup/restore, or B (or y) for an ERASE install: ' >&3
+        printf 'Choose A to keep everything (guided backup), B (or y) to ERASE, or Enter to cancel: ' >&3
         IFS= read -r answer <&3 || true
         exec 3>&-
     fi
@@ -146,8 +163,9 @@ Original ext4 is removed only after the copy is checksum-verified.
 Power loss during repartitioning can require provider recovery.
 EOF
 elif [[ $MODE = backup ]]; then
-    echo "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase $DISK -> ZFS -> restore archive."
-    echo 'The remote backup remains available after completion.'
+    echo "BACKUP AND RESTORE: $ROOTDEV -> archive on a separate Volume or rclone remote"
+    echo "                    -> read-back verification -> reformat $DISK as ZFS -> restore."
+    echo 'The backup remains available after completion. Destination setup follows before rescue preparation.'
 else
     cat <<EOF
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -220,6 +238,7 @@ install -m 755 "$SOURCE/status.sh" /usr/local/sbin/zfs-on-boot-status
 # Prevent inherited terminal input (including the rest of a curl pipe) reaching apt.
 phase 2 'Update Ubuntu package indexes' apt-get update
 phase 2 'Install staging tools' apt-get install -y --no-install-recommends debootstrap cpio gzip python3 squashfs-tools rclone
+[[ $MODE != backup ]] || bash "$SOURCE/backup.sh" configure "$BACKUP" "$WORK/backup" "$DISK" "$USED_BYTES"
 if [[ $MODE != erase ]]; then
     # Install boot support into the OS that will actually be migrated.
     phase 2 'Prepare existing Ubuntu for ZFS boot' apt-get install -y --no-install-recommends linux-image-virtual zfs-initramfs zfsutils-linux grub-pc-bin grub2-common cloud-guest-utils rsync extlinux syslinux-common
@@ -278,7 +297,7 @@ EOF
 printf '%s\n' "$DISK" > "$ROOT/etc/zfs-on-boot/disk"
 blockdev --getsize64 "$DISK" > "$ROOT/etc/zfs-on-boot/disk-size"
 blkid -s UUID -o value "$ROOTDEV" > "$ROOT/etc/zfs-on-boot/old-root-uuid"
-[[ $MODE != backup ]] || bash "$SOURCE/backup.sh" configure "$BACKUP" "$ROOT/etc/zfs-on-boot/backup" "$DISK"
+[[ $MODE != backup ]] || cp -a "$WORK/backup" "$ROOT/etc/zfs-on-boot/backup"
 if [[ $MODE = erase ]]; then
     cp "$WORK/identity.tar" "$ROOT/etc/zfs-on-boot/identity.tar"
     cp "$WORK/priority-files" "$WORK/priority-budget" "$ROOT/etc/zfs-on-boot/"
@@ -376,7 +395,7 @@ echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM instal
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_f4ffb28e2f20baaf08612cf0906bc725dbaeaffdaf13d915407235b3c083904d
+ZFS_ON_BOOT_5e80bc4dc662423d8b75807195b57dcba2b03e130dc95c8915723b735d7dc1a2
 cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_491886382d7bc5107634e77dade50ada29953bc6a5f8c0a6d2e669aaaee32257'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
@@ -688,7 +707,7 @@ umount -R /target/sys
 umount -R /target/dev
 
 ZFS_ON_BOOT_7c3138cbab8a048de8971e39a8b5ca24917e2907f5115c91ddd96ff6920c9c57
-cat > "$work/progress.py" <<'ZFS_ON_BOOT_e7b20c9f03ffe640e709df00ec80aad4ea93cbef6a6c8d8f734a636f16ccd329'
+cat > "$work/progress.py" <<'ZFS_ON_BOOT_188b5977b14b29e4d6dc2addc0ea491f68961aae7e8a5926449ca330a3c4b6e0'
 #!/usr/bin/python3
 """Run a phase with live Linux disk telemetry, or follow it across SSH sessions."""
 import argparse
@@ -750,6 +769,9 @@ if a.action == 'watch':
             state = json.loads(source.read_text())
             if sys.stdout.isatty(): print('\033[H\033[2J', end='')
             print(render(state), flush=True)
+            if state['label'].startswith('Ready') and state['status'] == 'complete':
+                next_steps = Path('/var/log/zfs-on-boot/backup-next-steps.txt')
+                if next_steps.exists(): print('\n' + next_steps.read_text(), flush=True)
             if a.once or state['status'] == 'failed' or (state['label'].startswith('Ready') and state['status'] == 'complete'):
                 break
         except (OSError, ValueError):
@@ -836,7 +858,7 @@ if code == 0 and state['total']: state['done'] = state['total']
 publish(final=True)
 sys.exit(code)
 
-ZFS_ON_BOOT_e7b20c9f03ffe640e709df00ec80aad4ea93cbef6a6c8d8f734a636f16ccd329
+ZFS_ON_BOOT_188b5977b14b29e4d6dc2addc0ea491f68961aae7e8a5926449ca330a3c4b6e0
 cat > "$work/plan.py" <<'ZFS_ON_BOOT_41be88f6c01738992b7ab4ff60d30d2075d0c3276563a104254ed48a510c340b'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""
@@ -1182,7 +1204,7 @@ for ((i=0; i<${#OWNED[@]}-KEEP; i++)); do
 done
 
 ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717
-cat > "$work/volume.sh" <<'ZFS_ON_BOOT_f05353d3ce69750cff585637c31bcfab58e06857093821d0b7731465864721d2'
+cat > "$work/volume.sh" <<'ZFS_ON_BOOT_5cbb3b74fd48d187b7818609ed823057b4e56e6b2364d86faeb62be8dd9bb762'
 #!/bin/bash
 # Non-root ext4 conversion. The running OS stays on its own disk.
 set -Eeuo pipefail
@@ -1274,10 +1296,11 @@ else
     FS_BYTES=$(blockdev --getsize64 "$DEV"); USED_BYTES=0
 fi
 if (( USED_BYTES*2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
-    echo 'WARNING: at least 50% is used. Data preservation is not eligible.'
-    echo 'Choose A for rclone backup/restore, or y to erase this DATA VOLUME and discard all its files.'
+    echo 'WARNING: at least 50% is used; not enough room for same-disk migration.'
+    echo 'A: KEEP ALL FILES using a temporary Volume or rclone remote; guided setup follows.'
+    echo 'y: ERASE this DATA VOLUME and discard all its files.'
     answer=
-    if { exec 3<>/dev/tty; } 2>/dev/null; then read -r -p 'Type A for backup, or y and Enter to erase: ' answer <&3; exec 3>&-; fi
+    if { exec 3<>/dev/tty; } 2>/dev/null; then printf 'Choose A for guided backup, y to ERASE, or Enter to cancel: ' >&3; IFS= read -r answer <&3 || true; exec 3>&-; fi
     case $answer in a|A) MODE=backup; BACKUP=ask;; y) MODE=erase;; *) die 'Cancelled; choose --backup or --erase explicitly.';; esac
 fi
 POOL=${ORIGINAL_UUID,,}; POOL=zfsify_${POOL//-/}; POOL=${POOL:0:23}
@@ -1290,7 +1313,7 @@ lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 echo "$MODE data volume: $DEV on $DISK; final pool $POOL at $DEFAULT_MOUNT"
 case $MODE in
 preserve) echo '[ ext4 ] -> [ smaller ext4 | temporary ZFS ] -> [ ZFS mirror | temporary ZFS ] -> [ full ZFS ]';;
-backup) echo '[ ext4 ] -> [ verified rclone archive elsewhere ] -> [ full ZFS ] -> [ restored data ]';;
+backup) echo '[ ext4 ] -> [ verified archive on separate Volume / remote ] -> [ full ZFS ] -> [ restored data ]';;
 erase) echo '[ ext4: all data discarded ] -> [ empty full-disk ZFS ]';;
 esac
 [[ $MODE != erase ]] || echo 'ERASE: no files from this data volume will be retained.'
@@ -1301,7 +1324,7 @@ phase() { local n=$1 label=$2; shift 2; python3 "$SOURCE/progress.py" run --phas
 phase 2 'Update Ubuntu package indexes' apt-get update
 phase 2 'Install data migration tools' apt-get install -y --no-install-recommends zfsutils-linux gdisk e2fsprogs rsync python3 cloud-guest-utils rclone
 if [[ $MODE = backup ]]; then
-    bash "$SOURCE/backup.sh" configure "$BACKUP" "$WORK/backup" "$DISK"
+    bash "$SOURCE/backup.sh" configure "$BACKUP" "$WORK/backup" "$DISK" "$USED_BYTES"
     export ZFSIFY_BACKUP_CONF=$WORK/backup ZFSIFY_BACKUP_SOURCE=$WORK/old
     export ZFSIFY_BACKUP_TARGET=$WORK/new ZFSIFY_BACKUP_STATE=$WORK ZFSIFY_BACKUP_LOG=$WORK
     export ZFSIFY_BACKUP_DATA=1
@@ -1386,9 +1409,10 @@ systemctl daemon-reload
 systemctl enable "zfsify-volume-grow@$POOL.service"
 phase 10 'Ready: data volume converted' zpool status "$POOL"
 echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
+[[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"
 
-ZFS_ON_BOOT_f05353d3ce69750cff585637c31bcfab58e06857093821d0b7731465864721d2
-cat > "$work/backup.sh" <<'ZFS_ON_BOOT_bbb4bbc73a3b6a01ebf4d4aa9cffca8aced80828661cf0af7cc593d70381459a'
+ZFS_ON_BOOT_5cbb3b74fd48d187b7818609ed823057b4e56e6b2364d86faeb62be8dd9bb762
+cat > "$work/backup.sh" <<'ZFS_ON_BOOT_3c9893dd92a0ee9b419747f9064bb6c2336862f914b24ce9ea267b9808a3fcb5'
 #!/bin/bash
 # Whole-filesystem archive transport. rclone owns all remote configuration.
 set -Eeuo pipefail
@@ -1397,31 +1421,116 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C
 ACTION=${1:?}
 if [[ $ACTION = configure ]]; then
     DEST=${2:?} OUT=${3:?} SOURCE_DISK=${4:?}
+    USED_BYTES=${5:-0}
+    # The same destination checks serve explicit flags and the interactive retry loop.
+    validate_destination() {
+        if [[ $DEST = /* ]]; then
+            DEST=$(realpath -e "$DEST") || return 1
+            [[ -d $DEST ]] || { echo 'Backup volume directory must already exist.' >&2; return 1; }
+            BACKUP_DEV=$(findmnt -n -o SOURCE --target "$DEST")
+            [[ -b $BACKUP_DEV && $(findmnt -n -o FSTYPE --target "$DEST") = ext4 ]] || { echo 'Mount a separate ext4 volume first, then enter its directory (not /dev/...).'; return 1; }
+            mapfile -t BACKUP_DISKS < <(lsblk -snrpo NAME,TYPE "$BACKUP_DEV" | awk '$2=="disk" {print $1}')
+            [[ ${#BACKUP_DISKS[@]} = 1 && ${BACKUP_DISKS[0]} != "$SOURCE_DISK" ]] || { echo "That directory is on the source disk ($SOURCE_DISK). Attach and mount another disk first." >&2; return 1; }
+        else
+            [[ $DEST = *:* && $DEST != :* ]] || { echo 'Use a named rclone remote:path or mounted volume directory.' >&2; return 1; }
+            CONFIG=$(rclone config file | tail -1)
+            [[ -f $CONFIG ]] || { echo 'Run rclone config first (choose option 2).' >&2; return 1; }
+        fi
+    }
     if [[ $DEST = ask ]]; then
-        exec 3<>/dev/tty
-        rclone config <&3 >&3 2>&3
-        rclone listremotes >&3
-        printf 'Backup destination (configured-remote:path or mounted volume directory): ' >&3
-        IFS= read -r DEST <&3
+        if ! { exec 3<>/dev/tty; } 2>/dev/null; then
+            echo 'Interactive backup needs a terminal. Use --backup=/mnt/backup or --backup=remote:path.' >&2
+            exit 1
+        fi
+        while :; do
+            cat >&3 <<EOF
+
+BACKUP SETUP - keep all files from $SOURCE_DISK
+  1) Attached Volume / disk (recommended if your provider offers one)
+     Create a temporary Volume now, or use one already mounted here.
+  2) Configure cloud storage with rclone (S3, SFTP, and others)
+  3) Use an existing rclone remote
+  q) Cancel before conversion
+
+The backup is checksum-verified before erasing $SOURCE_DISK, then restored
+onto ZFS. Keep the destination attached/accessible until conversion is verified.
+EOF
+            if (( USED_BYTES > 0 )); then
+                awk -v n="$USED_BYTES" 'BEGIN {printf "Source currently uses %.1f GB. Plan for at least %.0f GB free at the destination\n(used space + 20%%, rounded up); compression may help, but do not rely on it.\n", n/1e9, int(n*1.2/1e9)+1}' >&3
+            fi
+            printf '\nChoose [1/2/3/q]: ' >&3
+            IFS= read -r choice <&3 || exit 1
+            case $choice in
+                1)
+                    cat >&3 <<EOF
+
+ATTACH A TEMPORARY VOLUME
+  1. Open your provider's storage page and create a Volume in this server's
+     region / availability zone. Attach it to this server.
+  2. For a NEW empty Volume, choose ext4 and mount it using provider instructions.
+     Keep this window open; use a second SSH session for any mount commands.
+     Already have a mounted ext4 disk? Use its directory below.
+
+DigitalOcean: Volumes -> Add Volume -> select this Droplet ->
+  Automatically Format & Mount -> Ext4. Find its directory under /mnt below.
+  https://docs.digitalocean.com/products/volumes/how-to/create/
+  https://docs.digitalocean.com/products/volumes/how-to/mount-unmount/
+Other providers and step-by-step help:
+  https://pirate.github.io/zfsify/docs/backup.html
+
+Only format the NEW backup Volume. $SOURCE_DISK is the source to preserve.
+Do not run zfsify on the backup Volume; it stays ext4 for the rescue OS.
+EOF
+                    while :; do
+                        printf '\nAttached disks (source to convert: %s):\n' "$SOURCE_DISK" >&3
+                        lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS >&3
+                        printf '\nMounted ext4 filesystems and available space:\n' >&3
+                        df -h -t ext4 >&3 || true
+                        printf '\nEnter mounted directory, e.g. /mnt/zfsify_backup\n[Enter = refresh after attaching; q = back]: ' >&3
+                        IFS= read -r DEST <&3 || exit 1
+                        [[ $DEST != q && $DEST != Q ]] || break
+                        [[ -n $DEST ]] || continue
+                        [[ $DEST = /* ]] || { echo 'Enter the absolute mount directory.' >&3; continue; }
+                        validate_destination >&3 2>&3 && break
+                    done
+                    [[ $DEST != q && $DEST != Q ]] || continue
+                    ;;
+                2|3)
+                    cat >&3 <<'EOF'
+
+Use a private destination; the archive includes accounts and credentials.
+Remote setup: https://rclone.org/commands/rclone_config/
+Provider guides: https://rclone.org/overview/
+EOF
+                    if [[ $choice = 2 ]]; then
+                        echo 'Opening rclone config. Create a remote with n; finish with q to return here.' >&3
+                        rclone config <&3 >&3 2>&3 || continue
+                    fi
+                    echo 'Configured remotes:' >&3
+                    rclone listremotes >&3
+                    printf 'Enter remote:folder (e.g. myremote:zfsify-backups), or q to go back: ' >&3
+                    IFS= read -r DEST <&3 || exit 1
+                    [[ $DEST != q && $DEST != Q ]] || continue
+                    validate_destination >&3 2>&3 || continue
+                    ;;
+                q|Q) echo 'Cancelled before conversion.' >&3; exit 1;;
+                *) echo 'Choose 1, 2, 3, or q.' >&3; continue;;
+            esac
+            break
+        done
         exec 3>&-
+    else
+        validate_destination || exit 1
     fi
     mkdir -m 700 -p "$OUT"
     if [[ $DEST = /* ]]; then
-        DEST=$(realpath -e "$DEST")
-        [[ -d $DEST ]] || { echo 'Backup volume directory must already exist.' >&2; exit 1; }
-        BACKUP_DEV=$(findmnt -n -o SOURCE --target "$DEST")
-        [[ -b $BACKUP_DEV && $(findmnt -n -o FSTYPE --target "$DEST") = ext4 ]] || { echo 'Local backup requires a separate ext4 volume.' >&2; exit 1; }
-        mapfile -t BACKUP_DISKS < <(lsblk -snrpo NAME,TYPE "$BACKUP_DEV" | awk '$2=="disk" {print $1}')
-        [[ ${#BACKUP_DISKS[@]} = 1 && ${BACKUP_DISKS[0]} != "$SOURCE_DISK" ]] || { echo 'Backup must be on a different physical disk.' >&2; exit 1; }
         printf "Backup device: %s on %s (separate from %s)\n" "$BACKUP_DEV" "${BACKUP_DISKS[0]}" "$SOURCE_DISK"
+        df -h "$DEST"
         blkid -s UUID -o value "$BACKUP_DEV" > "$OUT/volume-uuid"
         BACKUP_MOUNT=$(findmnt -n -o TARGET --target "$DEST")
         printf '%s' "${DEST#"$BACKUP_MOUNT"}" > "$OUT/volume-subdir"
         : > "$OUT/rclone.conf"
     else
-        [[ $DEST = *:* && $DEST != :* ]] || { echo 'Use a named rclone remote:path or mounted volume directory.' >&2; exit 1; }
-        CONFIG=$(rclone config file | tail -1)
-        [[ -f $CONFIG ]] || { echo 'Run rclone config first.' >&2; exit 1; }
         cp "$CONFIG" "$OUT/rclone.conf"; chmod 600 "$OUT/rclone.conf"
         # Credentials must travel in rclone's configuration, not depend on files
         # that disappear when the source disk is erased.
@@ -1437,6 +1546,8 @@ for remote,config in json.load(sys.stdin).items():
     DEST=${DEST%/}/zfsify-$(date -u +%Y%m%dT%H%M%S)-$(cat /proc/sys/kernel/random/uuid)
     printf '%s' "$DEST" > "$OUT/destination"
     printf 'Backup location: %s\n' "$DEST"
+    echo 'Destination selected. Conversion will copy, read-back verify, reformat, and restore.'
+    echo 'Leave a temporary Volume attached through reboot. It is not deleted automatically.'
     # Verify that the configured remote can be contacted before staging a reboot.
     rclone --config "$OUT/rclone.conf" mkdir "${DEST%/*}"
     rclone --config "$OUT/rclone.conf" lsf "${DEST%/*}" --max-depth 1 >/dev/null
@@ -1478,9 +1589,9 @@ if [[ $ACTION = save ]]; then
     EXPECTED=$(awk '{print $1}' "$HASHDIR/zfsify-backup.sha256")
     [[ $EXPECTED =~ ^[a-f0-9]{64}$ ]]
     ACTUAL=$("${RCLONE[@]}" cat "$DEST/root.tar.gz" | sha256sum | awk '{print $1}')
-    [[ $ACTUAL = "$EXPECTED" ]] || { echo 'Remote backup verification failed; original disk retained.' >&2; exit 1; }
+    [[ $ACTUAL = "$EXPECTED" ]] || { echo 'Backup verification failed; original disk retained.' >&2; exit 1; }
     "${RCLONE[@]}" copyto "$HASHDIR/zfsify-backup.sha256" "$DEST/root.tar.gz.sha256"
-    echo 'Complete offline backup downloaded and checksum-verified; original disk may now be reformatted.'
+    echo 'Complete offline backup read back and checksum-verified; original disk may now be reformatted.'
 elif [[ $ACTION = restore ]]; then
     mkfifo "$HASHDIR/zfsify-restore-hash.pipe"
     sha256sum < "$HASHDIR/zfsify-restore-hash.pipe" > "$HASHDIR/zfsify-restored.sha256" & HASH_PID=$!
@@ -1492,13 +1603,25 @@ elif [[ $ACTION = restore ]]; then
     cmp "$HASHDIR/zfsify-backup.sha256" "$HASHDIR/zfsify-restored.sha256"
     mkdir -p "$LOGDIR"
     cp "$HASHDIR/zfsify-backup.sha256" "$LOGDIR/remote-backup.sha256"
-    printf '%s\n' "$DEST" > "$LOGDIR/remote-backup-location"
-    echo 'Restored remote archive. The remote backup is retained.'
+    cat "$CONF/destination" > "$LOGDIR/remote-backup-location"
+    {
+        printf 'Backup retained at: %s\n' "$(cat "$CONF/destination")"
+        echo 'After conversion finishes, verify your files and applications (and reboot for root conversion).'
+        if [[ -f $CONF/volume-uuid ]]; then
+            printf 'Temporary ext4 Volume UUID: %s\n' "$(cat "$CONF/volume-uuid")"
+            echo 'When satisfied: unmount that Volume, remove its mount configuration if needed,'
+            echo 'then detach and delete it in your provider console to stop storage charges.'
+            echo 'DigitalOcean: https://docs.digitalocean.com/products/volumes/how-to/delete-detach/'
+        else
+            echo 'When satisfied, keep the archive as a backup or remove its unique folder with rclone.'
+        fi
+        echo 'Backup and cleanup guide: https://pirate.github.io/zfsify/docs/backup.html'
+    } | tee "$LOGDIR/backup-next-steps.txt"
 else
     exit 2
 fi
 
-ZFS_ON_BOOT_bbb4bbc73a3b6a01ebf4d4aa9cffca8aced80828661cf0af7cc593d70381459a
+ZFS_ON_BOOT_3c9893dd92a0ee9b419747f9064bb6c2336862f914b24ce9ea267b9808a3fcb5
 cat > "$work/priority.py" <<'ZFS_ON_BOOT_30f084bb342a56cb18894353d441529c4b70c40d8929df99548c01212793b161'
 #!/usr/bin/python3
 """Select complete optional files for erase mode within a conservative RAM budget."""
