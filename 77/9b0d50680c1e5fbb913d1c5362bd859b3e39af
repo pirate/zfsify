@@ -1,0 +1,44 @@
+docs/validation.md
+  s_3dff2a00c4a5b5::t_9578fc4449a29a 16
+docs/recovery.md
+  s_3dff2a00c4a5b5::t_a116064147e0f1 11-38
+scripts/verify-network.py
+  s_3dff2a00c4a5b5::t_97ee6e9701fdb6 1-6,8-71
+  s_3dff2a00c4a5b5::t_c4092fe8ab35b2 7,72-97
+docs/evidence/network-route-replay.txt
+  s_3dff2a00c4a5b5::t_9578fc4449a29a 1-23
+src/network.py
+  s_3dff2a00c4a5b5::t_f783b569028a07 1-58
+CONTRIBUTING.md
+  s_3dff2a00c4a5b5::t_a116064147e0f1 69-74
+README.md
+  s_3dff2a00c4a5b5::t_9f371d28921b95 285-286,288
+src/ram-init.sh
+  s_3dff2a00c4a5b5::t_f783b569028a07 17,20,22-26,80
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_1e707dc4564cb7 1
+install.sh
+  s_3dff2a00c4a5b5::t_22781dc2c158fb 8,324,373-435,452,455,457-461,515,659
+reformat.sh
+  s_3dff2a00c4a5b5::t_a946bc2fabc4ed 8,324,373-435,452,455,457-461,515,659
+scripts/package.py
+  s_3dff2a00c4a5b5::t_7705a8c3f8f798 17
+src/stage.sh
+  s_3dff2a00c4a5b5::t_f06abe1156d3ce 316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "779b0d50680c1e5fbb913d1c5362bd859b3e39af",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
