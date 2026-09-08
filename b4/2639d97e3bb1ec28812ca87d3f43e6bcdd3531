@@ -1,0 +1,54 @@
+scripts/verify.sh
+  s_3dff2a00c4a5b5::t_7a180334e4b40a 37-45
+src/build-rescue.py
+  s_3dff2a00c4a5b5::t_3af167de495ed5 28-37,40
+src/ram-init.sh
+  s_3dff2a00c4a5b5::t_42971dff33b655 15,27
+src/stage.sh
+  s_3dff2a00c4a5b5::t_3af167de495ed5 258,335,346,352
+scripts/package.py
+  s_3dff2a00c4a5b5::t_3af167de495ed5 17
+CONTRIBUTING.md
+  s_3dff2a00c4a5b5::t_ab770649574c6c 71,74-75
+docs/recovery.md
+  s_3dff2a00c4a5b5::t_ab770649574c6c 37-54
+src/zbm-install.sh
+  s_3dff2a00c4a5b5::t_3af167de495ed5 6-8,50,58
+scripts/verify-network.py
+  s_3dff2a00c4a5b5::t_79986f4671dcc4 31,45,62-63
+docs/evidence/boot-portability.txt
+  s_3dff2a00c4a5b5::t_a4c75d872b7006 1-28
+scripts/verify-boot-config.py
+  s_3dff2a00c4a5b5::t_e76456e122b505 38
+  s_3dff2a00c4a5b5::t_79986f4671dcc4 1-37,39-41
+src/network.py
+  s_3dff2a00c4a5b5::t_42971dff33b655 22
+docs/validation.md
+  s_3dff2a00c4a5b5::t_a4c75d872b7006 17
+src/boot-config.py
+  s_3dff2a00c4a5b5::t_42971dff33b655 1-44
+src/target.sh
+  s_3dff2a00c4a5b5::t_3af167de495ed5 28
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_83eb850878aeef 1
+install.sh
+  s_3dff2a00c4a5b5::t_61c61344dee50b 8,266,343,354,360,375-376,398,436-484,499,511,708-709,737,800,1163,1191-1200,1203,1219-1220,1226-1228,1270,1278,1288
+reformat.sh
+  s_3dff2a00c4a5b5::t_dab617fcb03bc7 8,266,343,354,360,375-376,398,436-484,499,511,708-709,737,800,1163,1191-1200,1203,1219-1220,1226-1228,1270,1278,1288
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "b42639d97e3bb1ec28812ca87d3f43e6bcdd3531",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
