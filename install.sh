@@ -5,7 +5,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; e
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_97c0f683c289bc118e91c7564c9d969f7bf5a5630c85f11e910ffcfdf34b750c'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_f4ffb28e2f20baaf08612cf0906bc725dbaeaffdaf13d915407235b3c083904d'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -303,12 +303,15 @@ cp "$SOURCE/ram-init.sh" "$ROOT/init"
 chmod 755 "$ROOT/init"
 # Capture address/route state as shell commands selected by MAC, not guessed eth0.
 python3 - "$ROOT/etc/zfs-on-boot/network.sh" <<'PY'
-import json, subprocess, sys, shlex
+import json, os, subprocess, sys, shlex
 def ip(*args): return json.loads(subprocess.check_output(['ip','-j',*args]))
 q=shlex.quote
 lines=['#!/bin/bash', 'set -eu', 'ip link set lo up']
 for link in ip('address','show'):
     if link['ifname']=='lo' or not link.get('address'): continue
+    # RAM boot recreates hardware NICs, not the installed OS's Docker bridges,
+    # veth pairs or other software interfaces.
+    if not os.path.exists('/sys/class/net/'+link['ifname']+'/device'): continue
     name=link['ifname']; mac=link['address']
     lines += [f"iface=$(for p in /sys/class/net/*; do if [ \"$(cat \"$p/address\")\" = {q(mac)} ]; then basename \"$p\"; break; fi; done)", '[ -n "$iface" ]', 'ip link set "$iface" up']
     for addr in link.get('addr_info',[]):
@@ -373,7 +376,7 @@ echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM instal
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_97c0f683c289bc118e91c7564c9d969f7bf5a5630c85f11e910ffcfdf34b750c
+ZFS_ON_BOOT_f4ffb28e2f20baaf08612cf0906bc725dbaeaffdaf13d915407235b3c083904d
 cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_491886382d7bc5107634e77dade50ada29953bc6a5f8c0a6d2e669aaaee32257'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
@@ -1385,7 +1388,7 @@ phase 10 'Ready: data volume converted' zpool status "$POOL"
 echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
 
 ZFS_ON_BOOT_f05353d3ce69750cff585637c31bcfab58e06857093821d0b7731465864721d2
-cat > "$work/backup.sh" <<'ZFS_ON_BOOT_b74f7767adb89d6baff8e05fad3372d1ce4b8ca254e257201672125a6b7f90a5'
+cat > "$work/backup.sh" <<'ZFS_ON_BOOT_bbb4bbc73a3b6a01ebf4d4aa9cffca8aced80828661cf0af7cc593d70381459a'
 #!/bin/bash
 # Whole-filesystem archive transport. rclone owns all remote configuration.
 set -Eeuo pipefail
@@ -1481,7 +1484,9 @@ if [[ $ACTION = save ]]; then
 elif [[ $ACTION = restore ]]; then
     mkfifo "$HASHDIR/zfsify-restore-hash.pipe"
     sha256sum < "$HASHDIR/zfsify-restore-hash.pipe" > "$HASHDIR/zfsify-restored.sha256" & HASH_PID=$!
-    "${RCLONE[@]}" cat "$DEST/root.tar.gz" | tee "$HASHDIR/zfsify-restore-hash.pipe" | gzip -dc | tar --numeric-owner --same-owner --acls --xattrs -xpf - -C "$NEW"
+    # Include system namespaces too: Docker overlay metadata and file capabilities
+    # must survive; tar otherwise restores only user.* extended attributes.
+    "${RCLONE[@]}" cat "$DEST/root.tar.gz" | tee "$HASHDIR/zfsify-restore-hash.pipe" | gzip -dc | tar --numeric-owner --same-owner --acls --xattrs --xattrs-include='*' -xpf - -C "$NEW"
     wait "$HASH_PID"
     rm "$HASHDIR/zfsify-restore-hash.pipe"
     cmp "$HASHDIR/zfsify-backup.sha256" "$HASHDIR/zfsify-restored.sha256"
@@ -1493,7 +1498,7 @@ else
     exit 2
 fi
 
-ZFS_ON_BOOT_b74f7767adb89d6baff8e05fad3372d1ce4b8ca254e257201672125a6b7f90a5
+ZFS_ON_BOOT_bbb4bbc73a3b6a01ebf4d4aa9cffca8aced80828661cf0af7cc593d70381459a
 cat > "$work/priority.py" <<'ZFS_ON_BOOT_30f084bb342a56cb18894353d441529c4b70c40d8929df99548c01212793b161'
 #!/usr/bin/python3
 """Select complete optional files for erase mode within a conservative RAM budget."""

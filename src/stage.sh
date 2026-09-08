@@ -295,12 +295,15 @@ cp "$SOURCE/ram-init.sh" "$ROOT/init"
 chmod 755 "$ROOT/init"
 # Capture address/route state as shell commands selected by MAC, not guessed eth0.
 python3 - "$ROOT/etc/zfs-on-boot/network.sh" <<'PY'
-import json, subprocess, sys, shlex
+import json, os, subprocess, sys, shlex
 def ip(*args): return json.loads(subprocess.check_output(['ip','-j',*args]))
 q=shlex.quote
 lines=['#!/bin/bash', 'set -eu', 'ip link set lo up']
 for link in ip('address','show'):
     if link['ifname']=='lo' or not link.get('address'): continue
+    # RAM boot recreates hardware NICs, not the installed OS's Docker bridges,
+    # veth pairs or other software interfaces.
+    if not os.path.exists('/sys/class/net/'+link['ifname']+'/device'): continue
     name=link['ifname']; mac=link['address']
     lines += [f"iface=$(for p in /sys/class/net/*; do if [ \"$(cat \"$p/address\")\" = {q(mac)} ]; then basename \"$p\"; break; fi; done)", '[ -n "$iface" ]', 'ip link set "$iface" up']
     for addr in link.get('addr_info',[]):

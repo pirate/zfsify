@@ -93,7 +93,9 @@ if [[ $ACTION = save ]]; then
 elif [[ $ACTION = restore ]]; then
     mkfifo "$HASHDIR/zfsify-restore-hash.pipe"
     sha256sum < "$HASHDIR/zfsify-restore-hash.pipe" > "$HASHDIR/zfsify-restored.sha256" & HASH_PID=$!
-    "${RCLONE[@]}" cat "$DEST/root.tar.gz" | tee "$HASHDIR/zfsify-restore-hash.pipe" | gzip -dc | tar --numeric-owner --same-owner --acls --xattrs -xpf - -C "$NEW"
+    # Include system namespaces too: Docker overlay metadata and file capabilities
+    # must survive; tar otherwise restores only user.* extended attributes.
+    "${RCLONE[@]}" cat "$DEST/root.tar.gz" | tee "$HASHDIR/zfsify-restore-hash.pipe" | gzip -dc | tar --numeric-owner --same-owner --acls --xattrs --xattrs-include='*' -xpf - -C "$NEW"
     wait "$HASH_PID"
     rm "$HASHDIR/zfsify-restore-hash.pipe"
     cmp "$HASHDIR/zfsify-backup.sha256" "$HASHDIR/zfsify-restored.sha256"
