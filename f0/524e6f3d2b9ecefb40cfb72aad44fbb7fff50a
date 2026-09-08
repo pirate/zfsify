@@ -1,0 +1,27 @@
+src/backup.sh
+  s_3dff2a00c4a5b5::t_d36b9132bfed83 96-98
+src/stage.sh
+  s_3dff2a00c4a5b5::t_b77f1acec21909 298,304-306
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_83cddef57fe781 1
+install.sh
+  s_3dff2a00c4a5b5::t_3c964d201276dd 8,306,312-314,379,1391,1487-1489,1501
+reformat.sh
+  s_3dff2a00c4a5b5::t_c760e2d0e7dbe5 8,306,312-314,379,1391,1487-1489,1501
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.2",
+  "base_commit_sha": "f0524e6f3d2b9ecefb40cfb72aad44fbb7fff50a",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
