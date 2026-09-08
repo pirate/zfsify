@@ -8,6 +8,34 @@ therefore provide an environment to repair an Ubuntu installation that cannot bo
 Keep provider backups or an independent backup too. Root snapshots share the
 same disk and do not protect against loss of that disk or its firmware partition.
 
+## Network failure before disk migration
+
+`Nexthop has invalid gateway` followed by failure at the `network.sh` step means
+the RAM environment could not restore routing. This step runs **before any disk
+resize, formatting, or data migration**. See [issue #1](https://github.com/pirate/zfsify/issues/1).
+
+For that specific early failure, save the console output, then run `reboot -f`
+from the RAM console. The installer uses a one-time GRUB entry; select the normal
+Ubuntu entry if the boot menu appears. Do not use this procedure for a failure
+after migration has started.
+
+Once back in the original Ubuntu with `/` mounted as ext4, preserve the staging
+log and remove only the failed installer staging files before retrying:
+
+```sh
+findmnt -no SOURCE,FSTYPE /
+sudo cp /var/lib/zfs-on-boot/stage.log /root/zfsify-failed-stage.log
+sudo rm -f /etc/grub.d/41_zfs_on_boot
+sudo update-grub
+sudo rm -rf -- /var/lib/zfs-on-boot /boot/zfs-on-boot
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
+```
+
+The installer captures the server's current routes. Direct routes, including
+gateway host routes for `/32` addresses, are restored before routes through a
+gateway. Interface matching uses MAC addresses rather than provider-specific
+interface names or hardcoded gateways.
+
 ## Create recovery points
 
 zfsify creates `@zfsify-installed` after conversion, takes daily root snapshots

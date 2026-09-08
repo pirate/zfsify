@@ -1,0 +1,23 @@
+RAM route replay regression — 2026-09-08
+Environment: disposable DigitalOcean Ubuntu 24.04 amd64, 512 MiB plan
+Kernel: 6.8.0-124-generic
+Installer SHA-256: 4e7ac77c424febe23ae7a2c81539cac71c02bf5346c14b98251dd1ff18e8428b
+Command on VM: python3 scripts/verify-network.py
+
+PASS: IPv4 /32 with DHCP gateway host route (kernel route lookup and repeat replay)
+PASS: IPv4 /32 with kernel gateway host route (kernel route lookup and repeat replay)
+PASS: IPv4 directly connected /24 gateway (kernel route lookup and repeat replay)
+PASS: IPv4 /32 explicitly onlink gateway (kernel route lookup and repeat replay)
+PASS: IPv6 /128 with gateway host route (kernel route lookup and repeat replay)
+PASS: IPv6 /128 explicitly onlink gateway (kernel route lookup and repeat replay)
+PASS: live capture of 2 hardware NICs; MAC matching after rename, IPv4/IPv6 replay
+
+The /32 host-route cases reproduce "Nexthop has invalid gateway" when the
+default is restored first. The generated script restores the same captured
+state successfully and preserves route lookup, preferred source, metric, and
+onlink behavior. Test namespaces are removed after each case.
+
+Packaged installer --help, POSIX shell parsing, and ram-init.sh Bash parsing
+also passed on this VM. No installer runtime tests ran on the workstation.
+Scope: Linux networking regression and packaging; no complete conversion or
+Hetzner-hosted boot validation was performed for this patch.

@@ -66,6 +66,12 @@ first-boot templates require evidence for their own behavior. Run only checks
 appropriate to the change; record failures and limitations rather than broadening
 a success claim to untested layouts.
 
+For RAM networking changes, copy the checkout to a disposable DigitalOcean VM and
+run `sudo python3 scripts/verify-network.py` there. It exercises IPv4/IPv6 gateway
+dependencies, connected subnets, `onlink`, and replay after NIC renaming in
+isolated network namespaces. It also captures the VM's actual NICs and routes;
+it does not change the host's network or test a complete conversion.
+
 `scripts/verify-snapshot.sh` is an additional owned-Droplet check: it creates a
 snapshot and clone, verifies their contents, and removes those test objects.
 When reporting a completed run, include the installer checksum, Ubuntu image,

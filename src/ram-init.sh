@@ -14,11 +14,16 @@ mount -t tmpfs -o mode=755 tmpfs /run
 mount -t devpts devpts /dev/pts
 exec </dev/tty0 >/dev/tty0 2>&1
 set -Eeuo pipefail
+MIGRATION_STARTED=0
 rescue() {
     trap - ERR
-    echo "INSTALLATION FAILED at line $1. RAM rescue remains available over SSH."
+    echo "INSTALLATION FAILED at line $1. Use the provider console; SSH requires working networking."
     echo 'Run zfs-on-boot-status; logs: /run/zfs-on-boot.log and /var/log/zfs-on-boot/progress.log.'
-    echo 'Do not reboot after source removal. Use the provider console if SSH is unavailable.'
+    if [[ $MIGRATION_STARTED = 0 ]]; then
+        echo 'Disk migration has not started. Rebooting returns to the original Ubuntu boot entry.'
+    else
+        echo 'Do not reboot after source removal. Inspect the migration logs before taking action.'
+    fi
     while true; do /bin/bash </dev/tty0 >/dev/tty0 2>&1 || true; sleep 2; done
 }
 trap 'rescue "$LINENO"' ERR
@@ -72,6 +77,7 @@ part() { local name; while read -r name; do [[ $(cat "/sys/class/block/${name##*
 [[ -z $(zpool list -H -o name 2>/dev/null) ]]
 echo "Independent RAM OS ready. Mode: $MODE. Devices: $DEVICES"
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
+MIGRATION_STARTED=1
 if [[ $MODE = preserve ]]; then
     . /etc/zfs-on-boot/plan.env
     # Free staging space only after this archive has successfully booted into RAM.

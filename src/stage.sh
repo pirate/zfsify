@@ -313,32 +313,7 @@ cp "$SOURCE/identity.py" "$ROOT/etc/zfs-on-boot/identity.py"
 cp "$SOURCE/ram-init.sh" "$ROOT/init"
 chmod 755 "$ROOT/init"
 # Capture address/route state as shell commands selected by MAC, not guessed eth0.
-python3 - "$ROOT/etc/zfs-on-boot/network.sh" <<'PY'
-import json, os, subprocess, sys, shlex
-def ip(*args): return json.loads(subprocess.check_output(['ip','-j',*args]))
-q=shlex.quote
-lines=['#!/bin/bash', 'set -eu', 'ip link set lo up']
-for link in ip('address','show'):
-    if link['ifname']=='lo' or not link.get('address'): continue
-    # RAM boot recreates hardware NICs, not the installed OS's Docker bridges,
-    # veth pairs or other software interfaces.
-    if not os.path.exists('/sys/class/net/'+link['ifname']+'/device'): continue
-    name=link['ifname']; mac=link['address']
-    lines += [f"iface=$(for p in /sys/class/net/*; do if [ \"$(cat \"$p/address\")\" = {q(mac)} ]; then basename \"$p\"; break; fi; done)", '[ -n "$iface" ]', 'ip link set "$iface" up']
-    for addr in link.get('addr_info',[]):
-        if addr['scope']=='global':
-            lines.append(f"ip addr replace {q(addr['local']+'/'+str(addr['prefixlen']))} dev \"$iface\"")
-    for fam in ['-4','-6']:
-        for route in ip(fam,'route','show','dev',name):
-            if route.get('protocol')=='kernel' or route.get('dst','').startswith('fe80:'): continue
-            cmd=f"ip {fam} route replace {q(route.get('dst','default'))}"
-            if 'gateway' in route: cmd+=' via '+q(route['gateway'])
-            cmd+=' dev "$iface"'
-            if 'metric' in route: cmd+=' metric '+str(route['metric'])
-            if 'onlink' in route.get('flags',[]): cmd+=' onlink'
-            lines.append(cmd)
-open(sys.argv[1],'w').write('\n'.join(lines)+'\n')
-PY
+python3 "$SOURCE/network.py" "$ROOT/etc/zfs-on-boot/network.sh"
 chmod 700 "$ROOT/etc/zfs-on-boot/network.sh"
 KERNEL=$(ls "$ROOT"/boot/vmlinuz-* | sort -V | tail -1)
 KVER=${KERNEL##*/vmlinuz-}

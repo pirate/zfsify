@@ -282,9 +282,10 @@ zfs-on-boot-status
 zfs-on-boot-status --once
 ```
 
-If migration fails, the RAM environment keeps SSH and a provider-console shell
-available for inspection. **Avoid rebooting after the source filesystem has been
+If migration fails, use the provider-console shell; SSH is available when the
+RAM environment has working networking. **Avoid rebooting after the source filesystem has been
 removed**, since the RAM environment may be the only working system at that point.
+For a network failure before disk migration starts, see [early recovery](docs/recovery.md#network-failure-before-disk-migration).
 
 | Stage | Logs |
 |---|---|

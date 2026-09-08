@@ -5,7 +5,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; e
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_5e80bc4dc662423d8b75807195b57dcba2b03e130dc95c8915723b735d7dc1a2'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_529264478a71fc4219d0e912258f854490fc376dd154589ba7d60f6dc62a5bed'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -321,32 +321,7 @@ cp "$SOURCE/identity.py" "$ROOT/etc/zfs-on-boot/identity.py"
 cp "$SOURCE/ram-init.sh" "$ROOT/init"
 chmod 755 "$ROOT/init"
 # Capture address/route state as shell commands selected by MAC, not guessed eth0.
-python3 - "$ROOT/etc/zfs-on-boot/network.sh" <<'PY'
-import json, os, subprocess, sys, shlex
-def ip(*args): return json.loads(subprocess.check_output(['ip','-j',*args]))
-q=shlex.quote
-lines=['#!/bin/bash', 'set -eu', 'ip link set lo up']
-for link in ip('address','show'):
-    if link['ifname']=='lo' or not link.get('address'): continue
-    # RAM boot recreates hardware NICs, not the installed OS's Docker bridges,
-    # veth pairs or other software interfaces.
-    if not os.path.exists('/sys/class/net/'+link['ifname']+'/device'): continue
-    name=link['ifname']; mac=link['address']
-    lines += [f"iface=$(for p in /sys/class/net/*; do if [ \"$(cat \"$p/address\")\" = {q(mac)} ]; then basename \"$p\"; break; fi; done)", '[ -n "$iface" ]', 'ip link set "$iface" up']
-    for addr in link.get('addr_info',[]):
-        if addr['scope']=='global':
-            lines.append(f"ip addr replace {q(addr['local']+'/'+str(addr['prefixlen']))} dev \"$iface\"")
-    for fam in ['-4','-6']:
-        for route in ip(fam,'route','show','dev',name):
-            if route.get('protocol')=='kernel' or route.get('dst','').startswith('fe80:'): continue
-            cmd=f"ip {fam} route replace {q(route.get('dst','default'))}"
-            if 'gateway' in route: cmd+=' via '+q(route['gateway'])
-            cmd+=' dev "$iface"'
-            if 'metric' in route: cmd+=' metric '+str(route['metric'])
-            if 'onlink' in route.get('flags',[]): cmd+=' onlink'
-            lines.append(cmd)
-open(sys.argv[1],'w').write('\n'.join(lines)+'\n')
-PY
+python3 "$SOURCE/network.py" "$ROOT/etc/zfs-on-boot/network.sh"
 chmod 700 "$ROOT/etc/zfs-on-boot/network.sh"
 KERNEL=$(ls "$ROOT"/boot/vmlinuz-* | sort -V | tail -1)
 KVER=${KERNEL##*/vmlinuz-}
@@ -395,8 +370,69 @@ echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM instal
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_5e80bc4dc662423d8b75807195b57dcba2b03e130dc95c8915723b735d7dc1a2
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_491886382d7bc5107634e77dade50ada29953bc6a5f8c0a6d2e669aaaee32257'
+ZFS_ON_BOOT_529264478a71fc4219d0e912258f854490fc376dd154589ba7d60f6dc62a5bed
+cat > "$work/network.py" <<'ZFS_ON_BOOT_7e06ed43c7d45717e7ac3695133ed133e5be02f0bc1a474af8891d2edd7810f6'
+#!/usr/bin/env python3
+"""Capture hardware NIC addresses and main-table routes for the RAM installer."""
+import json
+from pathlib import Path
+import shlex
+import subprocess
+import sys
+
+
+def ip(*args):
+    return json.loads(subprocess.check_output(['ip', '-j', *args]))
+
+
+def render(links, routes):
+    q = shlex.quote
+    lines = ['#!/bin/bash', 'set -eu', 'ip link set lo up']
+    for link in links:
+        name, mac = link['ifname'], link['address']
+        lines += [
+            f'iface=$(for p in /sys/class/net/*; do if [ "$(cat "$p/address")" = {q(mac)} ]; then basename "$p"; break; fi; done)',
+            '[ -n "$iface" ]',
+            'ip link set "$iface" up',
+        ]
+        for addr in link.get('addr_info', []):
+            if addr['scope'] == 'global':
+                lines.append(f'ip addr replace {q(addr["local"] + "/" + str(addr["prefixlen"]))} dev "$iface"')
+        for family in ['-4', '-6']:
+            # ip route show usually lists the default first. With a /32 address,
+            # its gateway needs an explicit direct route before a via route works.
+            # Keep kernel-protocol host routes too: adding the address alone does
+            # not recreate a provider gateway outside the address's own prefix.
+            for route in sorted(routes[(name, family)], key=lambda r: 'gateway' in r):
+                if route.get('dst', '').startswith('fe80:'):
+                    continue
+                cmd = f'ip {family} route replace {q(route.get("dst", "default"))}'
+                if 'gateway' in route:
+                    cmd += ' via ' + q(route['gateway'])
+                cmd += ' dev "$iface"'
+                if 'scope' in route:
+                    cmd += ' scope ' + q(route['scope'])
+                if 'prefsrc' in route:
+                    cmd += ' src ' + q(route['prefsrc'])
+                if 'metric' in route:
+                    cmd += ' metric ' + str(route['metric'])
+                if 'onlink' in route.get('flags', []):
+                    cmd += ' onlink'
+                lines.append(cmd)
+    return '\n'.join(lines) + '\n'
+
+
+if __name__ == '__main__':
+    # RAM boot recreates hardware NICs, not Docker bridges or veth pairs.
+    links = [link for link in ip('address', 'show')
+             if link['ifname'] != 'lo' and link.get('address')
+             and Path('/sys/class/net', link['ifname'], 'device').exists()]
+    routes = {(link['ifname'], family): ip(family, 'route', 'show', 'dev', link['ifname'])
+              for link in links for family in ['-4', '-6']}
+    Path(sys.argv[1]).write_text(render(links, routes))
+
+ZFS_ON_BOOT_7e06ed43c7d45717e7ac3695133ed133e5be02f0bc1a474af8891d2edd7810f6
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_4eddd803492d1cc7be5c02c78beec23c9d9453066d7134b53cd9f9460bde2347'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -413,11 +449,16 @@ mount -t tmpfs -o mode=755 tmpfs /run
 mount -t devpts devpts /dev/pts
 exec </dev/tty0 >/dev/tty0 2>&1
 set -Eeuo pipefail
+MIGRATION_STARTED=0
 rescue() {
     trap - ERR
-    echo "INSTALLATION FAILED at line $1. RAM rescue remains available over SSH."
+    echo "INSTALLATION FAILED at line $1. Use the provider console; SSH requires working networking."
     echo 'Run zfs-on-boot-status; logs: /run/zfs-on-boot.log and /var/log/zfs-on-boot/progress.log.'
-    echo 'Do not reboot after source removal. Use the provider console if SSH is unavailable.'
+    if [[ $MIGRATION_STARTED = 0 ]]; then
+        echo 'Disk migration has not started. Rebooting returns to the original Ubuntu boot entry.'
+    else
+        echo 'Do not reboot after source removal. Inspect the migration logs before taking action.'
+    fi
     while true; do /bin/bash </dev/tty0 >/dev/tty0 2>&1 || true; sleep 2; done
 }
 trap 'rescue "$LINENO"' ERR
@@ -471,6 +512,7 @@ part() { local name; while read -r name; do [[ $(cat "/sys/class/block/${name##*
 [[ -z $(zpool list -H -o name 2>/dev/null) ]]
 echo "Independent RAM OS ready. Mode: $MODE. Devices: $DEVICES"
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
+MIGRATION_STARTED=1
 if [[ $MODE = preserve ]]; then
     . /etc/zfs-on-boot/plan.env
     # Free staging space only after this archive has successfully booted into RAM.
@@ -614,7 +656,7 @@ echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_491886382d7bc5107634e77dade50ada29953bc6a5f8c0a6d2e669aaaee32257
+ZFS_ON_BOOT_4eddd803492d1cc7be5c02c78beec23c9d9453066d7134b53cd9f9460bde2347
 cat > "$work/target.sh" <<'ZFS_ON_BOOT_7c3138cbab8a048de8971e39a8b5ca24917e2907f5115c91ddd96ff6920c9c57'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
