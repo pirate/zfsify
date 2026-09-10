@@ -5,22 +5,28 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?source directory required}
 shift
-MODE=preserve
+MODE=auto
 TARGET=/
 BACKUP=
 MODE_COUNT=0
 TARGET_COUNT=0
 for arg in "$@"; do
     case "$arg" in
+        --auto) MODE=auto; MODE_COUNT=$((MODE_COUNT+1)) ;;
+        --preserve) MODE=preserve; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --inplace) MODE=inplace; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup) MODE=backup; BACKUP=ask; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
-Default: preserve your installation or data in place when less than 50% is used.
+Default: detect the disk and choose a data-preserving strategy.
+Automatic 50/50 and slice-by-slice accept Enter or 15 seconds idle.
+Backup fallback waits for input; explicit flags skip strategy prompts.
+  --preserve               Request the 50/50 copy-and-verify strategy.
+  --auto                   Choose automatically (the default).
   --backup                 Guide me through a temporary Volume or rclone remote.
   --backup=/mnt/backup     Use a mounted, separate ext4 disk without prompts.
   --backup=myremote:path   Use an existing root-user rclone configuration.
@@ -96,10 +102,6 @@ fi
 [[ $ARCH != arm64 || $FIRMWARE = uefi ]] || die 'ARM64 root conversion requires UEFI firmware (not a board-specific U-Boot boot chain).'
 BOOT_PACKAGES=(grub2-common)
 [[ $FIRMWARE != bios ]] || BOOT_PACKAGES+=(grub-pc-bin extlinux syslinux-common)
-if [[ $MODE = inplace && $FIRMWARE = uefi ]]; then
-    [[ $ARCH != arm64 ]] || BOOT_PACKAGES+=(grub-efi-arm64-bin)
-    [[ $ARCH != amd64 ]] || BOOT_PACKAGES+=(grub-efi-amd64-bin)
-fi
 [[ -f /boot/grub/grub.cfg ]] || die 'GRUB is required.'
 [[ $(findmnt -n -o FSTYPE /) = ext4 ]] || die 'Only a plain ext4 root partition is supported.'
 [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 450000 ]] || die 'At least 512 MiB RAM is required; the compressed rescue size is checked before reboot.'
@@ -118,25 +120,6 @@ read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
 echo "Detected Ubuntu $VERSION_ID | $ARCH | $FIRMWARE boot"
 echo "Root filesystem: $ROOTDEV on $DISK | used $USED_PCT% ($USED_BYTES / $FS_BYTES bytes)"
-if (( USED_BYTES * 2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
-    cat <<'EOF'
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! ROOT IS AT LEAST 50% USED: not enough room for same-disk migration. !!
-!! A: KEEP ALL FILES via a temporary Volume or rclone remote.          !!
-!!    Guided setup -> backup -> verify -> format ZFS -> restore.       !!
-!! B: ERASE for fresh Ubuntu with a limited priority restore.          !!
-!!    Only B discards applications/data outside the restore budget.   !!
-!!    /etc, users, SSH keys and basic settings are retained with B.    !!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-EOF
-    answer=
-    if { exec 3<>/dev/tty; } 2>/dev/null; then
-        printf 'Choose A to keep everything (guided backup), B (or y) to ERASE, or Enter to cancel: ' >&3
-        IFS= read -r answer <&3 || true
-        exec 3>&-
-    fi
-    case $answer in a|A) MODE=backup; BACKUP=ask;; b|B|y) MODE=erase;; *) die 'Cancelled. Use --backup=remote:path or --erase to choose explicitly.';; esac
-fi
 [[ $(df -Pk /boot | awk 'NR==2 {print $4}') -ge 500000 ]] || die 'At least 500 MB free in /boot is required.'
 [[ $(df -Pk / | awk 'NR==2 {print $4}') -ge 3500000 ]] || die 'At least 3.5 GB free disk space is required for staging, including erase mode.'
 [[ $(blockdev --getsize64 "$DISK") -ge 10000000000 ]] || die 'At least a 10 GB disk is required.'
@@ -145,7 +128,7 @@ fi
 [[ ! -e $WORK ]] || die "$WORK already exists. Inspect it before retrying; use the documented cleanup procedure."
 [[ ! -d /boot/zfs-on-boot ]] || die 'Old boot staging files exist; inspect them before retrying.'
 # Refuse layouts containing data that the root-only copy would miss.
-if [[ $MODE != erase ]]; then
+validate_layout() {
     while read -r target fstype; do
         case "$fstype" in ext4|ext3|ext2|xfs|btrfs|zfs|vfat|ntfs|fuse.*)
             if [[ $target != / && $target != /boot && $target != /boot/efi ]]; then
@@ -160,7 +143,37 @@ if [[ $MODE != erase ]]; then
     done < <(findmnt -rn -o TARGET,FSTYPE)
     sfdisk --json "$DISK" > "$SOURCE/table.json"
     python3 "$SOURCE/plan.py" "$SOURCE/table.json" "$ROOTDEV" "$(findmnt -n -o SOURCE --target /boot)" "$(findmnt -n -o SOURCE --target /boot/efi 2>/dev/null || true)" > "$SOURCE/plan.env"
+}
+[[ $MODE = erase ]] || validate_layout
+PRESERVE_CAPACITY=0
+INPLACE_CAPACITY=0
+TOTAL_USED=$USED_BYTES
+if [[ $MODE != erase ]]; then
+    . "$SOURCE/plan.env"
+    BOOT_USED=0
+    [[ $BOOT_MOUNT != /boot ]] || BOOT_USED=$(df -B1 --output=used /boot | tail -1)
+    TOTAL_USED=$((USED_BYTES+BOOT_USED))
+    PRESERVE_CAPACITY=$(( (SPLIT-ROOT_START)*512-1048576 ))
+    TAIL_CAPACITY=$(( (ROOT_END-SPLIT+1)*512 ))
+    (( PRESERVE_CAPACITY <= TAIL_CAPACITY )) || PRESERVE_CAPACITY=$TAIL_CAPACITY
+    COPY_END=$(( (ROOT_END+1)/2048*2048-2097152-1 ))
+    IMAGE_START=$ROOT_START
+    (( IMAGE_START >= 1050624 )) || IMAGE_START=1050624
+    INPLACE_CAPACITY=$(( (COPY_END-IMAGE_START+1)*512-1048576 ))
 fi
+python3 "$SOURCE/boot-config.py" "$SOURCE/boot-preview"
+echo "Preserved Ubuntu boot arguments: $(cat "$SOURCE/boot-preview/cmdline-ubuntu")"
+echo 'CPU/PCI/I/O/display kernel arguments and existing sysctl/modprobe configuration are retained.'
+echo 'Active network links/addresses are captured for the RAM rescue; installed network configuration is preserved.'
+ip -brief address
+EXPLICIT=()
+[[ $MODE = auto ]] || EXPLICIT=(--explicit)
+while :; do
+python3 "$SOURCE/strategy.py" menu "${EXPLICIT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
+    --preserve-capacity "$PRESERVE_CAPACITY" --inplace-capacity "$INPLACE_CAPACITY" \
+    --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
+mapfile -t SELECTION < "$SOURCE/selection"
+MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
 if [[ $MODE = preserve ]]; then
@@ -212,15 +225,19 @@ Live status includes logical copy bytes, MB/s and block-device IOPS.
 SSH disconnects at reboot. Reconnect and run: zfs-on-boot-status
 Package/metadata phases have no meaningful byte total and show n/a.
 EOF
-for (( remaining=15; remaining>0; remaining-- )); do
-    printf '\rStarting %s in %2ds. Press Ctrl-C to cancel. ' "$MODE" "$remaining"
-    sleep 1
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${EXPLICIT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
+[[ $REVIEW != 1 ]] || break
 done
-printf '\n'
+# Ensure a preserving strategy has a validated partition plan.
+[[ $MODE = erase || -s $SOURCE/plan.env ]] || validate_layout
+if [[ $MODE = inplace && $FIRMWARE = uefi ]]; then
+    [[ $ARCH != arm64 ]] || BOOT_PACKAGES+=(grub-efi-arm64-bin)
+    [[ $ARCH != amd64 ]] || BOOT_PACKAGES+=(grub-efi-amd64-bin)
+fi
 mkdir -m 700 "$WORK"
 exec > >(tee -a "$WORK/stage.log") 2>&1
 trap 'echo "Staging failed at line $LINENO; the disk has NOT been erased. See /var/lib/zfs-on-boot/stage.log."' ERR
-phase 1 'Preflight passed; permission and countdown complete' true
+phase 1 'Preflight passed; migration strategy selected' true
 cleanup_swap() { [[ ! -f $WORK/staging.swap ]] || swapoff "$WORK/staging.swap" 2>/dev/null || true; }
 trap cleanup_swap EXIT
 if [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -lt 750000 ]]; then

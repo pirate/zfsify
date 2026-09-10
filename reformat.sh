@@ -5,7 +5,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; e
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_073a047c66d671d4fe3f8359baa44608e2b9c0fbf375fb4f54f4d3899c1b0215'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_c602468291242e53a62175bf071ce027ce088ab7252f2f455c2112cc25353f7c'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -13,22 +13,28 @@ export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 export DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?source directory required}
 shift
-MODE=preserve
+MODE=auto
 TARGET=/
 BACKUP=
 MODE_COUNT=0
 TARGET_COUNT=0
 for arg in "$@"; do
     case "$arg" in
+        --auto) MODE=auto; MODE_COUNT=$((MODE_COUNT+1)) ;;
+        --preserve) MODE=preserve; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --inplace) MODE=inplace; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup) MODE=backup; BACKUP=ask; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
-Default: preserve your installation or data in place when less than 50% is used.
+Default: detect the disk and choose a data-preserving strategy.
+Automatic 50/50 and slice-by-slice accept Enter or 15 seconds idle.
+Backup fallback waits for input; explicit flags skip strategy prompts.
+  --preserve               Request the 50/50 copy-and-verify strategy.
+  --auto                   Choose automatically (the default).
   --backup                 Guide me through a temporary Volume or rclone remote.
   --backup=/mnt/backup     Use a mounted, separate ext4 disk without prompts.
   --backup=myremote:path   Use an existing root-user rclone configuration.
@@ -104,10 +110,6 @@ fi
 [[ $ARCH != arm64 || $FIRMWARE = uefi ]] || die 'ARM64 root conversion requires UEFI firmware (not a board-specific U-Boot boot chain).'
 BOOT_PACKAGES=(grub2-common)
 [[ $FIRMWARE != bios ]] || BOOT_PACKAGES+=(grub-pc-bin extlinux syslinux-common)
-if [[ $MODE = inplace && $FIRMWARE = uefi ]]; then
-    [[ $ARCH != arm64 ]] || BOOT_PACKAGES+=(grub-efi-arm64-bin)
-    [[ $ARCH != amd64 ]] || BOOT_PACKAGES+=(grub-efi-amd64-bin)
-fi
 [[ -f /boot/grub/grub.cfg ]] || die 'GRUB is required.'
 [[ $(findmnt -n -o FSTYPE /) = ext4 ]] || die 'Only a plain ext4 root partition is supported.'
 [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 450000 ]] || die 'At least 512 MiB RAM is required; the compressed rescue size is checked before reboot.'
@@ -126,25 +128,6 @@ read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
 echo "Detected Ubuntu $VERSION_ID | $ARCH | $FIRMWARE boot"
 echo "Root filesystem: $ROOTDEV on $DISK | used $USED_PCT% ($USED_BYTES / $FS_BYTES bytes)"
-if (( USED_BYTES * 2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
-    cat <<'EOF'
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! ROOT IS AT LEAST 50% USED: not enough room for same-disk migration. !!
-!! A: KEEP ALL FILES via a temporary Volume or rclone remote.          !!
-!!    Guided setup -> backup -> verify -> format ZFS -> restore.       !!
-!! B: ERASE for fresh Ubuntu with a limited priority restore.          !!
-!!    Only B discards applications/data outside the restore budget.   !!
-!!    /etc, users, SSH keys and basic settings are retained with B.    !!
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-EOF
-    answer=
-    if { exec 3<>/dev/tty; } 2>/dev/null; then
-        printf 'Choose A to keep everything (guided backup), B (or y) to ERASE, or Enter to cancel: ' >&3
-        IFS= read -r answer <&3 || true
-        exec 3>&-
-    fi
-    case $answer in a|A) MODE=backup; BACKUP=ask;; b|B|y) MODE=erase;; *) die 'Cancelled. Use --backup=remote:path or --erase to choose explicitly.';; esac
-fi
 [[ $(df -Pk /boot | awk 'NR==2 {print $4}') -ge 500000 ]] || die 'At least 500 MB free in /boot is required.'
 [[ $(df -Pk / | awk 'NR==2 {print $4}') -ge 3500000 ]] || die 'At least 3.5 GB free disk space is required for staging, including erase mode.'
 [[ $(blockdev --getsize64 "$DISK") -ge 10000000000 ]] || die 'At least a 10 GB disk is required.'
@@ -153,7 +136,7 @@ fi
 [[ ! -e $WORK ]] || die "$WORK already exists. Inspect it before retrying; use the documented cleanup procedure."
 [[ ! -d /boot/zfs-on-boot ]] || die 'Old boot staging files exist; inspect them before retrying.'
 # Refuse layouts containing data that the root-only copy would miss.
-if [[ $MODE != erase ]]; then
+validate_layout() {
     while read -r target fstype; do
         case "$fstype" in ext4|ext3|ext2|xfs|btrfs|zfs|vfat|ntfs|fuse.*)
             if [[ $target != / && $target != /boot && $target != /boot/efi ]]; then
@@ -168,7 +151,37 @@ if [[ $MODE != erase ]]; then
     done < <(findmnt -rn -o TARGET,FSTYPE)
     sfdisk --json "$DISK" > "$SOURCE/table.json"
     python3 "$SOURCE/plan.py" "$SOURCE/table.json" "$ROOTDEV" "$(findmnt -n -o SOURCE --target /boot)" "$(findmnt -n -o SOURCE --target /boot/efi 2>/dev/null || true)" > "$SOURCE/plan.env"
+}
+[[ $MODE = erase ]] || validate_layout
+PRESERVE_CAPACITY=0
+INPLACE_CAPACITY=0
+TOTAL_USED=$USED_BYTES
+if [[ $MODE != erase ]]; then
+    . "$SOURCE/plan.env"
+    BOOT_USED=0
+    [[ $BOOT_MOUNT != /boot ]] || BOOT_USED=$(df -B1 --output=used /boot | tail -1)
+    TOTAL_USED=$((USED_BYTES+BOOT_USED))
+    PRESERVE_CAPACITY=$(( (SPLIT-ROOT_START)*512-1048576 ))
+    TAIL_CAPACITY=$(( (ROOT_END-SPLIT+1)*512 ))
+    (( PRESERVE_CAPACITY <= TAIL_CAPACITY )) || PRESERVE_CAPACITY=$TAIL_CAPACITY
+    COPY_END=$(( (ROOT_END+1)/2048*2048-2097152-1 ))
+    IMAGE_START=$ROOT_START
+    (( IMAGE_START >= 1050624 )) || IMAGE_START=1050624
+    INPLACE_CAPACITY=$(( (COPY_END-IMAGE_START+1)*512-1048576 ))
 fi
+python3 "$SOURCE/boot-config.py" "$SOURCE/boot-preview"
+echo "Preserved Ubuntu boot arguments: $(cat "$SOURCE/boot-preview/cmdline-ubuntu")"
+echo 'CPU/PCI/I/O/display kernel arguments and existing sysctl/modprobe configuration are retained.'
+echo 'Active network links/addresses are captured for the RAM rescue; installed network configuration is preserved.'
+ip -brief address
+EXPLICIT=()
+[[ $MODE = auto ]] || EXPLICIT=(--explicit)
+while :; do
+python3 "$SOURCE/strategy.py" menu "${EXPLICIT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
+    --preserve-capacity "$PRESERVE_CAPACITY" --inplace-capacity "$INPLACE_CAPACITY" \
+    --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
+mapfile -t SELECTION < "$SOURCE/selection"
+MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
 if [[ $MODE = preserve ]]; then
@@ -220,15 +233,19 @@ Live status includes logical copy bytes, MB/s and block-device IOPS.
 SSH disconnects at reboot. Reconnect and run: zfs-on-boot-status
 Package/metadata phases have no meaningful byte total and show n/a.
 EOF
-for (( remaining=15; remaining>0; remaining-- )); do
-    printf '\rStarting %s in %2ds. Press Ctrl-C to cancel. ' "$MODE" "$remaining"
-    sleep 1
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${EXPLICIT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
+[[ $REVIEW != 1 ]] || break
 done
-printf '\n'
+# Ensure a preserving strategy has a validated partition plan.
+[[ $MODE = erase || -s $SOURCE/plan.env ]] || validate_layout
+if [[ $MODE = inplace && $FIRMWARE = uefi ]]; then
+    [[ $ARCH != arm64 ]] || BOOT_PACKAGES+=(grub-efi-arm64-bin)
+    [[ $ARCH != amd64 ]] || BOOT_PACKAGES+=(grub-efi-amd64-bin)
+fi
 mkdir -m 700 "$WORK"
 exec > >(tee -a "$WORK/stage.log") 2>&1
 trap 'echo "Staging failed at line $LINENO; the disk has NOT been erased. See /var/lib/zfs-on-boot/stage.log."' ERR
-phase 1 'Preflight passed; permission and countdown complete' true
+phase 1 'Preflight passed; migration strategy selected' true
 cleanup_swap() { [[ ! -f $WORK/staging.swap ]] || swapoff "$WORK/staging.swap" 2>/dev/null || true; }
 trap cleanup_swap EXIT
 if [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -lt 750000 ]]; then
@@ -420,7 +437,221 @@ echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM instal
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_073a047c66d671d4fe3f8359baa44608e2b9c0fbf375fb4f54f4d3899c1b0215
+ZFS_ON_BOOT_c602468291242e53a62175bf071ce027ce088ab7252f2f455c2112cc25353f7c
+cat > "$work/strategy.py" <<'ZFS_ON_BOOT_7bb341c54bd2bcf40a581404dac06822b1d4973f69b50f8ca4f298aa183d25ff'
+#!/usr/bin/env python3
+"""Read-only strategy discovery and timed choices; never format or mount disks."""
+import argparse
+import json
+import os
+from pathlib import Path
+import select
+import subprocess
+import sys
+import time
+
+MARGIN = 256 * 1024**2
+
+
+def recommended(size, used, preserve_capacity, inplace_capacity):
+    # Leave working room for filesystem metadata instead of treating 49.9% as a guarantee.
+    required = used * 11 // 10 + MARGIN
+    preserve = used * 2 < size and required <= preserve_capacity
+    inplace = required <= inplace_capacity
+    default = 'preserve' if preserve else 'inplace' if inplace else 'backup'
+    return default, preserve, inplace
+
+
+def backup_candidates(disk, used):
+    """Only writable ext4 mounts on a single, different disk with ample space."""
+    def command(*args):
+        return subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL)
+    try:
+        mounts = json.loads(command('findmnt', '--json', '--list', '-t', 'ext4',
+                                    '-o', 'TARGET,SOURCE,OPTIONS'))['filesystems']
+    except (OSError, subprocess.CalledProcessError, ValueError, KeyError):
+        return []
+    found = []
+    for mount in mounts:
+        try:
+            target, source = mount['target'], mount['source']
+            if 'rw' not in mount['options'].split(',') or not source.startswith('/dev/'):
+                continue
+            # Bind mounts/subvolumes cannot be mounted by UUID at the same path in rescue.
+            if '[' in source or not Path(source).is_block_device():
+                continue
+            parents = {line.split()[0] for line in command('lsblk', '-snrpo', 'NAME,TYPE', source).splitlines()
+                       if line.split()[-1] == 'disk'}
+            if len(parents) != 1 or os.path.realpath(disk) in map(os.path.realpath, parents):
+                continue
+            space = os.statvfs(target)
+            if space.f_bavail * space.f_frsize >= used * 12 // 10 + MARGIN:
+                found.append(dict(path=target, device=source, disk=next(iter(parents)),
+                                  free=space.f_bavail * space.f_frsize,
+                                  total=space.f_blocks * space.f_frsize))
+        except (OSError, subprocess.CalledProcessError, KeyError, ValueError):
+            continue
+    unique = {item['device']: item for item in found}
+    return sorted(unique.values(), key=lambda item: (-item['free'] / max(1, item['total']),
+                                                     -item['free'], item['path']))
+
+
+def choose(prompt, default, options, seconds=15):
+    """Read /dev/tty, never the curl pipe. Invalid/partial input never means consent."""
+    print(prompt, file=sys.stderr, flush=True)
+    try:
+        tty = open('/dev/tty', 'r')
+    except OSError:
+        tty = None
+    try:
+        if seconds is None:
+            if tty is None:
+                raise ValueError('Manual confirmation requires a terminal. Re-run in an interactive SSH session.')
+            print(f'Enter = {default}; waiting for your selection (no timeout): ',
+                  end='', file=sys.stderr, flush=True)
+            line = tty.readline()
+            if not line:
+                raise ValueError('Terminal closed; cancelled.')
+            answer = line.strip().lower() or default
+            if answer not in options:
+                raise ValueError('Unknown choice; cancelled.')
+            return answer
+        deadline = time.monotonic() + seconds
+        while True:
+            left = max(0, deadline - time.monotonic())
+            print(f'\rEnter = {default}; starting in {int(left + .999):2d}s (Ctrl-C cancels). ',
+                  end='', file=sys.stderr, flush=True)
+            if tty and select.select([tty], [], [], min(1, left))[0]:
+                answer = tty.readline().strip().lower()
+                print(file=sys.stderr)
+                if not answer:
+                    return default
+                if answer not in options:
+                    raise ValueError('Unknown choice; cancelled without starting conversion.')
+                return answer
+            if not tty:
+                time.sleep(min(1, left))
+            if time.monotonic() >= deadline:
+                # A partially typed answer must not be silently ignored at timeout.
+                if tty:
+                    import termios
+                    old = termios.tcgetattr(tty)
+                    new = old.copy(); new[3] &= ~termios.ICANON
+                    try:
+                        termios.tcsetattr(tty, termios.TCSANOW, new)
+                        if select.select([tty], [], [], 0)[0]:
+                            raise ValueError('Unfinished choice; cancelled without starting conversion.')
+                    finally:
+                        termios.tcsetattr(tty, termios.TCSANOW, old)
+                print(file=sys.stderr)
+                return default
+    finally:
+        if tty:
+            tty.close()
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    sub = p.add_subparsers(dest='action', required=True)
+    menu = sub.add_parser('menu')
+    menu.add_argument('--kind', choices=['root', 'volume'], required=True)
+    menu.add_argument('--disk', required=True)
+    menu.add_argument('--size', type=int, required=True)
+    menu.add_argument('--used', type=int, required=True)
+    menu.add_argument('--preserve-capacity', type=int, required=True)
+    menu.add_argument('--inplace-capacity', type=int, default=0)
+    menu.add_argument('--mode', choices=['auto', 'preserve', 'inplace', 'backup', 'erase'], default='auto')
+    menu.add_argument('--backup', default='')
+    menu.add_argument('--erase-only', action='store_true')
+    menu.add_argument('--explicit', action='store_true')
+    confirm = sub.add_parser('confirm')
+    confirm.add_argument('--label', required=True)
+    confirm.add_argument('--explicit', action='store_true')
+    confirm.add_argument('--mode', choices=['preserve', 'inplace', 'backup', 'erase'], required=True)
+    destination = sub.add_parser('destination')
+    destination.add_argument('--disk', required=True)
+    destination.add_argument('--used', type=int, required=True)
+    transport = sub.add_parser('transport')
+    args = p.parse_args()
+    if args.action == 'destination':
+        candidates = backup_candidates(args.disk, args.used)
+        print('Candidate destinations (space available does not mean a disk is reserved for backups):', file=sys.stderr)
+        for i, item in enumerate(candidates, 1):
+            print(f"  {i}) {item['path']} — {item['device']} on {item['disk']}; "
+                  f"{item['free']/1e9:.1f}/{item['total']/1e9:.1f} GB free"
+                  + (' [recommended by free-space ratio; confirm ownership/use]' if i == 1 else ''), file=sys.stderr)
+        options = {str(i): item['path'] for i, item in enumerate(candidates, 1)}
+        options.update(p='path', r='', q='q')
+        choice = choose('  p) Enter another directory  r) Refresh disks  q) Back',
+                        '1' if candidates else 'r', options, seconds=None)
+        print(options[choice])
+        return
+    if args.action == 'confirm':
+        if args.explicit:
+            print('1')
+            return
+        answer = choose(args.label + '\n  1) Proceed with this plan\n  2) Review all strategies\n  q) Cancel', '1', ['1', '2', 'q'], seconds=15 if args.mode in ('preserve', 'inplace') else None)
+        if answer == 'q':
+            raise ValueError('Cancelled.')
+        print(answer)
+        return
+    if args.action == 'transport':
+        print(choose('Choose backup setup: 1) attached Volume  2) rclone config  3) existing remote  q) cancel',
+                     '1', ['1', '2', '3', 'q'], seconds=None))
+        return
+    backup = args.backup if args.backup not in ('', 'ask') else 'ask'
+    default, preserve, inplace = recommended(args.size, args.used, args.preserve_capacity,
+                                            args.inplace_capacity if args.kind == 'root' else 0)
+    available = {'preserve': preserve, 'inplace': inplace and args.kind == 'root', 'backup': True, 'erase': True}
+    if args.erase_only:
+        available.update(preserve=False, inplace=False, backup=False)
+    if args.mode != 'auto':
+        default = args.mode
+    labels = {'preserve': '50/50: keep ext4 until the ZFS copy is verified',
+              'inplace': 'Slice-by-slice: recycle verified ext4 blocks (experimental)',
+              'backup': 'External backup: verify an independent archive, then restore',
+              'erase': 'ERASE: discard data; root gets limited settings restoration'}
+    keys = {'1': 'preserve', '2': 'inplace', '3': 'backup', '4': 'erase'}
+    print(f'\nMigration options for {args.disk} ({args.used/1e9:.2f}/{args.size/1e9:.2f} GB used):', file=sys.stderr)
+    for key, mode in keys.items():
+        reason = '' if available[mode] else (' — rerun without --erase to assess preservation' if args.erase_only else ' — unavailable for data volumes' if mode == 'inplace' and args.kind != 'root'
+                  else ' — unavailable: insufficient working space')
+        print(f'  {key}) {labels[mode]}{reason}' + (' [default]' if mode == default else ''), file=sys.stderr)
+    print('  q) Cancel\nExternal backup always requires manual destination selection and confirmation.', file=sys.stderr)
+    if not available[default]:
+        raise ValueError(f'{default} does not fit this disk; use automatic selection or --backup.')
+    if args.explicit:
+        print(default)
+        print(backup)
+        return
+    default_key = next(k for k, v in keys.items() if v == default)
+    choice = choose('Choose a strategy. Erase requires --erase or explicit confirmation.', default_key, [*keys, 'q'],
+                    seconds=15 if default in ('preserve', 'inplace') else None)
+    if choice == 'q':
+        raise ValueError('Cancelled.')
+    mode = keys[choice]
+    if not available[mode]:
+        raise ValueError('That strategy is unavailable; cancelled without starting conversion.')
+    if mode == 'erase' and args.mode != 'erase':
+        try:
+            with open('/dev/tty', 'r') as tty:
+                print('Type y and press Enter to confirm data loss: ', end='', file=sys.stderr, flush=True)
+                if tty.readline().strip() != 'y':
+                    raise ValueError('Erase cancelled.')
+        except OSError:
+            raise ValueError('Erase needs explicit --erase or terminal confirmation.') from None
+    print(mode)
+    print(backup or 'ask')
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, KeyboardInterrupt) as error:
+        print(f'\nzfsify: {error or "Cancelled."}', file=sys.stderr)
+        sys.exit(2)
+
+ZFS_ON_BOOT_7bb341c54bd2bcf40a581404dac06822b1d4973f69b50f8ca4f298aa183d25ff
 cat > "$work/network.py" <<'ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec'
 #!/usr/bin/env python3
 """Capture hardware NIC addresses and main-table routes for the RAM installer."""
@@ -1516,12 +1747,12 @@ for ((i=0; i<${#OWNED[@]}-KEEP; i++)); do
 done
 
 ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717
-cat > "$work/volume.sh" <<'ZFS_ON_BOOT_5cbb3b74fd48d187b7818609ed823057b4e56e6b2364d86faeb62be8dd9bb762'
+cat > "$work/volume.sh" <<'ZFS_ON_BOOT_a1f316505618d54662a18767ae022300914c36465aa4376ce565681e35cfee0b'
 #!/bin/bash
 # Non-root ext4 conversion. The running OS stays on its own disk.
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
-SOURCE=${1:?} TARGET=${2:?} MODE=${3:-preserve} BACKUP=${4:-ask}
+SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask}
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'
 exec 9>/run/zfsify-migrate.lock
@@ -1607,20 +1838,24 @@ if [[ -n $MOUNT ]]; then
 else
     FS_BYTES=$(blockdev --getsize64 "$DEV"); USED_BYTES=0
 fi
-if (( USED_BYTES*2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
-    echo 'WARNING: at least 50% is used; not enough room for same-disk migration.'
-    echo 'A: KEEP ALL FILES using a temporary Volume or rclone remote; guided setup follows.'
-    echo 'y: ERASE this DATA VOLUME and discard all its files.'
-    answer=
-    if { exec 3<>/dev/tty; } 2>/dev/null; then printf 'Choose A for guided backup, y to ERASE, or Enter to cancel: ' >&3; IFS= read -r answer <&3 || true; exec 3>&-; fi
-    case $answer in a|A) MODE=backup; BACKUP=ask;; y) MODE=erase;; *) die 'Cancelled; choose --backup or --erase explicitly.';; esac
-fi
 POOL=${ORIGINAL_UUID,,}; POOL=zfsify_${POOL//-/}; POOL=${POOL:0:23}
 ! zpool list "$POOL" >/dev/null 2>&1 || die 'Pool name already exists.'
 DISK_BYTES=$(blockdev --getsize64 "$DISK")
 LAST=$((DISK_BYTES/512-34))
 SPLIT=$(( ((LAST+1+2048)/2/2048+2)*2048 ))
 [[ $SPLIT -gt $((START+262144)) ]] || die 'Disk too small for migration.'
+PRESERVE_CAPACITY=$(( (SPLIT-START)*512-1048576 ))
+TAIL_CAPACITY=$(( (LAST-SPLIT+1)*512 ))
+(( PRESERVE_CAPACITY <= TAIL_CAPACITY )) || PRESERVE_CAPACITY=$TAIL_CAPACITY
+ERASE_ONLY=()
+[[ $MODE != erase ]] || ERASE_ONLY=(--erase-only)
+EXPLICIT=()
+[[ $MODE = auto ]] || EXPLICIT=(--explicit)
+while :; do
+python3 "$SOURCE/strategy.py" menu "${EXPLICIT[@]}" --kind volume --disk "$DISK" --size "$FS_BYTES" --used "$USED_BYTES" \
+    --preserve-capacity "$PRESERVE_CAPACITY" --mode "$MODE" --backup "$BACKUP" "${ERASE_ONLY[@]}" > "$WORK/selection"
+mapfile -t SELECTION < "$WORK/selection"
+MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 echo "$MODE data volume: $DEV on $DISK; final pool $POOL at $DEFAULT_MOUNT"
 case $MODE in
@@ -1629,8 +1864,10 @@ backup) echo '[ ext4 ] -> [ verified archive on separate Volume / remote ] -> [ 
 erase) echo '[ ext4: all data discarded ] -> [ empty full-disk ZFS ]';;
 esac
 [[ $MODE != erase ]] || echo 'ERASE: no files from this data volume will be retained.'
-echo "Work logs: $WORK; stop applications using $MOUNT before the countdown ends."
-for ((n=15;n>0;n--)); do printf '\rStarting in %2ds; Ctrl-C cancels. ' "$n"; sleep 1; done; printf '\n'
+echo "Work logs: $WORK; stop applications using $MOUNT before proceeding."
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${EXPLICIT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Stop applications using $MOUNT before proceeding.")
+[[ $REVIEW != 1 ]] || break
+done
 exec > >(tee -a "$WORK/conversion.log") 2>&1
 phase() { local n=$1 label=$2; shift 2; python3 "$SOURCE/progress.py" run --phase "$n" --label "$label" --devices "$DISK,$DEV" -- "$@"; }
 phase 2 'Update Ubuntu package indexes' apt-get update
@@ -1723,8 +1960,8 @@ phase 10 'Ready: data volume converted' zpool status "$POOL"
 echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
 [[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"
 
-ZFS_ON_BOOT_5cbb3b74fd48d187b7818609ed823057b4e56e6b2364d86faeb62be8dd9bb762
-cat > "$work/backup.sh" <<'ZFS_ON_BOOT_3c9893dd92a0ee9b419747f9064bb6c2336862f914b24ce9ea267b9808a3fcb5'
+ZFS_ON_BOOT_a1f316505618d54662a18767ae022300914c36465aa4376ce565681e35cfee0b
+cat > "$work/backup.sh" <<'ZFS_ON_BOOT_e2bfc8707b78361fcdf3849cf43bc8fc2f04d09e6c01b597150899d2b353543a'
 #!/bin/bash
 # Whole-filesystem archive transport. rclone owns all remote configuration.
 set -Eeuo pipefail
@@ -1734,6 +1971,8 @@ ACTION=${1:?}
 if [[ $ACTION = configure ]]; then
     DEST=${2:?} OUT=${3:?} SOURCE_DISK=${4:?}
     USED_BYTES=${5:-0}
+    CONFIRM_REQUIRED=0
+    [[ $DEST != ask ]] || CONFIRM_REQUIRED=1
     # The same destination checks serve explicit flags and the interactive retry loop.
     validate_destination() {
         if [[ $DEST = /* ]]; then
@@ -1751,7 +1990,7 @@ if [[ $ACTION = configure ]]; then
     }
     if [[ $DEST = ask ]]; then
         if ! { exec 3<>/dev/tty; } 2>/dev/null; then
-            echo 'Interactive backup needs a terminal. Use --backup=/mnt/backup or --backup=remote:path.' >&2
+            echo 'Backup selection and confirmation require an interactive SSH terminal.' >&2
             exit 1
         fi
         while :; do
@@ -1770,8 +2009,7 @@ EOF
             if (( USED_BYTES > 0 )); then
                 awk -v n="$USED_BYTES" 'BEGIN {printf "Source currently uses %.1f GB. Plan for at least %.0f GB free at the destination\n(used space + 20%%, rounded up); compression may help, but do not rely on it.\n", n/1e9, int(n*1.2/1e9)+1}' >&3
             fi
-            printf '\nChoose [1/2/3/q]: ' >&3
-            IFS= read -r choice <&3 || exit 1
+            choice=$(python3 "$(dirname "$0")/strategy.py" transport) || exit 1
             case $choice in
                 1)
                     cat >&3 <<EOF
@@ -1798,10 +2036,14 @@ EOF
                         lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS >&3
                         printf '\nMounted ext4 filesystems and available space:\n' >&3
                         df -h -t ext4 >&3 || true
-                        printf '\nEnter mounted directory, e.g. /mnt/zfsify_backup\n[Enter = refresh after attaching; q = back]: ' >&3
-                        IFS= read -r DEST <&3 || exit 1
-                        [[ $DEST != q && $DEST != Q ]] || break
+                        DEST=$(python3 "$(dirname "$0")/strategy.py" destination --disk "$SOURCE_DISK" --used "$USED_BYTES") || exit 1
+                        [[ $DEST != q ]] || break
                         [[ -n $DEST ]] || continue
+                        if [[ $DEST = path ]]; then
+                            printf 'Enter absolute mounted directory (q = back): ' >&3
+                            IFS= read -r DEST <&3 || exit 1
+                        fi
+                        [[ $DEST != q && $DEST != Q ]] || break
                         [[ $DEST = /* ]] || { echo 'Enter the absolute mount directory.' >&3; continue; }
                         validate_destination >&3 2>&3 && break
                     done
@@ -1833,6 +2075,24 @@ EOF
         exec 3>&-
     else
         validate_destination || exit 1
+    fi
+    # Interactive choices need consent before any destination writes.
+    # An explicit --backup= destination already supplies that authorization.
+    if (( CONFIRM_REQUIRED )); then
+        if ! { exec 3<>/dev/tty; } 2>/dev/null; then
+            echo 'Backup requires manual destination confirmation in an interactive SSH terminal.' >&2
+            exit 1
+        fi
+        printf '\nSource to convert: %s\nBackup destination: %s\n' "$SOURCE_DISK" "$DEST" >&3
+        if [[ $DEST = /* ]]; then
+            printf 'Destination device: %s on disk %s\n' "$BACKUP_DEV" "${BACKUP_DISKS[0]}" >&3
+            lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "${BACKUP_DISKS[0]}" >&3
+            df -h "$DEST" >&3
+        fi
+        printf 'A new private backup folder will be written here; existing data is retained.\nConfirm this is the destination you intend to use: type y and press Enter (no timeout): ' >&3
+        IFS= read -r CONFIRM_DEST <&3 || exit 1
+        [[ $CONFIRM_DEST = y ]] || { echo 'Backup cancelled before writing to destination.' >&3; exit 1; }
+        exec 3>&-
     fi
     mkdir -m 700 -p "$OUT"
     if [[ $DEST = /* ]]; then
@@ -1933,7 +2193,7 @@ else
     exit 2
 fi
 
-ZFS_ON_BOOT_3c9893dd92a0ee9b419747f9064bb6c2336862f914b24ce9ea267b9808a3fcb5
+ZFS_ON_BOOT_e2bfc8707b78361fcdf3849cf43bc8fc2f04d09e6c01b597150899d2b353543a
 cat > "$work/priority.py" <<'ZFS_ON_BOOT_30f084bb342a56cb18894353d441529c4b70c40d8929df99548c01212793b161'
 #!/usr/bin/python3
 """Select complete optional files for erase mode within a conservative RAM budget."""

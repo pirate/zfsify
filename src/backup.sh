@@ -7,6 +7,8 @@ ACTION=${1:?}
 if [[ $ACTION = configure ]]; then
     DEST=${2:?} OUT=${3:?} SOURCE_DISK=${4:?}
     USED_BYTES=${5:-0}
+    CONFIRM_REQUIRED=0
+    [[ $DEST != ask ]] || CONFIRM_REQUIRED=1
     # The same destination checks serve explicit flags and the interactive retry loop.
     validate_destination() {
         if [[ $DEST = /* ]]; then
@@ -24,7 +26,7 @@ if [[ $ACTION = configure ]]; then
     }
     if [[ $DEST = ask ]]; then
         if ! { exec 3<>/dev/tty; } 2>/dev/null; then
-            echo 'Interactive backup needs a terminal. Use --backup=/mnt/backup or --backup=remote:path.' >&2
+            echo 'Backup selection and confirmation require an interactive SSH terminal.' >&2
             exit 1
         fi
         while :; do
@@ -43,8 +45,7 @@ EOF
             if (( USED_BYTES > 0 )); then
                 awk -v n="$USED_BYTES" 'BEGIN {printf "Source currently uses %.1f GB. Plan for at least %.0f GB free at the destination\n(used space + 20%%, rounded up); compression may help, but do not rely on it.\n", n/1e9, int(n*1.2/1e9)+1}' >&3
             fi
-            printf '\nChoose [1/2/3/q]: ' >&3
-            IFS= read -r choice <&3 || exit 1
+            choice=$(python3 "$(dirname "$0")/strategy.py" transport) || exit 1
             case $choice in
                 1)
                     cat >&3 <<EOF
@@ -71,10 +72,14 @@ EOF
                         lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS >&3
                         printf '\nMounted ext4 filesystems and available space:\n' >&3
                         df -h -t ext4 >&3 || true
-                        printf '\nEnter mounted directory, e.g. /mnt/zfsify_backup\n[Enter = refresh after attaching; q = back]: ' >&3
-                        IFS= read -r DEST <&3 || exit 1
-                        [[ $DEST != q && $DEST != Q ]] || break
+                        DEST=$(python3 "$(dirname "$0")/strategy.py" destination --disk "$SOURCE_DISK" --used "$USED_BYTES") || exit 1
+                        [[ $DEST != q ]] || break
                         [[ -n $DEST ]] || continue
+                        if [[ $DEST = path ]]; then
+                            printf 'Enter absolute mounted directory (q = back): ' >&3
+                            IFS= read -r DEST <&3 || exit 1
+                        fi
+                        [[ $DEST != q && $DEST != Q ]] || break
                         [[ $DEST = /* ]] || { echo 'Enter the absolute mount directory.' >&3; continue; }
                         validate_destination >&3 2>&3 && break
                     done
@@ -106,6 +111,24 @@ EOF
         exec 3>&-
     else
         validate_destination || exit 1
+    fi
+    # Interactive choices need consent before any destination writes.
+    # An explicit --backup= destination already supplies that authorization.
+    if (( CONFIRM_REQUIRED )); then
+        if ! { exec 3<>/dev/tty; } 2>/dev/null; then
+            echo 'Backup requires manual destination confirmation in an interactive SSH terminal.' >&2
+            exit 1
+        fi
+        printf '\nSource to convert: %s\nBackup destination: %s\n' "$SOURCE_DISK" "$DEST" >&3
+        if [[ $DEST = /* ]]; then
+            printf 'Destination device: %s on disk %s\n' "$BACKUP_DEV" "${BACKUP_DISKS[0]}" >&3
+            lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "${BACKUP_DISKS[0]}" >&3
+            df -h "$DEST" >&3
+        fi
+        printf 'A new private backup folder will be written here; existing data is retained.\nConfirm this is the destination you intend to use: type y and press Enter (no timeout): ' >&3
+        IFS= read -r CONFIRM_DEST <&3 || exit 1
+        [[ $CONFIRM_DEST = y ]] || { echo 'Backup cancelled before writing to destination.' >&3; exit 1; }
+        exec 3>&-
     fi
     mkdir -m 700 -p "$OUT"
     if [[ $DEST = /* ]]; then

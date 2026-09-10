@@ -1,7 +1,9 @@
 # Experimental conversion with less free space
 
-`--inplace` is an experimental root migration backend. It keeps zfsify's Ubuntu
-packages, RAM rescue, ZFSBootMenu, snapshots, and disk-growth setup. It uses
+`--inplace` requests the experimental slice-by-slice root migration backend.
+Automatic selection also uses it when 50/50 does not fit and enough working
+space remains. It takes priority over external backup, even with another disk
+mounted. It keeps zfsify's Ubuntu packages, RAM rescue, ZFSBootMenu, snapshots, and disk-growth setup. It uses
 Ubuntu's `fstransform` package for **`fsremap`**, the physical block mover; it
 does not require a fork of fstransform or a permanent storage-mapping layer.
 
@@ -89,4 +91,4 @@ The journal, geometry, and original manifest are retained privately under
 journal during an interrupted conversion.
 
 Do not use this prototype on a server holding needed data. The normal
-preservation and external-backup modes remain available without `--inplace`.
+`--preserve` and `--backup` options request the other preservation strategies.

@@ -30,14 +30,15 @@ The underlying conversion paths have DigitalOcean acceptance evidence;
 3. Paste [`cloud-init/root.yml`](../cloud-init/root.yml) into the provider's
    **user data** or **cloud-init** field, then create the server.
 
-The root template uses preservation mode. It performs the normal preflight and
-15-second countdown, stages a compressed RAM environment, reboots to migrate the
+The root template uses automatic selection. It performs the normal preflight and
+15-second default selections, stages a compressed RAM environment, reboots to migrate the
 disk, and reboots through ZFSBootMenu into Ubuntu on ZFS. Expect two SSH disconnects
 and installation downtime. Install or start application workloads after that boot.
 
-A root filesystem at least 50% used requires an explicit backup or erase decision.
-This unattended template has no terminal to answer that prompt, so it stops; it
-does not erase the disk. Connect over SSH and choose the appropriate mode in the
+When 50/50 does not fit, the installer selects slice-by-slice if enough working
+space remains. Otherwise backup setup requires an interactive SSH session to select and
+confirm a destination, even if another disk is already mounted;
+erase is never an automatic fallback. See the
 [space and backup guide](../README.md#when-the-disk-is-more-than-half-full).
 
 ### Ensure the recovery SSH key is available

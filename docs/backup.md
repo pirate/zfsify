@@ -8,8 +8,13 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --backu
 ```
 
 Choose **1** for an attached Volume, **2** to configure a remote with rclone, or
-**3** for an existing remote. Selecting **A** at the space warning opens the same
-wizard. It waits while you prepare the destination; you can cancel with `q`.
+**3** for an existing remote. Backup setup always waits for input; it never
+proceeds on a timer. The Volume picker lists viable ext4 mounts with their devices
+and free space, recommending the least occupied disk with enough room. Enter
+selects that recommendation; a separate `y` confirmation authorizes writing to
+the displayed destination. Explicit `--backup=/path` or `--backup=remote:path`
+uses that destination without choices or confirmation. A mounted disk is never assumed to be a backup disk.
+Cancel with `q` during selection, or decline destination confirmation.
 
 ```text
 source disk -> backup on another disk / remote -> read-back checksum verification

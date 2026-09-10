@@ -2,7 +2,7 @@
 # Non-root ext4 conversion. The running OS stays on its own disk.
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
-SOURCE=${1:?} TARGET=${2:?} MODE=${3:-preserve} BACKUP=${4:-ask}
+SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask}
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'
 exec 9>/run/zfsify-migrate.lock
@@ -88,20 +88,24 @@ if [[ -n $MOUNT ]]; then
 else
     FS_BYTES=$(blockdev --getsize64 "$DEV"); USED_BYTES=0
 fi
-if (( USED_BYTES*2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
-    echo 'WARNING: at least 50% is used; not enough room for same-disk migration.'
-    echo 'A: KEEP ALL FILES using a temporary Volume or rclone remote; guided setup follows.'
-    echo 'y: ERASE this DATA VOLUME and discard all its files.'
-    answer=
-    if { exec 3<>/dev/tty; } 2>/dev/null; then printf 'Choose A for guided backup, y to ERASE, or Enter to cancel: ' >&3; IFS= read -r answer <&3 || true; exec 3>&-; fi
-    case $answer in a|A) MODE=backup; BACKUP=ask;; y) MODE=erase;; *) die 'Cancelled; choose --backup or --erase explicitly.';; esac
-fi
 POOL=${ORIGINAL_UUID,,}; POOL=zfsify_${POOL//-/}; POOL=${POOL:0:23}
 ! zpool list "$POOL" >/dev/null 2>&1 || die 'Pool name already exists.'
 DISK_BYTES=$(blockdev --getsize64 "$DISK")
 LAST=$((DISK_BYTES/512-34))
 SPLIT=$(( ((LAST+1+2048)/2/2048+2)*2048 ))
 [[ $SPLIT -gt $((START+262144)) ]] || die 'Disk too small for migration.'
+PRESERVE_CAPACITY=$(( (SPLIT-START)*512-1048576 ))
+TAIL_CAPACITY=$(( (LAST-SPLIT+1)*512 ))
+(( PRESERVE_CAPACITY <= TAIL_CAPACITY )) || PRESERVE_CAPACITY=$TAIL_CAPACITY
+ERASE_ONLY=()
+[[ $MODE != erase ]] || ERASE_ONLY=(--erase-only)
+EXPLICIT=()
+[[ $MODE = auto ]] || EXPLICIT=(--explicit)
+while :; do
+python3 "$SOURCE/strategy.py" menu "${EXPLICIT[@]}" --kind volume --disk "$DISK" --size "$FS_BYTES" --used "$USED_BYTES" \
+    --preserve-capacity "$PRESERVE_CAPACITY" --mode "$MODE" --backup "$BACKUP" "${ERASE_ONLY[@]}" > "$WORK/selection"
+mapfile -t SELECTION < "$WORK/selection"
+MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 echo "$MODE data volume: $DEV on $DISK; final pool $POOL at $DEFAULT_MOUNT"
 case $MODE in
@@ -110,8 +114,10 @@ backup) echo '[ ext4 ] -> [ verified archive on separate Volume / remote ] -> [ 
 erase) echo '[ ext4: all data discarded ] -> [ empty full-disk ZFS ]';;
 esac
 [[ $MODE != erase ]] || echo 'ERASE: no files from this data volume will be retained.'
-echo "Work logs: $WORK; stop applications using $MOUNT before the countdown ends."
-for ((n=15;n>0;n--)); do printf '\rStarting in %2ds; Ctrl-C cancels. ' "$n"; sleep 1; done; printf '\n'
+echo "Work logs: $WORK; stop applications using $MOUNT before proceeding."
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${EXPLICIT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Stop applications using $MOUNT before proceeding.")
+[[ $REVIEW != 1 ]] || break
+done
 exec > >(tee -a "$WORK/conversion.log") 2>&1
 phase() { local n=$1 label=$2; shift 2; python3 "$SOURCE/progress.py" run --phase "$n" --label "$label" --devices "$DISK,$DEV" -- "$@"; }
 phase 2 'Update Ubuntu package indexes' apt-get update

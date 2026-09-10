@@ -13,9 +13,8 @@ using the disks and data you already have.
 
 </div>
 
-**Experimental:** [`--inplace`](docs/inplace.md) converts root above 50% usage
-by recycling ext4 space and using fstransform's block remapper. It is
-opt-in and intended for disposable VMs; the commands below keep their usual behavior.
+**Experimental:** automatic strategy selection can use [slice-by-slice root
+conversion](docs/inplace.md) above 50% usage. Validate on a disposable VM first.
 
 [![Ubuntu root conversion to ZFS on a real DigitalOcean Droplet](docs/assets/recordings/happy-path.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)
 
@@ -64,18 +63,36 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --backu
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --backup=/mnt/backup /
 ```
 
-The installer prints disk usage, device names, a diagram, and a 15-second
-countdown. Below 50% used, preservation proceeds without input. At 50% or more,
-it requires an explicit backup or erase choice. `--erase` never means preservation;
-on a data volume it creates an empty ZFS filesystem.
+The installer detects architecture, BIOS/UEFI, disk layout and free space, and
+preserves existing CPU, PCI/I/O, display, console, and network boot settings.
+It shows every migration strategy, explains unavailable options, and recommends:
 
-With more than half the filesystem free, zfsify makes a temporary copy of your
-files on the same disk, then converts it while keeping your applications,
-accounts, and configuration. Boot-drive conversion requires two reboots and
-downtime; applications using a data volume must stop during its conversion.
+1. **50/50 copy and verify** when two copies fit with room for metadata.
+2. **Slice-by-slice root conversion** when 50/50 does not fit but enough working
+   space remains, even if a backup destination is available.
+3. **External backup and restore** when neither same-disk strategy fits. This
+   opens interactive Volume or rclone setup. Data volumes use this route when
+   50/50 does not fit; slice-by-slice is currently root-only.
 
-With less space available, choose [remote backup or a reinstall with a limited
-restore](#when-the-disk-is-more-than-half-full).
+For **50/50 and slice-by-slice**, Enter or **15 seconds** accepts the default;
+the selected plan has a diagram and another 15-second review with options to
+proceed, review strategies, or cancel. Automatic backup fallback and interactive
+erase selection wait for input.
+Explicit `--preserve`, `--inplace`, `--backup`, or `--erase` bypass strategy choices.
+Erase is never an automatic fallback and requires `--erase` or explicit confirmation.
+
+Backup setup lists viable mounted ext4 destinations with device names and free
+space, recommending the least occupied disk with enough room. You must select
+and confirm the destination. Explicit `--backup=/path` or `--backup=remote:path`
+uses your chosen destination without prompts; `--backup` alone opens the picker.
+There are **no timed defaults in backup setup**. Free space does not imply a disk
+is reserved for backups; no detected disk is automatically used, formatted, or deleted.
+Candidates need free space for used data plus 20% and a metadata allowance.
+
+The 50/50 strategy retains the complete ext4 copy until ZFS verification finishes;
+slice-by-slice releases verified source blocks as it copies. An independent,
+verified external backup offers the strongest recovery option. Boot-drive
+conversion requires reboots and downtime; applications using a data volume must stop.
 
 Take a provider snapshot or independent backup before converting important data.
 A disk failure or interrupted repartitioning can affect both local copies.
@@ -83,8 +100,8 @@ A disk failure or interrupted repartitioning can affect both local copies.
 ## Requirements
 
 - **Ubuntu 22.04 or later**, with root access.
-- **More than 50% free space** on `/` or the volume being converted for migration
-  within that disk. The installer also checks space for metadata and temporary files.
+- **Working space for the selected strategy.** 50/50 needs room for two copies;
+  slice-by-slice needs staging and filesystem overhead; external backup needs a separate destination.
 - A supported, shrinkable source filesystem and disk layout, checked by the installer.
 - SSH access and access to Ubuntu package repositories. Root conversion requires
   your public key in `/root/.ssh/authorized_keys` for access to the RAM environment.
@@ -145,7 +162,7 @@ partition UUID. Its growth service replaces cloud-init's ext4 resize operation.
 
 </details>
 
-## Why is 50% free space needed?
+## Why does the 50/50 strategy need half the disk free?
 
 **The disk temporarily holds two copies of your data** while each part is
 reformatted. An 80 GB disk with 35 GB of data has room for another copy; one
@@ -154,12 +171,14 @@ holding 60 GB does not.
 Metadata and boot partitions also take space. Below 50% used is an eligibility
 check; a tightly packed filesystem can still fail the offline shrink or run out
 of temporary ZFS space. Such a failure stops before deleting the original ext4
-data. A filesystem exactly half full requires an explicit backup or erase choice.
+data. Automatic selection uses the actual temporary regions with a margin, then
+chooses slice-by-slice or external backup when two copies do not fit.
 
 ## When the disk is more than half full
 
-Choose one of these options after reviewing how much data it can retain.
-Both require an explicit choice before erasing the disk; command-line flags supply that choice.
+Automatic selection can use [slice-by-slice root conversion](docs/inplace.md)
+or external backup while keeping your data. You can also explicitly request a
+fresh installation with limited restoration using `--erase`.
 
 ### Option A: Back up elsewhere, convert, and restore everything
 

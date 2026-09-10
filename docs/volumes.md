@@ -24,12 +24,15 @@ cd /
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /mnt/data
 ```
 
-The installer identifies the physical disk, prints its plan and a 15-second
-countdown, installs needed tools, and unmounts the source. It refuses to force
+The installer identifies the physical disk and prints its plan. The 50/50 path
+has a 15-second countdown. Interactive backup/erase choices wait for input;
+explicit flags skip choices. It then installs
+needed tools and unmounts the source. It refuses to force
 an unmount or terminate applications. Close shells and processes holding the
 volume open before retrying a busy-filesystem error.
 
-With less than 50% used, conversion proceeds without input. It shrinks ext4,
+When two copies fit with metadata headroom, 50/50 is the default. Enter or
+15 seconds accepts it. It shrinks ext4,
 copies to temporary ZFS storage at the disk's end, and verifies every file and
 its metadata. A temporary mirror moves the verified copy to the front of the
 disk, then the final partition and pool expand to use the remaining capacity.
@@ -82,8 +85,11 @@ before erasing the source. It verifies the restored stream again and retains the
 backup at a unique destination. These operations need enough remote space and
 transfer bandwidth, rather than enough RAM to hold the dataset.
 
-At 50% or more used, an invocation without a backup or erase choice stops when
-no terminal is available. It never falls back automatically to erasing data.
+When 50/50 does not fit, automatic selection opens guided backup setup and waits
+for destination selection and confirmation. Without a terminal, setup stops
+before conversion; pass an explicit `--backup=DESTINATION` for unattended use.
+Slice-by-slice is unavailable for data volumes; erase always requires an explicit
+request.
 
 ## Initialize an empty disk
 
