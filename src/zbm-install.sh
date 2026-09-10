@@ -27,6 +27,17 @@ if [[ $ACTION = download ]]; then
 fi
 [[ $ACTION = install ]]
 DISK=${3:?} BOOTDEV=${4:?}
+# A resumed installation can format this partition again, changing its UUID.
+# Replace the boot mount entry rather than accumulating obsolete UUIDs.
+python3 - "$ROOT/etc/fstab" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+lines = p.read_text().splitlines(keepends=True)
+p.write_text(''.join(line for line in lines if line.lstrip().startswith('#')
+                     or len(line.split()) < 2
+                     or line.split()[1] not in ('/boot/efi', '/boot/syslinux')))
+PY
 if [[ $FIRMWARE = uefi ]]; then
     case $(uname -m) in
         x86_64) EFI_FALLBACK=BOOTX64.EFI ;;

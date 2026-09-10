@@ -13,8 +13,8 @@ using the disks and data you already have.
 
 </div>
 
-**Branch experiment:** [`--inplace`](docs/inplace.md) tries root conversion above
-50% usage by recycling ext4 space and using fstransform's block remapper. It is
+**Experimental:** [`--inplace`](docs/inplace.md) converts root above 50% usage
+by recycling ext4 space and using fstransform's block remapper. It is
 opt-in and intended for disposable VMs; the commands below keep their usual behavior.
 
 [![Ubuntu root conversion to ZFS on a real DigitalOcean Droplet](docs/assets/recordings/happy-path.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)
@@ -342,7 +342,7 @@ for SSH keys, disk selection, status, and failure handling.
 | [`tools/volumes/`](tools/volumes/) | Advanced pool, inventory, and benchmark commands |
 | [`tools/digitalocean/`](tools/digitalocean/) | DigitalOcean Volume provisioning and metadata commands |
 | [`docs/`](docs/) | Usage guides, recordings, and validation evidence |
-| [`scripts/`](scripts/) | Packaging, disposable DigitalOcean tests, and recording production |
+| [`scripts/`](scripts/) | Packaging, disposable DigitalOcean/ARM64 tests, and recordings |
 
 ## Compatibility and validation
 

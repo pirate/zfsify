@@ -22,6 +22,8 @@ def render(s):
     data = (f"{'~' if s.get('approximate') else ''}{s.get('done', 0)/1e6:,.1f}/{s['total']/1e6:,.1f} MB "
             f"({fraction*100:.1f}%) | {s.get('speed', 0)/1e6:,.1f} MB/s logical"
             + (' (phase average)' if s['status'] != 'running' else '')) if s.get('total') else 'data total: n/a (streaming or metadata operation)'
+    if s.get('files_total'):
+        data += f" | files: {s.get('files_done', 0):,}/{s['files_total']:,}"
     io = ' | '.join(f"{d}: R {v[0]:.1f} W {v[1]:.1f} MB/s {v[2]:.0f} IOPS" for d, v in s.get('io', {}).items())
     return (f"[{bar}] phase {s['phase']}/10: {s['label']} [{s['status']}]\n"
             f"  devices: {s['devices']} | elapsed {s['elapsed']:.0f}s\n  {data}\n  {io}")
@@ -30,7 +32,7 @@ def disks(names):
     result = {}
     for name in names:
         try:
-            fields = list(map(int, Path('/sys/class/block', Path(name).name, 'stat').read_text().split()))
+            fields = list(map(int, Path('/sys/class/block', Path(name).resolve().name, 'stat').read_text().split()))
             result[name] = (fields[2]*512, fields[6]*512, fields[0]+fields[4])
         except (OSError, ValueError):
             pass
@@ -77,7 +79,7 @@ start = tick = time.monotonic()
 prev = disks(a.devices.split(','))
 state = dict(phase=a.phase, label=a.label, devices=','.join(dict.fromkeys(a.devices.split(','))), total=a.total,
              done=0, speed=0, elapsed=0, status='running', io={})
-last_done = 0
+last_done = initial_done = 0
 buffer = ''
 last_print = 0
 rsync = re.compile(r'^\s*([\d,]+)\s+(\d+)%\s+')
@@ -91,7 +93,7 @@ def publish(final=False):
                    for d, v in current.items() if d in prev
                    # Partition recreation resets counters; establish a new baseline.
                    if all(new >= old for new, old in zip(v, prev[d]))}
-    state['speed'] = state['done']/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
+    state['speed'] = (state['done']-initial_done)/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
     state['elapsed'] = now-start
     prev, tick, last_done = current, now, state['done']
     tmp = STATE.with_suffix('.tmp')
@@ -124,8 +126,13 @@ with LOG.open('a') as log:
                 match = rsync.match(line)
                 if match:
                     state['done'] = int(match[1].replace(',', ''))
+                elif match := re.fullmatch(r'ZFSIFY_START ([0-9]{1,20}) ([0-9]{1,20})', line):
+                    state['done'], state['total'] = int(match[1]), int(match[2])
+                    initial_done = last_done = state['done']
                 elif match := re.fullmatch(r'ZFSIFY_PROGRESS ([0-9]{1,20}) ([0-9]{1,20})', line):
                     state['done'], state['total'] = int(match[1]), int(match[2])
+                elif match := re.fullmatch(r'ZFSIFY_FILES ([0-9]{1,20}) ([0-9]{1,20})', line):
+                    state['files_done'], state['files_total'] = int(match[1]), int(match[2])
                 elif line:
                     print(line, flush=True)
                     log.write(line+'\n')

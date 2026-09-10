@@ -1,0 +1,32 @@
+Progress regression acceptance — 2026-09-10
+Run inside the ARM64 rescue VM during its real conversion.
+Synthetic protocol input: resume at 1,000,000,000 bytes, transfer another 1 MiB;
+99,000 / 110,000 files; malformed and oversized progress packets.
+Assertions: no resumed-byte speed spike, correct file counts, mapper IOPS available.
+Source SHA256: 9fce3e2089fa92725adeb9ffa41f9cf0d469ecb86d9388a45448009f143c9c52
+
+PASS: resumed byte baseline does not inflate MB/s; malformed packets ignored; mapper device IOPS available.
+{
+  "phase": 5,
+  "label": "Resume telemetry test",
+  "devices": "/dev/vda,/dev/mapper/zfsify-image",
+  "total": 1001048576,
+  "done": 1001048576,
+  "speed": 865422.5211022317,
+  "elapsed": 1.2116347499999165,
+  "status": "complete",
+  "io": {
+    "/dev/vda": [
+      0.46762690810467517,
+      66.91131106836896,
+      4174.531140837634
+    ],
+    "/dev/mapper/zfsify-image": [
+      0.0,
+      62.966979756529526,
+      7271.924044384225
+    ]
+  },
+  "files_done": 99000,
+  "files_total": 110000
+}

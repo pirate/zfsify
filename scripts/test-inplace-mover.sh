@@ -1,6 +1,7 @@
 #!/bin/bash
 # Destructive integration test. Run INSIDE a disposable Ubuntu VM only.
-# Needs: zfsutils-linux fstransform dmsetup e2fsprogs acl attr libcap2-bin python3.+# ZFSIFY_DISPOSABLE_TEST=1 bash scripts/test-inplace-mover.sh /dev/UNUSED_8_GIB_DISK
+# Needs: zfsutils-linux fstransform dmsetup e2fsprogs acl attr libcap2-bin python3.
+# ZFSIFY_DISPOSABLE_TEST=1 bash scripts/test-inplace-mover.sh /dev/UNUSED_8_GIB_DISK
 set -Eeuo pipefail
 [[ ${ZFSIFY_DISPOSABLE_TEST:-} = 1 ]] || { echo 'Disposable VM opt-in required.' >&2; exit 2; }
 D=$(readlink -f "${1:?an unused 8 GiB test disk is required}")
@@ -66,7 +67,7 @@ e2fsck -fp "$D"; rc=$?
 set -e
 (( rc <= 1 ))
 mount -o ro "$D" "$OLD"
-fsremap --questions=no --mem-buffer=32M --secondary-storage=32M --temp-dir="$STATE" -- "$D" "$OLD/.zfsify.img"
+fsremap --questions=no --mem-buffer=16M --exact-secondary-storage=32M --temp-dir="$STATE" -- "$D" "$OLD/.zfsify.img"
 zpool import -d "$D" zfsify_test
 python3 "$MOVER" verify "$STATE/manifest.sqlite" "$NEW"
 [[ $(stat -c %b "$NEW/sparse.bin") -lt 10000 ]]

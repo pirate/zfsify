@@ -1,0 +1,158 @@
+Final bundle: unattended native ARM64 acceptance — 2026-09-10
+Ubuntu 24.04, QEMU/HVF on Apple Silicon, 1 GiB RAM, 25 GiB root disk.
+71% ext4 usage, one boot disk plus read-only NoCloud seed. No other writable disk.
+Command: scripts/arm64-e2e.sh
+Installer: cat /root/reformat.sh | sh -s -- --inplace
+No manual intervention during conversion or boot.
+
+dbd9579f4ec0f57b84a126ef3157ae8cdb63f51ad0b9f13aa032bda114a54456  reformat.sh
+ec1e8dc78772f198cb35c85dc9b0b13b049ec208e77962048f8a9d2e51b6ef32  src/inplace.sh
+e48c067a76dd746fc2782b206265a3db15b24d6c8f6a4f2906cba152ccb2aca8  src/inplace-move.py
+e3bdb73c177fb4c5d911f95d263f813f92119e2ad827f0af2883085ede2b8672  src/ram-init.sh
+30759405362171b29af22cd9fa1d9408c0b2de06d8b20bc9cbdd6d983d34ab54  src/ram-boot.sh
+073a047c66d671d4fe3f8359baa44608e2b9c0fbf375fb4f54f4d3899c1b0215  src/stage.sh
+9fce3e2089fa92725adeb9ffa41f9cf0d469ecb86d9388a45448009f143c9c52  src/progress.py
+ed338db083ec398d1f5969db5185383810761cd6ddeb3b2b5a6c455eb7e9c0d4  src/zbm-install.sh
+
+Initial usage:
+Processing triggers for libc-bin (2.39-0ubuntu8.8) ...
+Filesystem       1B-blocks        Used  Available Use% Mounted on
+/dev/vda1      24883167232 17418207232 7448182784  71% /
+
+Runtime:
+aarch64
+               total        used        free      shared  buff/cache   available
+Mem:             951         510         379         181         338         441
+Swap:              0           0           0
+b8c163ef8c2c27191f6f2efbcc506a97c6cb016e1d4af3690f7d43efa7295ebb  /etc/zfs-on-boot/inplace.sh
+1a26c78a18160498ffc2279e1387bb73a28fb84bcecea3e4339434ff735ed3a9  /etc/zfs-on-boot/inplace-move.py
+b4aa2079565e304ef7a402f9b34c968f59171461ff7f7664cfd105c684165b82  /usr/local/lib/zfs-on-boot/progress.py
+real job, version 0.9.4
+0	33554432
+4233614	0
+
+Manifest saved: 123462 entries
+VERIFIED: 123462 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+primary-storage: actually using 0.00 bytes (0 fragments) from device
+allocated 16.00 megabytes RAM as memory buffer
+secondary-storage is 32.00 megabytes, initialized and mmapped() to contiguous RAM
+job completed.
+VERIFIED: 123462 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+
+Native boot and installed bundle:
+rpool/ROOT/ubuntu zfs
+dbd9579f4ec0f57b84a126ef3157ae8cdb63f51ad0b9f13aa032bda114a54456  /root/reformat.sh
+NAME   SIZE FSTYPE
+vda     25G 
+├─vda1   1G vfat
+└─vda2  24G zfs_member
+vdb     64K iso9660
+VERIFIED: 123462 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+VERIFIED: 123462 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+# / and /boot are on rpool/ROOT/ubuntu, mounted by the ZFS initramfs.
+UUID=9FD9-3D5F /boot/efi vfat defaults,umask=0077 0 2
+
+Preservation and scrub:
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              15.8G  7.01G    96K  none
+rpool/ROOT         15.7G  7.01G    96K  none
+rpool/ROOT/ubuntu  15.7G  7.01G  15.7G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot000A* ZFSBootMenu	HD(1,GPT,2de7aa26-5eea-4136-9878-a03521ab8b78,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.20M      -  15.7G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/root/migration-fixture/large.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 213503982313894 days 21:23:12 with 0 errors on Thu Jan  1 00:00:00 1970
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+
+Subsequent normal reboot:
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:06 with 0 errors on Thu Sep 10 09:37:10 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              15.8G  7.01G    96K  none
+rpool/ROOT         15.7G  7.01G    96K  none
+rpool/ROOT/ubuntu  15.7G  7.01G  15.7G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot000A* ZFSBootMenu	HD(1,GPT,2de7aa26-5eea-4136-9878-a03521ab8b78,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.22M      -  15.7G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/root/migration-fixture/large.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.

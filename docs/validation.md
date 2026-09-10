@@ -19,6 +19,7 @@ ARM64 VMs with UEFI.
 | ARM64 UEFI conversion, APT kernel maintenance, recovery clone, and disk growth | [Ubuntu 24.04, 1 GiB](evidence/arm64-noble-acceptance.txt) |
 | ARM64 UEFI conversion and APT kernel maintenance with 512 MiB RAM | [Ubuntu 24.04, 10 GiB disk](evidence/arm64-512mb-acceptance.txt) |
 | ARM64 UEFI conversion, APT kernel maintenance, and recovery-clone boot with dracut | [Ubuntu 26.04, 1 GiB](evidence/arm64-resolute-acceptance.txt) |
+| Experimental root conversion above 50% usage, interruption recovery, and growth | [In-place validation](inplace.md#validation) |
 | amd64 boot regression | [Ubuntu 24.04 DigitalOcean acceptance](evidence/amd64-architecture-acceptance.txt) |
 
 The recordings offer selected highlights and full terminal captures. Their notes

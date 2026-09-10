@@ -27,7 +27,7 @@ Default: preserve your installation or data in place when less than 50% is used.
   --erase                  Fresh Ubuntu with limited settings restore for /;
                            discard ALL files when targeting a data volume.
   --inplace                EXPERIMENTAL root conversion using recycled ext4 space.
-                           Requires UEFI and a separate ext4 /boot before /.
+                           Uses a temporary 1 GiB journal area on the same disk.
 
 The positional path is the disk to CONVERT; --backup= is where to KEEP its backup.
 Examples: --backup=/mnt/backup /          (convert the boot disk)
@@ -96,6 +96,10 @@ fi
 [[ $ARCH != arm64 || $FIRMWARE = uefi ]] || die 'ARM64 root conversion requires UEFI firmware (not a board-specific U-Boot boot chain).'
 BOOT_PACKAGES=(grub2-common)
 [[ $FIRMWARE != bios ]] || BOOT_PACKAGES+=(grub-pc-bin extlinux syslinux-common)
+if [[ $MODE = inplace && $FIRMWARE = uefi ]]; then
+    [[ $ARCH != arm64 ]] || BOOT_PACKAGES+=(grub-efi-arm64-bin)
+    [[ $ARCH != amd64 ]] || BOOT_PACKAGES+=(grub-efi-amd64-bin)
+fi
 [[ -f /boot/grub/grub.cfg ]] || die 'GRUB is required.'
 [[ $(findmnt -n -o FSTYPE /) = ext4 ]] || die 'Only a plain ext4 root partition is supported.'
 [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 450000 ]] || die 'At least 512 MiB RAM is required; the compressed rescue size is checked before reboot.'
@@ -109,9 +113,6 @@ BOOT_PREFIX=/boot
 if [[ $BOOT_MOUNT = /boot ]]; then
     BOOT_PREFIX=
     [[ /dev/$(lsblk -dn -o PKNAME "$(findmnt -n -o SOURCE /boot)") = "$DISK" ]] || die '/boot must be on the root disk.'
-fi
-if [[ $MODE = inplace ]]; then
-    [[ $FIRMWARE = uefi && $BOOT_MOUNT = /boot ]] || die 'Experimental --inplace requires UEFI and a separate ext4 /boot.'
 fi
 read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
@@ -160,10 +161,6 @@ if [[ $MODE != erase ]]; then
     sfdisk --json "$DISK" > "$SOURCE/table.json"
     python3 "$SOURCE/plan.py" "$SOURCE/table.json" "$ROOTDEV" "$(findmnt -n -o SOURCE --target /boot)" "$(findmnt -n -o SOURCE --target /boot/efi 2>/dev/null || true)" > "$SOURCE/plan.env"
 fi
-if [[ $MODE = inplace ]]; then
-    . "$SOURCE/plan.env"
-    (( ROOT_START >= 1050624 )) || die 'Experimental --inplace needs at least 512 MiB of boot space before the root partition.'
-fi
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
 if [[ $MODE = preserve ]]; then
@@ -187,9 +184,10 @@ EXPERIMENTAL IN-PLACE CONVERSION: $ROOTDEV -> one native ZFS root partition.
   [ ext4 files shrinking | sparse ZFS growing  ]  copy, sync, verify, release 64 MiB batches
   [ completed ZFS image inside ext4           ]  verify the complete manifest
   [ native ZFS partition; no image or mapper  ]  fsremap relocates physical blocks
-The existing boot area holds the migration journal until remapping completes.
+A temporary 1 GiB area at the end holds the rescue system and migration journal.
 Original file data is released progressively. This is not a retained full backup.
-Automatic restart after power loss is NOT implemented. Use only disposable VMs.
+The rescue entry resumes an interrupted copy or remap. Bootloader replacement
+still has a short recovery window; keep a provider backup before converting.
 EOF
 elif [[ $MODE = backup ]]; then
     echo "BACKUP AND RESTORE: $ROOTDEV -> archive on a separate Volume or rclone remote"

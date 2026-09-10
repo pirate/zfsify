@@ -9,8 +9,9 @@ IP=
 MODE=${1:-preserve}
 case "$MODE" in
     preserve) INSTALL_ARGS=; FIXTURE_CHECK=verify-preserved.sh ;;
+    inplace) INSTALL_ARGS=--inplace; FIXTURE_CHECK=verify-preserved.sh ;;
     erase) INSTALL_ARGS=--erase; FIXTURE_CHECK=verify-erased.sh ;;
-    *) echo 'Usage: scripts/do-e2e.sh [preserve|erase]' >&2; exit 2 ;;
+    *) echo 'Usage: scripts/do-e2e.sh [preserve|inplace|erase]' >&2; exit 2 ;;
 esac
 SSH=(ssh -F /dev/null -i "$STATE/key" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$STATE/known_hosts" -o ConnectTimeout=10 -o ServerAliveInterval=5 -o ServerAliveCountMax=3)
 SCP=(scp -F /dev/null -i "$STATE/key" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$STATE/known_hosts")
@@ -43,14 +44,19 @@ done
 [[ -n $IP ]]
 "${SSH[@]}" "root@$IP" 'cloud-init status --wait && mkdir -p /root/zfs-on-boot-source'
 "${SCP[@]}" "$BASE/scripts/setup-fixture.sh" "$BASE/scripts/$FIXTURE_CHECK" "root@$IP:/root/"
-"${SSH[@]}" "root@$IP" "bash /root/setup-fixture.sh $MODE"
+FIXTURE_MODE=$MODE; [[ $MODE != inplace ]] || FIXTURE_MODE=preserve
+"${SSH[@]}" "root@$IP" "bash /root/setup-fixture.sh $FIXTURE_MODE"
+if [[ $MODE = inplace ]]; then
+    "${SCP[@]}" "$BASE/scripts/setup-inplace-fill.py" "root@$IP:/root/"
+    "${SSH[@]}" "root@$IP" 'python3 /root/setup-inplace-fill.py' | tee "$STATE/input-usage.txt"
+fi
 "${SCP[@]}" "$BASE/dist/install.sh" "root@$IP:/root/zfs-on-boot-source/install.sh"
 "${SSH[@]}" "root@$IP" 'systemd-run --unit=zfs-on-boot-source --collect python3 -m http.server 8765 --bind 127.0.0.1 --directory /root/zfs-on-boot-source'
 # Wait for the test HTTP server. It runs on the DO Droplet, not the controller.
 "${SSH[@]}" "root@$IP" 'for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8765/install.sh && exit 0; sleep 1; done; exit 1'
 "${SSH[@]}" "root@$IP" "systemd-run --unit=zfs-on-boot-stage --collect /bin/bash -o pipefail -c 'curl -fsSL http://127.0.0.1:8765/install.sh | sh -s -- $INSTALL_ARGS'"
 ready=0
-for attempt in {1..180}; do
+for attempt in {1..360}; do
     if "${SSH[@]}" "root@$IP" 'test -f /etc/zfs-on-boot-installed && test "$(findmnt -n -o FSTYPE /)" = zfs' 2>/dev/null; then ready=1; break; fi
     sleep 10
 done
@@ -59,6 +65,7 @@ done
 "${SSH[@]}" "root@$IP" 'bash /root/zfs-on-boot-verify.sh' | tee "$STATE/verification.txt"
 "${SCP[@]}" "$BASE/scripts/$FIXTURE_CHECK" "root@$IP:/root/"
 "${SSH[@]}" "root@$IP" "bash /root/$FIXTURE_CHECK" | tee "$STATE/fixture-verification.txt"
+"${SSH[@]}" "root@$IP" 'zpool scrub rpool && zpool wait -t scrub rpool && zpool status rpool && zpool status rpool | grep -q "errors: No known data errors"' | tee "$STATE/scrub.txt"
 "${SCP[@]}" "root@$IP:/var/log/zfs-on-boot/install.log" "$STATE/install.log"
 OLD_BOOT=$("${SSH[@]}" "root@$IP" 'cat /proc/sys/kernel/random/boot_id')
 "${SSH[@]}" "root@$IP" 'systemctl reboot' || true
@@ -70,4 +77,5 @@ for attempt in {1..60}; do
 done
 [[ $ready = 1 ]]
 "${SSH[@]}" "root@$IP" 'bash /root/zfs-on-boot-verify.sh' | tee "$STATE/verification-after-reboot.txt"
+"${SSH[@]}" "root@$IP" "bash /root/$FIXTURE_CHECK" | tee "$STATE/fixture-after-reboot.txt"
 echo 'One-command installation and subsequent reboot passed on DigitalOcean.'

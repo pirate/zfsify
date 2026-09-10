@@ -1,0 +1,152 @@
+DigitalOcean root recovery and resize acceptance — 2026-09-10
+Ubuntu 24.04, BIOS, 1 GiB RAM, 25 GiB boot disk, separate original ext4 /boot.
+No external Volume. Initial ext4: 17,565,646,848 / 24,883,167,232 bytes (71%).
+Invocation: reformat.sh --inplace
+Root backend SHA256: d47477d915d0d6f0199b4080caae63ebc8768deb2e14c86ca2b28993c4bbcf22
+A provider power_cycle interrupted physical remapping after 13 journal records.
+Action 3398577856 started 2026-09-10T08:53:27Z.
+The persistent BIOS rescue booted and resumed remapping without manual repair.
+
+Resuming in-place migration: remap on /dev/vda
+job completed.
+VERIFIED: 118473 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+
+active
+active
+active
+status: done
+599270413
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              16.0G  6.81G    96K  none
+rpool/ROOT         15.9G  6.81G    96K  none
+rpool/ROOT/ubuntu  15.9G  6.81G  15.9G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.44M      -  15.9G  -
+enabled
+ZFS root verification passed.
+
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/root/migration-fixture/large.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:50 with 0 errors on Thu Sep 10 09:04:14 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+30d46f38-207a-48df-882e-09660160247b
+0	3617
+0	3617
+0	0
+
+Provider resize: power off, enlarge disk to 50 GiB (2 GiB RAM plan), power on.
+No guest growth commands.
+{'id': 3398591411, 'type': 'resize', 'status': 'in-progress', 'started_at': '2026-09-10T09:05:16Z'}
+{'id': 3398591411, 'type': 'expand_droplet', 'status': 'completed', 'completed_at': '2026-09-10T09:09:47Z'}
+{'id': 3398597555, 'type': 'power_on', 'status': 'in-progress', 'started_at': '2026-09-10T09:09:51Z'}
+{'id': 3398597555, 'type': 'power_on', 'status': 'completed', 'completed_at': '2026-09-10T09:10:08Z'}
+
+Before:
+30d46f38-207a-48df-882e-09660160247b
+26843545600
+25232932864
+NAME          SIZE FSTYPE
+vda    26843545600 
+├─vda1  1073741824 ext4
+└─vda2 25768738304 zfs_member
+vdb         499712 iso9660
+
+After:
+85a0f61f-c09d-4309-915e-86fa33cbd185
+53687091200
+52076478464
+NAME          SIZE FSTYPE
+vda    53687091200 
+├─vda1  1073741824 ext4
+└─vda2 52612283904 zfs_member
+vdb         499712 iso9660
+Sep 10 09:10:41 zfs-on-boot-test-594c9e3d86 systemd[1]: Starting zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize...
+Sep 10 09:10:49 zfs-on-boot-test-594c9e3d86 zfs-on-boot-grow[879]: CHANGED: partition=2 start=2099200 old: size=50329567 end=52428766 new: size=102758367 end=104857566
+Sep 10 09:10:49 zfs-on-boot-test-594c9e3d86 zfs-on-boot-grow[1100]: rpool        52076478464        ONLINE
+Sep 10 09:10:49 zfs-on-boot-test-594c9e3d86 systemd[1]: zfs-on-boot-grow.service: Deactivated successfully.
+Sep 10 09:10:49 zfs-on-boot-test-594c9e3d86 systemd[1]: Finished zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize.
+
+active
+active
+active
+status: done
+599270413
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:50 with 0 errors on Thu Sep 10 09:04:14 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              16.0G  31.0G    96K  none
+rpool/ROOT         15.9G  31.0G    96K  none
+rpool/ROOT/ubuntu  15.9G  31.0G  15.9G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.57M      -  15.9G  -
+enabled
+ZFS root verification passed.
+
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/root/migration-fixture/large.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.

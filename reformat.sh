@@ -5,7 +5,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; e
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_5b0689915434794e63633aeae0b51a256533d429b84664e87d6e1895404f0049'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_073a047c66d671d4fe3f8359baa44608e2b9c0fbf375fb4f54f4d3899c1b0215'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -35,7 +35,7 @@ Default: preserve your installation or data in place when less than 50% is used.
   --erase                  Fresh Ubuntu with limited settings restore for /;
                            discard ALL files when targeting a data volume.
   --inplace                EXPERIMENTAL root conversion using recycled ext4 space.
-                           Requires UEFI and a separate ext4 /boot before /.
+                           Uses a temporary 1 GiB journal area on the same disk.
 
 The positional path is the disk to CONVERT; --backup= is where to KEEP its backup.
 Examples: --backup=/mnt/backup /          (convert the boot disk)
@@ -104,6 +104,10 @@ fi
 [[ $ARCH != arm64 || $FIRMWARE = uefi ]] || die 'ARM64 root conversion requires UEFI firmware (not a board-specific U-Boot boot chain).'
 BOOT_PACKAGES=(grub2-common)
 [[ $FIRMWARE != bios ]] || BOOT_PACKAGES+=(grub-pc-bin extlinux syslinux-common)
+if [[ $MODE = inplace && $FIRMWARE = uefi ]]; then
+    [[ $ARCH != arm64 ]] || BOOT_PACKAGES+=(grub-efi-arm64-bin)
+    [[ $ARCH != amd64 ]] || BOOT_PACKAGES+=(grub-efi-amd64-bin)
+fi
 [[ -f /boot/grub/grub.cfg ]] || die 'GRUB is required.'
 [[ $(findmnt -n -o FSTYPE /) = ext4 ]] || die 'Only a plain ext4 root partition is supported.'
 [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 450000 ]] || die 'At least 512 MiB RAM is required; the compressed rescue size is checked before reboot.'
@@ -117,9 +121,6 @@ BOOT_PREFIX=/boot
 if [[ $BOOT_MOUNT = /boot ]]; then
     BOOT_PREFIX=
     [[ /dev/$(lsblk -dn -o PKNAME "$(findmnt -n -o SOURCE /boot)") = "$DISK" ]] || die '/boot must be on the root disk.'
-fi
-if [[ $MODE = inplace ]]; then
-    [[ $FIRMWARE = uefi && $BOOT_MOUNT = /boot ]] || die 'Experimental --inplace requires UEFI and a separate ext4 /boot.'
 fi
 read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
@@ -168,10 +169,6 @@ if [[ $MODE != erase ]]; then
     sfdisk --json "$DISK" > "$SOURCE/table.json"
     python3 "$SOURCE/plan.py" "$SOURCE/table.json" "$ROOTDEV" "$(findmnt -n -o SOURCE --target /boot)" "$(findmnt -n -o SOURCE --target /boot/efi 2>/dev/null || true)" > "$SOURCE/plan.env"
 fi
-if [[ $MODE = inplace ]]; then
-    . "$SOURCE/plan.env"
-    (( ROOT_START >= 1050624 )) || die 'Experimental --inplace needs at least 512 MiB of boot space before the root partition.'
-fi
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
 if [[ $MODE = preserve ]]; then
@@ -195,9 +192,10 @@ EXPERIMENTAL IN-PLACE CONVERSION: $ROOTDEV -> one native ZFS root partition.
   [ ext4 files shrinking | sparse ZFS growing  ]  copy, sync, verify, release 64 MiB batches
   [ completed ZFS image inside ext4           ]  verify the complete manifest
   [ native ZFS partition; no image or mapper  ]  fsremap relocates physical blocks
-The existing boot area holds the migration journal until remapping completes.
+A temporary 1 GiB area at the end holds the rescue system and migration journal.
 Original file data is released progressively. This is not a retained full backup.
-Automatic restart after power loss is NOT implemented. Use only disposable VMs.
+The rescue entry resumes an interrupted copy or remap. Bootloader replacement
+still has a short recovery window; keep a provider backup before converting.
 EOF
 elif [[ $MODE = backup ]]; then
     echo "BACKUP AND RESTORE: $ROOTDEV -> archive on a separate Volume or rclone remote"
@@ -422,7 +420,7 @@ echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM instal
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_5b0689915434794e63633aeae0b51a256533d429b84664e87d6e1895404f0049
+ZFS_ON_BOOT_073a047c66d671d4fe3f8359baa44608e2b9c0fbf375fb4f54f4d3899c1b0215
 cat > "$work/network.py" <<'ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec'
 #!/usr/bin/env python3
 """Capture hardware NIC addresses and main-table routes for the RAM installer."""
@@ -533,7 +531,7 @@ if __name__ == '__main__':
         (out / ('cmdline-' + name)).write_text(value + '\n')
 
 ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_dfcf974749ec58619ab49655711f223d7b77b3be44407d8cd05f9676c55057a1'
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_e3bdb73c177fb4c5d911f95d263f813f92119e2ad827f0af2883085ede2b8672'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -551,12 +549,15 @@ mount -t devpts devpts /dev/pts
 exec </dev/console >/dev/console 2>&1
 set -Eeuo pipefail
 MIGRATION_STARTED=0
+[[ " $(cat /proc/cmdline) " != *' zfsify.rescue='* ]] || MIGRATION_STARTED=1
 rescue() {
     trap - ERR
     echo "INSTALLATION FAILED at line $1. Use the provider console; SSH requires working networking."
     echo 'Run zfs-on-boot-status; logs: /run/zfs-on-boot.log and /var/log/zfs-on-boot/progress.log.'
     if [[ $MIGRATION_STARTED = 0 ]]; then
         echo 'Disk migration has not started. Rebooting returns to the original Ubuntu boot entry.'
+    elif [[ ${MODE:-} = inplace ]]; then
+        echo 'The persistent rescue entry can resume copy/remap; bootloader cutover may need provider recovery.'
     else
         echo 'Do not reboot after source removal. Inspect the migration logs before taking action.'
     fi
@@ -595,7 +596,11 @@ if [[ $(cat /etc/zfs-on-boot/firmware) = uefi ]]; then
     BOOT_ATTR=()
     mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 fi
-ROOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-root-uuid)")
+ROOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-root-uuid)" || true)
+if [[ $MODE = inplace && -z $ROOTDEV ]]; then
+    # fsremap replaces ext4's UUID; recovery uses the persistent journal.
+    ROOTDEV=$(cat /etc/zfs-on-boot/old-root-device)
+fi
 BACKUPDEV=
 if [[ -f /etc/zfs-on-boot/backup/volume-uuid ]]; then
     BACKUPDEV=$(blkid -U "$(cat /etc/zfs-on-boot/backup/volume-uuid)")
@@ -695,8 +700,11 @@ phase 6 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefai
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
 fi  # Existing preservation/backup/erase backend.
+if [[ $MODE != inplace || $INPLACE_PHASE != configured ]]; then
 phase 7 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
+fi
 phase 7 'Flush the configured ZFS root to disk' zpool sync rpool
+[[ $MODE != inplace ]] || inplace_checkpoint configured
 if [[ $MODE = preserve ]]; then
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
@@ -737,6 +745,12 @@ if [[ $MODE = preserve ]]; then
     ZPART=$FRONT
 elif [[ $MODE = inplace ]]; then
     phase 8 'Native remap complete: no mirror relocation required' true
+    # The new loader and root are durable before releasing the rescue area.
+    cp -a "$STATE/." /target/var/log/zfs-on-boot/inplace/
+    sync
+    umount /scratch
+    sgdisk -d 32 "$DISK"
+    partx -d --nr 32 "$DISK"
 else
     phase 8 'Fresh install: no relocation required' true
 fi
@@ -768,7 +782,7 @@ echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_dfcf974749ec58619ab49655711f223d7b77b3be44407d8cd05f9676c55057a1
+ZFS_ON_BOOT_e3bdb73c177fb4c5d911f95d263f813f92119e2ad827f0af2883085ede2b8672
 cat > "$work/target.sh" <<'ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
@@ -875,7 +889,7 @@ umount -R /target/sys
 umount -R /target/dev
 
 ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168
-cat > "$work/progress.py" <<'ZFS_ON_BOOT_a17b923cc5ed14a7900b9bfa2b289e2b4aab61563730b549db368f1e4d59b8ee'
+cat > "$work/progress.py" <<'ZFS_ON_BOOT_9fce3e2089fa92725adeb9ffa41f9cf0d469ecb86d9388a45448009f143c9c52'
 #!/usr/bin/python3
 """Run a phase with live Linux disk telemetry, or follow it across SSH sessions."""
 import argparse
@@ -900,6 +914,8 @@ def render(s):
     data = (f"{'~' if s.get('approximate') else ''}{s.get('done', 0)/1e6:,.1f}/{s['total']/1e6:,.1f} MB "
             f"({fraction*100:.1f}%) | {s.get('speed', 0)/1e6:,.1f} MB/s logical"
             + (' (phase average)' if s['status'] != 'running' else '')) if s.get('total') else 'data total: n/a (streaming or metadata operation)'
+    if s.get('files_total'):
+        data += f" | files: {s.get('files_done', 0):,}/{s['files_total']:,}"
     io = ' | '.join(f"{d}: R {v[0]:.1f} W {v[1]:.1f} MB/s {v[2]:.0f} IOPS" for d, v in s.get('io', {}).items())
     return (f"[{bar}] phase {s['phase']}/10: {s['label']} [{s['status']}]\n"
             f"  devices: {s['devices']} | elapsed {s['elapsed']:.0f}s\n  {data}\n  {io}")
@@ -908,7 +924,7 @@ def disks(names):
     result = {}
     for name in names:
         try:
-            fields = list(map(int, Path('/sys/class/block', Path(name).name, 'stat').read_text().split()))
+            fields = list(map(int, Path('/sys/class/block', Path(name).resolve().name, 'stat').read_text().split()))
             result[name] = (fields[2]*512, fields[6]*512, fields[0]+fields[4])
         except (OSError, ValueError):
             pass
@@ -955,7 +971,7 @@ start = tick = time.monotonic()
 prev = disks(a.devices.split(','))
 state = dict(phase=a.phase, label=a.label, devices=','.join(dict.fromkeys(a.devices.split(','))), total=a.total,
              done=0, speed=0, elapsed=0, status='running', io={})
-last_done = 0
+last_done = initial_done = 0
 buffer = ''
 last_print = 0
 rsync = re.compile(r'^\s*([\d,]+)\s+(\d+)%\s+')
@@ -969,7 +985,7 @@ def publish(final=False):
                    for d, v in current.items() if d in prev
                    # Partition recreation resets counters; establish a new baseline.
                    if all(new >= old for new, old in zip(v, prev[d]))}
-    state['speed'] = state['done']/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
+    state['speed'] = (state['done']-initial_done)/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
     state['elapsed'] = now-start
     prev, tick, last_done = current, now, state['done']
     tmp = STATE.with_suffix('.tmp')
@@ -1002,8 +1018,13 @@ with LOG.open('a') as log:
                 match = rsync.match(line)
                 if match:
                     state['done'] = int(match[1].replace(',', ''))
+                elif match := re.fullmatch(r'ZFSIFY_START ([0-9]{1,20}) ([0-9]{1,20})', line):
+                    state['done'], state['total'] = int(match[1]), int(match[2])
+                    initial_done = last_done = state['done']
                 elif match := re.fullmatch(r'ZFSIFY_PROGRESS ([0-9]{1,20}) ([0-9]{1,20})', line):
                     state['done'], state['total'] = int(match[1]), int(match[2])
+                elif match := re.fullmatch(r'ZFSIFY_FILES ([0-9]{1,20}) ([0-9]{1,20})', line):
+                    state['files_done'], state['files_total'] = int(match[1]), int(match[2])
                 elif line:
                     print(line, flush=True)
                     log.write(line+'\n')
@@ -1028,7 +1049,7 @@ if code == 0 and state['total']: state['done'] = state['total']
 publish(final=True)
 sys.exit(code)
 
-ZFS_ON_BOOT_a17b923cc5ed14a7900b9bfa2b289e2b4aab61563730b549db368f1e4d59b8ee
+ZFS_ON_BOOT_9fce3e2089fa92725adeb9ffa41f9cf0d469ecb86d9388a45448009f143c9c52
 cat > "$work/plan.py" <<'ZFS_ON_BOOT_41be88f6c01738992b7ab4ff60d30d2075d0c3276563a104254ed48a510c340b'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""
@@ -1186,7 +1207,7 @@ for link in units.glob('*.wants/*'):
 print('Restored /etc and account records; translated fresh system-file ownership.')
 
 ZFS_ON_BOOT_d7aae2d1b323632b2e9b0e6397902bcf924431b52c7f69e949934999eb6c562c
-cat > "$work/ram-boot.sh" <<'ZFS_ON_BOOT_67f6d2616ea5352e8cc71452ba3951bd86e70af36c5e4b2707ac6f40f21e97c3'
+cat > "$work/ram-boot.sh" <<'ZFS_ON_BOOT_30759405362171b29af22cd9fa1d9408c0b2de06d8b20bc9cbdd6d983d34ab54'
 #!/bin/busybox sh
 # Minimal initramfs: read the compressed rescue filesystem into RAM, then release
 # the source disk before starting any migration command.
@@ -1198,6 +1219,10 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 exec </dev/console >/dev/console 2>&1
 fail() {
+    if [ "${RECOVERY:-0}" = 1 ]; then
+        echo "Persistent rescue bootstrap failed: $*. Disk migration may be incomplete."
+        exec sh
+    fi
     echo "Rescue bootstrap failed: $*; source disk has not been changed."
     source=$(/sbin/blkid -U "$SOURCE_UUID" 2>/dev/null || true)
     if [ -b "$source" ]; then
@@ -1214,6 +1239,11 @@ fail() {
     exec sh
 }
 . /config
+# The persistent rescue copy survives after the original ext4 UUID is gone.
+RECOVERY=0
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in zfsify.rescue=*) SOURCE_UUID=${arg#*=}; RECOVERY=1;; esac
+done
 for module in $MODULES; do
     # Controllers for other providers can return ENODEV on this hypervisor.
     /sbin/modprobe "$module" || case "$module" in ext4|loop|squashfs|overlay) fail "$module";; esac
@@ -1238,7 +1268,7 @@ umount /sys
 umount /dev
 exec switch_root /rescue /init
 
-ZFS_ON_BOOT_67f6d2616ea5352e8cc71452ba3951bd86e70af36c5e4b2707ac6f40f21e97c3
+ZFS_ON_BOOT_30759405362171b29af22cd9fa1d9408c0b2de06d8b20bc9cbdd6d983d34ab54
 cat > "$work/build-rescue.py" <<'ZFS_ON_BOOT_6937b61de010540f98d6814303fa45e6671b21a2273402e37bcc911d198d235a'
 #!/usr/bin/python3
 """Build a small disk-independent boot shim; execute only on the target Ubuntu VPS."""
@@ -1296,7 +1326,7 @@ with image.open('rb') as stream:
 (shim/'config').write_text(f'SOURCE_UUID={uuid}\nRESCUE_SHA={digest}\nMODULES="{" ".join(modules)}"\n')
 
 ZFS_ON_BOOT_6937b61de010540f98d6814303fa45e6671b21a2273402e37bcc911d198d235a
-cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_5d784d9aa58e2da9e5c4cac4aa3414d4fb237da2092bb56621aceb755c6bafc5'
+cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_ed338db083ec398d1f5969db5185383810761cd6ddeb3b2b5a6c455eb7e9c0d4'
 #!/bin/bash
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -1326,6 +1356,17 @@ if [[ $ACTION = download ]]; then
 fi
 [[ $ACTION = install ]]
 DISK=${3:?} BOOTDEV=${4:?}
+# A resumed installation can format this partition again, changing its UUID.
+# Replace the boot mount entry rather than accumulating obsolete UUIDs.
+python3 - "$ROOT/etc/fstab" <<'PY'
+from pathlib import Path
+import sys
+p = Path(sys.argv[1])
+lines = p.read_text().splitlines(keepends=True)
+p.write_text(''.join(line for line in lines if line.lstrip().startswith('#')
+                     or len(line.split()) < 2
+                     or line.split()[1] not in ('/boot/efi', '/boot/syslinux')))
+PY
 if [[ $FIRMWARE = uefi ]]; then
     case $(uname -m) in
         x86_64) EFI_FALLBACK=BOOTX64.EFI ;;
@@ -1369,7 +1410,7 @@ umount "$ROOT/boot/syslinux"
 # Activate the BIOS loader only after its files are durable.
 dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc,fsync
 
-ZFS_ON_BOOT_5d784d9aa58e2da9e5c4cac4aa3414d4fb237da2092bb56621aceb755c6bafc5
+ZFS_ON_BOOT_ed338db083ec398d1f5969db5185383810761cd6ddeb3b2b5a6c455eb7e9c0d4
 cat > "$work/zbm-build.sh" <<'ZFS_ON_BOOT_4c76357c973dd0cf134c763bf14137a2d5fafead0fd40a9e34313a98f32866a3'
 #!/bin/bash
 # Build upstream ARM64 ZFSBootMenu without changing the host's initramfs tooling.
@@ -1943,74 +1984,194 @@ print('First selected files:\n'+'\n'.join(preview))
 print('Complete KEEP/OMIT preview:', output.with_suffix('.manifest'))
 
 ZFS_ON_BOOT_30f084bb342a56cb18894353d441529c4b70c40d8929df99548c01212793b161
-cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_e2fa14a3b8c4c1405fe10edf534ef207b37ba920135a7fbd8436371e157d9abf'
+cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_ec1e8dc78772f198cb35c85dc9b0b13b049ec208e77962048f8a9d2e51b6ef32'
 #!/bin/bash
-# Sourced by the RAM installer. Experimental: no automatic power-loss recovery.
+# Sourced by the RAM installer. Persistent state lives outside the source.
 . /etc/zfs-on-boot/plan.env
-BOOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-boot-uuid)")
-mkdir -p /scratch
-mount "$BOOTDEV" /scratch
-STATE=/scratch/zfsify-inplace-state
-mkdir -m 700 "$STATE"
 MOVER=/etc/zfs-on-boot/inplace-move.py
+mkdir -p /scratch
+STATE=/scratch/zfsify-inplace-state
 MANIFEST=$STATE/manifest.sqlite
-mount "$ROOTDEV" /old
-mount --bind /scratch /old/boot
-mkdir -p /var/log/zfs-on-boot
-cp /old/var/lib/zfs-on-boot/stage.log /var/log/zfs-on-boot/stage.log
-rm -rf /old/var/lib/zfs-on-boot /old/boot/zfs-on-boot
 IMAGE=/old/.zfsify.img
-[[ ! -e $IMAGE ]]
-DEVICES=$DISK,$ROOTDEV,$BOOTDEV
-phase 4 'Record original file hashes and metadata on the separate boot filesystem' python3 "$MOVER" capture "$MANIFEST" /old
-# fsremap rounds the destination down to ext4's block size. Ubuntu cloud root
-# partitions can end between 4 KiB boundaries; ZFS also uses 4 KiB sectors here.
-IMAGE_BYTES=$(( $(blockdev --getsize64 "$ROOTDEV") / 4096 * 4096 ))
-truncate -s "$IMAGE_BYTES" "$IMAGE"
-LOOP=$(losetup -f --show "$IMAGE")
-# A DM mapping prevents whole-disk GPT auto-partitioning inside the loop image.
-# It exists only during migration; fsremap produces a native partition afterward.
-dmsetup create zfsify-image --table "0 $((IMAGE_BYTES/512)) linear $LOOP 0"
-ZPART=/dev/mapper/zfsify-image
-DEVICES=$DISK,$ROOTDEV,$BOOTDEV,$ZPART
-create_root_pool off
-phase 5 'Copy, checksum and release original data in 64 MiB batches' python3 "$MOVER" move "$MANIFEST" /old /target
-phase 6 'Verify complete original manifest against the ZFS image' python3 "$MOVER" verify "$MANIFEST" /target
-zpool export rpool
-dmsetup remove zfsify-image
-losetup -d "$LOOP"
-umount /old/boot
-umount /old
-phase 6 'Check outer ext4 before physical block relocation' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
-mount -o ro "$ROOTDEV" /old
-DEVICES=$DISK,$ROOTDEV,$BOOTDEV
-phase 6 "Remap ZFS image onto $ROOTDEV with fstransform's fsremap" fsremap --questions=no --mem-buffer=32M --secondary-storage=32M --temp-dir="$STATE" -- "$ROOTDEV" "$IMAGE"
-zpool import -N -R /target -d "$ROOTDEV" rpool
-zfs mount rpool/ROOT/ubuntu
-phase 6 'Verify the native ZFS partition after remapping' python3 "$MOVER" verify "$MANIFEST" /target
-# Keep the original hash/metadata manifest and remapper log private for inspection.
-mkdir -p -m 700 /target/var/log/zfs-on-boot/inplace
-cp -a "$STATE/." /target/var/log/zfs-on-boot/inplace/
-zpool set autotrim=on rpool
-zpool export rpool
-umount /scratch
-# Preserve root's exact starting sector. Use its existing front boot area for
-# ZFSBootMenu, then number the final native root partition consistently.
-mapfile -t PARTS < <(while read -r name; do cat "/sys/class/block/$name/partition" 2>/dev/null || true; done < <(lsblk -nr -o NAME "$DISK"))
-ARGS=()
-for number in "${PARTS[@]}"; do ARGS+=(-d "$number"); done
-phase 6 'Finalize GPT around the already-verified native ZFS root' sgdisk "${ARGS[@]}" -n "1:2048:$((ROOT_START-1))" -t 1:EF00 -n "2:$ROOT_START:$ROOT_END" -t 2:BF01 "$DISK"
-# Everything on this disk is unmounted, so reread the complete table. sgdisk
-# may already have refreshed it; adding individual entries would race that.
-partprobe "$DISK"
-udevadm settle
-ZPART=$(part 2)
-zpool import -N -R /target -d "$ZPART" rpool
-zfs mount rpool/ROOT/ubuntu
-DEVICES=$DISK,$ZPART
+inplace_checkpoint() {
+    printf '%s\n' "$1" > "$STATE/phase.new"
+    sync -f "$STATE/phase.new"
+    mv "$STATE/phase.new" "$STATE/phase"
+    sync -f "$STATE"
+    INPLACE_PHASE=$1
+}
+inplace_mount_source() {
+    mount "$ROOTDEV" /old
+    if [[ -f /etc/zfs-on-boot/old-boot-uuid ]]; then
+        OLD_BOOT=$(blkid -U "$(cat /etc/zfs-on-boot/old-boot-uuid)")
+        mount "$OLD_BOOT" /old/boot
+    fi
+}
+inplace_unmount_source() {
+    ! mountpoint -q /old/boot || umount /old/boot
+    ! mountpoint -q /old || umount /old
+}
+inplace_map_image() {
+    LOOP=$(losetup -f --show "$IMAGE")
+    # This offset reserves the final boot area inside the sparse image.
+    dmsetup create zfsify-image --table "0 $((IMAGE_BYTES/512-IMAGE_OFFSET)) linear $LOOP $IMAGE_OFFSET"
+    ZPART=/dev/mapper/zfsify-image
+}
+inplace_unmap_image() {
+    zpool export rpool
+    dmsetup remove zfsify-image
+    losetup -d "$LOOP"
+    inplace_unmount_source
+    DEVICES=$DISK,$ROOTDEV,$SCRATCH
+}
 
-ZFS_ON_BOOT_e2fa14a3b8c4c1405fe10edf534ef207b37ba920135a7fbd8436371e157d9abf
-cat > "$work/inplace-move.py" <<'ZFS_ON_BOOT_e6336e845900344726621890f01ba8901c03d9988a5d202115a8def7f6dd4ddb'
+SCRATCH=$(part 32)
+if [[ -z $SCRATCH ]]; then
+    # Shrink only enough for the journal/rescue, never to half the disk.
+    SCRATCH_START=$(( (ROOT_END+1)/2048*2048-2097152 ))
+    COPY_END=$((SCRATCH_START-1))
+    IMAGE_OFFSET=0
+    (( ROOT_START >= 1050624 )) || IMAGE_OFFSET=$((1050624-ROOT_START))
+    IMAGE_BYTES=$(( (COPY_END-ROOT_START+1)/8*4096 ))
+    ZFS_START=$((ROOT_START+IMAGE_OFFSET))
+    ZFS_END=$((ROOT_START+IMAGE_BYTES/512-1))
+    phase 4 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    phase 4 'Reserve space for the persistent rescue and journal' resize2fs -p "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
+    sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$COPY_END" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SCRATCH_START:$ROOT_END" -t 32:8300 "$DISK"
+    partprobe "$DISK"
+    udevadm settle
+    SCRATCH=$(part 32)
+    mkfs.ext4 -q -F -m 0 -L ZFSIFY_RESCUE "$SCRATCH"
+    mount "$SCRATCH" /scratch
+    mkdir -m 700 "$STATE"
+    printf 'ROOT_START=%s\nROOT_END=%s\nCOPY_END=%s\nIMAGE_OFFSET=%s\nIMAGE_BYTES=%s\nZFS_START=%s\nZFS_END=%s\n' \
+        "$ROOT_START" "$ROOT_END" "$COPY_END" "$IMAGE_OFFSET" "$IMAGE_BYTES" "$ZFS_START" "$ZFS_END" > "$STATE/geometry"
+    sgdisk --backup="$STATE/table.gpt" "$DISK"
+    inplace_mount_source
+    mkdir -p /scratch/var/lib/zfs-on-boot /scratch/boot/zfs-on-boot
+    cp /rescue-media/rescue.squashfs /scratch/var/lib/zfs-on-boot/
+    cp /old/boot/zfs-on-boot/{installer.img,vmlinuz} /scratch/boot/zfs-on-boot/
+    cp /old/var/lib/zfs-on-boot/stage.log "$STATE/stage.log"
+    SCRATCH_UUID=$(blkid -s UUID -o value "$SCRATCH")
+    mkdir -p /scratch/boot/grub
+    cat > /scratch/boot/grub/grub.cfg <<EOF
+set timeout=3
+set default=0
+menuentry 'Resume ZFS conversion' {
+    search --no-floppy --fs-uuid --set=root $SCRATCH_UUID
+    linux /boot/zfs-on-boot/vmlinuz $(cat /etc/zfs-on-boot/boot/cmdline-grub) rdinit=/init panic=0 zfsify.rescue=$SCRATCH_UUID
+    initrd /boot/zfs-on-boot/installer.img
+}
+EOF
+    inplace_checkpoint prepare
+    if [[ $(cat /etc/zfs-on-boot/firmware) = bios ]]; then
+        grub-install --target=i386-pc --boot-directory=/scratch/boot "$DISK"
+    else
+        # Use the existing ESP until the verified native root is ready.
+        ESP=$(lsblk -nrpo NAME,PARTTYPE "$DISK" | awk 'tolower($2)=="c12a7328-f81f-11d2-ba4b-00a0c93ec93b" {print $1; exit}')
+        mkdir -p /scratch/efi
+        mount "$ESP" /scratch/efi
+        EFI_ARCH=x86_64; [[ $(uname -m) != aarch64 ]] || EFI_ARCH=arm64
+        grub-install --target="$EFI_ARCH-efi" --efi-directory=/scratch/efi --boot-directory=/scratch/boot --bootloader-id=zfsify-rescue --no-nvram
+        ESP_NUMBER=$(cat "/sys/class/block/${ESP##*/}/partition")
+        EFI_NAME=grubx64.efi; [[ $EFI_ARCH != arm64 ]] || EFI_NAME=grubaa64.efi
+        efibootmgr --create --disk "$DISK" --part "$ESP_NUMBER" --label zfsify-rescue --loader "\\EFI\\zfsify-rescue\\$EFI_NAME"
+        umount /scratch/efi
+    fi
+    sync
+    inplace_unmount_source
+else
+    mount "$SCRATCH" /scratch
+    [[ $(blkid -s LABEL -o value "$SCRATCH") = ZFSIFY_RESCUE && -s $STATE/geometry && -s $STATE/phase ]]
+    . "$STATE/geometry"
+    INPLACE_PHASE=$(cat "$STATE/phase")
+    echo "Resuming in-place migration: $INPLACE_PHASE on $DISK"
+fi
+DEVICES=$DISK,$ROOTDEV,$SCRATCH
+mkdir -p /var/log/zfs-on-boot
+cp "$STATE/stage.log" /var/log/zfs-on-boot/stage.log
+
+if [[ $INPLACE_PHASE = prepare ]]; then
+    inplace_mount_source
+    rm -rf /old/var/lib/zfs-on-boot /old/boot/zfs-on-boot
+    rm -f "$IMAGE" "$MANIFEST" "$MANIFEST-journal"
+    phase 4 'Record original file hashes and metadata in the journal' python3 "$MOVER" capture "$MANIFEST" /old
+    truncate -s "$IMAGE_BYTES" "$IMAGE"
+    inplace_map_image
+    create_root_pool off
+    zpool sync rpool
+    # Persist the image's directory entry as well as its pool labels before
+    # any original file extents can be released on another filesystem's journal.
+    sync -f /old
+    inplace_checkpoint copy
+elif [[ $INPLACE_PHASE = copy ]]; then
+    phase 4 'Recover the outer ext4 journal' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    inplace_mount_source
+    inplace_map_image
+    zpool import -f -N -R /target -d "$ZPART" rpool
+    zfs mount rpool/ROOT/ubuntu
+fi
+if [[ $INPLACE_PHASE = copy ]]; then
+    DEVICES=$DISK,$ROOTDEV,$SCRATCH,$ZPART
+    phase 5 'Copy, checksum and release original data in 64 MiB batches' python3 "$MOVER" move "$MANIFEST" /old /target
+    phase 6 'Verify the complete manifest against the ZFS image' python3 "$MOVER" verify "$MANIFEST" /target
+    inplace_unmap_image
+    inplace_checkpoint copied
+fi
+JOB=$STATE/fstransform/fsremap.job.1
+if [[ $INPLACE_PHASE = remap && ! -d $JOB ]]; then
+    # The checkpoint can reach disk before fsremap is even executed.
+    inplace_checkpoint copied
+fi
+if [[ $INPLACE_PHASE = copied ]]; then
+    phase 6 'Check outer ext4 before physical block relocation' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    mount -o ro "$ROOTDEV" /old
+    inplace_checkpoint remap
+    # Exact secondary size disables automatic primary mmap allocation. Keep
+    # scratch on partition 32 and bound RAM use even on 512 MiB machines.
+    phase 6 "Remap the image onto $ROOTDEV" fsremap --questions=no --mem-buffer=16M --exact-secondary-storage=32M --temp-dir="$STATE" -- "$ROOTDEV" "$IMAGE"
+    inplace_checkpoint native
+elif [[ $INPLACE_PHASE = remap ]]; then
+    # Never mount ext4 or create a new job once physical relocation started.
+    if [[ -f $JOB/storage.bin ]]; then
+        phase 6 'Resume physical block relocation from its journal' fsremap --questions=no --mem-buffer=16M --temp-dir="$STATE" --resume-job=1 -- "$ROOTDEV"
+    else
+        # fsremap removes storage.bin on success, before our next checkpoint.
+        # A completed relocation is also recorded as zero outstanding blocks.
+        # The full native manifest is verified below before changing the GPT.
+        tail -n 1 "$JOB/fsremap.persist" | grep -Eq '^0[[:space:]]+0$'
+    fi
+    inplace_checkpoint native
+fi
+if [[ $INPLACE_PHASE = native ]]; then
+    dmsetup create zfsify-native --table "0 $((IMAGE_BYTES/512-IMAGE_OFFSET)) linear $ROOTDEV $IMAGE_OFFSET"
+    zpool import -f -N -R /target -d /dev/mapper/zfsify-native rpool
+    zfs mount rpool/ROOT/ubuntu
+    phase 6 'Verify all files after physical remapping' python3 "$MOVER" verify "$MANIFEST" /target
+    zpool set autotrim=on rpool
+    zpool export rpool
+    dmsetup remove zfsify-native
+    inplace_checkpoint partition
+fi
+if [[ $INPLACE_PHASE = partition ]]; then
+    # Preserve partition 32 until the final loader has been installed.
+    mapfile -t PARTS < <(while read -r name; do cat "/sys/class/block/$name/partition" 2>/dev/null || true; done < <(lsblk -nr -o NAME "$DISK") | awk '$1!=32')
+    ARGS=(); for number in "${PARTS[@]}"; do ARGS+=(-d "$number"); done
+    sgdisk "${ARGS[@]}" -n "1:2048:$((ZFS_START-1))" -t "1:$BOOT_TYPE" "${BOOT_ATTR[@]}" -n "2:$ZFS_START:$ZFS_END" -t 2:BF01 "$DISK"
+    for number in "${PARTS[@]}"; do partx -d --nr "$number" "$DISK"; done
+    partx -a --nr 1:2 "$DISK"
+    udevadm settle
+    inplace_checkpoint target
+fi
+[[ $INPLACE_PHASE = target || $INPLACE_PHASE = configured ]]
+ZPART=$(part 2)
+zpool import -f -N -R /target -d "$ZPART" rpool
+zfs mount rpool/ROOT/ubuntu
+mkdir -p -m 700 /target/var/log/zfs-on-boot/inplace
+DEVICES=$DISK,$ZPART,$SCRATCH
+
+ZFS_ON_BOOT_ec1e8dc78772f198cb35c85dc9b0b13b049ec208e77962048f8a9d2e51b6ef32
+cat > "$work/inplace-move.py" <<'ZFS_ON_BOOT_e48c067a76dd746fc2782b206265a3db15b24d6c8f6a4f2906cba152ccb2aca8'
 #!/usr/bin/python3
 """Experimental offline mover: verify and journal each batch before freeing ext4.
 
@@ -2115,6 +2276,13 @@ def move(db, source, target, pool):
     total = sum(json.loads(meta)['size'] for (meta,) in db.execute(
         'SELECT meta FROM entries WHERE digest IS NOT NULL'))
     moved = sum(offset for (offset,) in db.execute('SELECT offset FROM entries'))
+    total_files = files_done = 0
+    for encoded, done in db.execute('SELECT meta,done FROM entries'):
+        if not stat.S_ISDIR(json.loads(encoded)['mode']):
+            total_files += 1
+            files_done += done
+    print(f'ZFSIFY_START {moved} {total}', flush=True)
+    print(f'ZFSIFY_FILES {files_done} {total_files}', flush=True)
     started, initial, last_report = time.monotonic(), moved, 0
     for relative, encoded, checksum, offset, done in db.execute('SELECT * FROM entries ORDER BY rowid'):
         meta = json.loads(encoded)
@@ -2147,6 +2315,12 @@ def move(db, source, target, pool):
                     if space.f_bavail * space.f_frsize < 1024**3:
                         print('Reclaiming unused ZFS image blocks on ext4...', flush=True)
                         subprocess.run(['zpool', 'trim', '-w', pool], check=True)
+                    # Stop before an ENOSPC write can suspend the file-backed
+                    # pool. Both filesystems need room for a batch and metadata.
+                    for filesystem in (source, target):
+                        free = os.statvfs(filesystem)
+                        if free.f_bavail * free.f_frsize < 2 * BATCH:
+                            raise RuntimeError('Insufficient working space; migration paused before the next batch')
                     end = min(offset + BATCH, meta['size'])
                     position = offset
                     expected = hashlib.sha256()
@@ -2182,6 +2356,7 @@ def move(db, source, target, pool):
                     if now - last_report >= 2:
                         speed = (moved - initial) / max(now - started, 0.001) / 1e6
                         print(f'ZFSIFY_PROGRESS {moved} {total}', flush=True)
+                        print(f'ZFSIFY_FILES {files_done} {total_files}', flush=True)
                         print(f'{moved/1e6:,.1f}/{total/1e6:,.1f} MB | {speed:.1f} MB/s | {os.fsdecode(relative)!r}', flush=True)
                         last_report = now
             finally:
@@ -2197,6 +2372,7 @@ def move(db, source, target, pool):
         apply_metadata(dst, meta)
         db.execute('UPDATE entries SET done=1 WHERE path=?', (relative,))
         db.commit()
+        files_done += not done
     for relative, encoded in db.execute('SELECT path,meta FROM entries ORDER BY rowid DESC'):
         meta = json.loads(encoded)
         if stat.S_ISDIR(meta['mode']):
@@ -2204,6 +2380,7 @@ def move(db, source, target, pool):
     subprocess.run(['zpool', 'sync', pool], check=True)
     subprocess.run(['zpool', 'trim', '-w', pool], check=True)
     print(f'ZFSIFY_PROGRESS {moved} {total}', flush=True)
+    print(f'ZFSIFY_FILES {files_done} {total_files}', flush=True)
 
 
 def verify(db, target):
@@ -2242,5 +2419,5 @@ if __name__ == '__main__':
     else:
         verify(db, os.fsencode(args.source))
 
-ZFS_ON_BOOT_e6336e845900344726621890f01ba8901c03d9988a5d202115a8def7f6dd4ddb
+ZFS_ON_BOOT_e48c067a76dd746fc2782b206265a3db15b24d6c8f6a4f2906cba152ccb2aca8
 bash "$work/stage.sh" "$work" "$@" </dev/null

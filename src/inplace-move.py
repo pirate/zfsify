@@ -102,6 +102,13 @@ def move(db, source, target, pool):
     total = sum(json.loads(meta)['size'] for (meta,) in db.execute(
         'SELECT meta FROM entries WHERE digest IS NOT NULL'))
     moved = sum(offset for (offset,) in db.execute('SELECT offset FROM entries'))
+    total_files = files_done = 0
+    for encoded, done in db.execute('SELECT meta,done FROM entries'):
+        if not stat.S_ISDIR(json.loads(encoded)['mode']):
+            total_files += 1
+            files_done += done
+    print(f'ZFSIFY_START {moved} {total}', flush=True)
+    print(f'ZFSIFY_FILES {files_done} {total_files}', flush=True)
     started, initial, last_report = time.monotonic(), moved, 0
     for relative, encoded, checksum, offset, done in db.execute('SELECT * FROM entries ORDER BY rowid'):
         meta = json.loads(encoded)
@@ -134,6 +141,12 @@ def move(db, source, target, pool):
                     if space.f_bavail * space.f_frsize < 1024**3:
                         print('Reclaiming unused ZFS image blocks on ext4...', flush=True)
                         subprocess.run(['zpool', 'trim', '-w', pool], check=True)
+                    # Stop before an ENOSPC write can suspend the file-backed
+                    # pool. Both filesystems need room for a batch and metadata.
+                    for filesystem in (source, target):
+                        free = os.statvfs(filesystem)
+                        if free.f_bavail * free.f_frsize < 2 * BATCH:
+                            raise RuntimeError('Insufficient working space; migration paused before the next batch')
                     end = min(offset + BATCH, meta['size'])
                     position = offset
                     expected = hashlib.sha256()
@@ -169,6 +182,7 @@ def move(db, source, target, pool):
                     if now - last_report >= 2:
                         speed = (moved - initial) / max(now - started, 0.001) / 1e6
                         print(f'ZFSIFY_PROGRESS {moved} {total}', flush=True)
+                        print(f'ZFSIFY_FILES {files_done} {total_files}', flush=True)
                         print(f'{moved/1e6:,.1f}/{total/1e6:,.1f} MB | {speed:.1f} MB/s | {os.fsdecode(relative)!r}', flush=True)
                         last_report = now
             finally:
@@ -184,6 +198,7 @@ def move(db, source, target, pool):
         apply_metadata(dst, meta)
         db.execute('UPDATE entries SET done=1 WHERE path=?', (relative,))
         db.commit()
+        files_done += not done
     for relative, encoded in db.execute('SELECT path,meta FROM entries ORDER BY rowid DESC'):
         meta = json.loads(encoded)
         if stat.S_ISDIR(meta['mode']):
@@ -191,6 +206,7 @@ def move(db, source, target, pool):
     subprocess.run(['zpool', 'sync', pool], check=True)
     subprocess.run(['zpool', 'trim', '-w', pool], check=True)
     print(f'ZFSIFY_PROGRESS {moved} {total}', flush=True)
+    print(f'ZFSIFY_FILES {files_done} {total_files}', flush=True)
 
 
 def verify(db, target):

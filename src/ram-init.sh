@@ -15,12 +15,15 @@ mount -t devpts devpts /dev/pts
 exec </dev/console >/dev/console 2>&1
 set -Eeuo pipefail
 MIGRATION_STARTED=0
+[[ " $(cat /proc/cmdline) " != *' zfsify.rescue='* ]] || MIGRATION_STARTED=1
 rescue() {
     trap - ERR
     echo "INSTALLATION FAILED at line $1. Use the provider console; SSH requires working networking."
     echo 'Run zfs-on-boot-status; logs: /run/zfs-on-boot.log and /var/log/zfs-on-boot/progress.log.'
     if [[ $MIGRATION_STARTED = 0 ]]; then
         echo 'Disk migration has not started. Rebooting returns to the original Ubuntu boot entry.'
+    elif [[ ${MODE:-} = inplace ]]; then
+        echo 'The persistent rescue entry can resume copy/remap; bootloader cutover may need provider recovery.'
     else
         echo 'Do not reboot after source removal. Inspect the migration logs before taking action.'
     fi
@@ -59,7 +62,11 @@ if [[ $(cat /etc/zfs-on-boot/firmware) = uefi ]]; then
     BOOT_ATTR=()
     mount -t efivarfs efivarfs /sys/firmware/efi/efivars
 fi
-ROOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-root-uuid)")
+ROOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-root-uuid)" || true)
+if [[ $MODE = inplace && -z $ROOTDEV ]]; then
+    # fsremap replaces ext4's UUID; recovery uses the persistent journal.
+    ROOTDEV=$(cat /etc/zfs-on-boot/old-root-device)
+fi
 BACKUPDEV=
 if [[ -f /etc/zfs-on-boot/backup/volume-uuid ]]; then
     BACKUPDEV=$(blkid -U "$(cat /etc/zfs-on-boot/backup/volume-uuid)")
@@ -159,8 +166,11 @@ phase 6 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefai
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
 fi  # Existing preservation/backup/erase backend.
+if [[ $MODE != inplace || $INPLACE_PHASE != configured ]]; then
 phase 7 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
+fi
 phase 7 'Flush the configured ZFS root to disk' zpool sync rpool
+[[ $MODE != inplace ]] || inplace_checkpoint configured
 if [[ $MODE = preserve ]]; then
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
@@ -201,6 +211,12 @@ if [[ $MODE = preserve ]]; then
     ZPART=$FRONT
 elif [[ $MODE = inplace ]]; then
     phase 8 'Native remap complete: no mirror relocation required' true
+    # The new loader and root are durable before releasing the rescue area.
+    cp -a "$STATE/." /target/var/log/zfs-on-boot/inplace/
+    sync
+    umount /scratch
+    sgdisk -d 32 "$DISK"
+    partx -d --nr 32 "$DISK"
 else
     phase 8 'Fresh install: no relocation required' true
 fi

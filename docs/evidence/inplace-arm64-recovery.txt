@@ -1,0 +1,199 @@
+Native ARM64 root conversion acceptance — 2026-09-10
+Ubuntu 24.04.4, QEMU 10.2 / Apple HVF, 2 vCPU, 1 GiB RAM.
+Conversion used one 25 GiB boot disk and a read-only NoCloud seed; no additional writable disk.
+Initial ext4: 17,654,267,904 / 24,883,167,232 bytes used (71%).
+Incompressible large file: 15,032,385,536 bytes, larger than free space.
+Invocation: reformat.sh --inplace
+Root migration backend SHA256: d47477d915d0d6f0199b4080caae63ebc8768deb2e14c86ca2b28993c4bbcf22
+Bootloader installer SHA256: ed338db083ec398d1f5969db5185383810761cd6ddeb3b2b5a6c455eb7e9c0d4
+The bootloader was intentionally installed twice to exercise retry behavior.
+
+Hard reset at durable checkpoint: {'phase': 'copy', 'bytes': 1080830179}
+(qemu) 
+
+Resuming in-place migration: copy on /dev/vda
+VERIFIED: 123459 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+job completed.
+VERIFIED: 123459 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+PASS: repeat bootloader installation leaves exactly one current boot UUID in fstab.
+
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              16.0G  6.79G    96K  none
+rpool/ROOT         16.0G  6.79G    96K  none
+rpool/ROOT/ubuntu  16.0G  6.79G  16.0G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot000A* ZFSBootMenu	HD(1,GPT,bb8f2942-5200-45ff-af46-47d968ea37c5,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000B* ZFSBootMenu	HD(1,GPT,bb8f2942-5200-45ff-af46-47d968ea37c5,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.22M      -  16.0G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/root/migration-fixture/large.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:06 with 0 errors on Thu Sep 10 08:32:23 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME   SIZE FSTYPE     MOUNTPOINTS
+vda     25G            
+├─vda1   1G vfat       /boot/efi
+└─vda2  24G zfs_member 
+vdb     64K iso9660    
+# / and /boot are on rpool/ROOT/ubuntu, mounted by the ZFS initramfs.
+UUID=AB63-46FC /boot/efi vfat defaults,umask=0077 0 2
+
+Native Ubuntu initramfs rebuild and reboot:
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260910T083242-1390
+update-initramfs: Generating /boot/initrd.img-6.8.0-139-generic
+Warning: root device  does not exist
+System running in EFI mode, skipping.
+703d3f15-e37d-4b3a-b0ca-7f1683f8b05a
+rpool	25232932864
+
+58b1660b-78f7-45e9-b091-88bc29cfcc16
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:06 with 0 errors on Thu Sep 10 08:32:23 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              16.0G  6.75G    96K  none
+rpool/ROOT         16.0G  6.75G    96K  none
+rpool/ROOT/ubuntu  16.0G  6.75G  16.0G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot000A* ZFSBootMenu	HD(1,GPT,bb8f2942-5200-45ff-af46-47d968ea37c5,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000B* ZFSBootMenu	HD(1,GPT,bb8f2942-5200-45ff-af46-47d968ea37c5,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.23M      -  16.0G  -
+enabled
+ZFS root verification passed.
+NAME                                                USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed                 1.23M      -  16.0G  -
+rpool/ROOT/ubuntu@zfsify-apt-20260910T083242-1390  1.15M      -  16.0G  -
+
+Host enlarged the disk to 32 GiB, then the guest rebooted. No manual guest growth command.
+Before reboot:
+NAME          SIZE
+vda    34359738368
+├─vda1  1073741824
+└─vda2 25768738304
+rpool	25232932864
+58b1660b-78f7-45e9-b091-88bc29cfcc16
+
+After reboot:
+59eca674-be6f-4ad4-9101-b1e5c4127aff
+rpool	32749125632	ONLINE
+NAME          SIZE FSTYPE
+vda    34359738368 
+├─vda1  1073741824 vfat
+└─vda2 33284931072 zfs_member
+Result=success
+Sep 10 08:34:30 zfsify-arm64 systemd[1]: Starting zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize...
+Sep 10 08:34:33 zfsify-arm64 zfs-on-boot-grow[767]: CHANGED: partition=2 start=2099200 old: size=50329567 end=52428766 new: size=65009631 end=67108830
+Sep 10 08:34:33 zfsify-arm64 zfs-on-boot-grow[951]: rpool        32749125632        ONLINE
+Sep 10 08:34:33 zfsify-arm64 systemd[1]: zfs-on-boot-grow.service: Deactivated successfully.
+Sep 10 08:34:33 zfsify-arm64 systemd[1]: Finished zfs-on-boot-grow.service - Expand the ZFS root partition after a cloud disk resize.
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:06 with 0 errors on Thu Sep 10 08:32:23 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              16.0G  13.5G    96K  none
+rpool/ROOT         16.0G  13.5G    96K  none
+rpool/ROOT/ubuntu  16.0G  13.5G  16.0G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot000A* ZFSBootMenu	HD(1,GPT,bb8f2942-5200-45ff-af46-47d968ea37c5,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000B* ZFSBootMenu	HD(1,GPT,bb8f2942-5200-45ff-af46-47d968ea37c5,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.23M      -  16.0G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/root/migration-fixture/large.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.

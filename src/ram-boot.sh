@@ -9,6 +9,10 @@ mount -t proc proc /proc
 mount -t sysfs sysfs /sys
 exec </dev/console >/dev/console 2>&1
 fail() {
+    if [ "${RECOVERY:-0}" = 1 ]; then
+        echo "Persistent rescue bootstrap failed: $*. Disk migration may be incomplete."
+        exec sh
+    fi
     echo "Rescue bootstrap failed: $*; source disk has not been changed."
     source=$(/sbin/blkid -U "$SOURCE_UUID" 2>/dev/null || true)
     if [ -b "$source" ]; then
@@ -25,6 +29,11 @@ fail() {
     exec sh
 }
 . /config
+# The persistent rescue copy survives after the original ext4 UUID is gone.
+RECOVERY=0
+for arg in $(cat /proc/cmdline); do
+    case "$arg" in zfsify.rescue=*) SOURCE_UUID=${arg#*=}; RECOVERY=1;; esac
+done
 for module in $MODULES; do
     # Controllers for other providers can return ENODEV on this hypervisor.
     /sbin/modprobe "$module" || case "$module" in ext4|loop|squashfs|overlay) fail "$module";; esac

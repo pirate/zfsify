@@ -1,0 +1,193 @@
+Focused mover acceptance — 2026-09-10
+Disposable native ARM64 Ubuntu VM, 1 GiB RAM, separate 8 GiB test disk.
+Source SHA256: e48c067a76dd746fc2782b206265a3db15b24d6c8f6a4f2906cba152ccb2aca8
+Command: ZFSIFY_DISPOSABLE_TEST=1 bash scripts/test-inplace-mover.sh /dev/vdc
+
+mke2fs 1.47.0 (5-Feb-2023)
+Discarding device blocks:       0/2097152               done                            
+Creating filesystem with 2097152 4k blocks and 524288 inodes
+Filesystem UUID: b2a47e44-e56e-4320-b7df-a3df3ad4e066
+Superblock backups stored on blocks: 
+	32768, 98304, 163840, 229376, 294912, 819200, 884736, 1605632
+
+Allocating group tables:  0/64     done                            
+Writing inode tables:  0/64     done                            
+Creating journal (16384 blocks): done
+Writing superblocks and filesystem accounting information:  0/64     done
+
+
+434110464 bytes (434 MB, 414 MiB) copied, 1 s, 434 MB/s
+849346560 bytes (849 MB, 810 MiB) copied, 2 s, 425 MB/s
+1268776960 bytes (1.3 GB, 1.2 GiB) copied, 3 s, 423 MB/s
+1681915904 bytes (1.7 GB, 1.6 GiB) copied, 4 s, 420 MB/s
+2105540608 bytes (2.1 GB, 2.0 GiB) copied, 5 s, 421 MB/s
+2522873856 bytes (2.5 GB, 2.3 GiB) copied, 6 s, 420 MB/s
+2933915648 bytes (2.9 GB, 2.7 GiB) copied, 7 s, 419 MB/s
+3355443200 bytes (3.4 GB, 3.1 GiB) copied, 8 s, 419 MB/s
+3770679296 bytes (3.8 GB, 3.5 GiB) copied, 9 s, 419 MB/s
+4190109696 bytes (4.2 GB, 3.9 GiB) copied, 10 s, 419 MB/s
+4608491520 bytes (4.6 GB, 4.3 GiB) copied, 11 s, 419 MB/s
+5020581888 bytes (5.0 GB, 4.7 GiB) copied, 12 s, 418 MB/s
+5442109440 bytes (5.4 GB, 5.1 GiB) copied, 13 s, 419 MB/s
+5862588416 bytes (5.9 GB, 5.5 GiB) copied, 14 s, 419 MB/s
+6280970240 bytes (6.3 GB, 5.8 GiB) copied, 15 s, 419 MB/s
+6000+0 records in
+6000+0 records out
+6291456000 bytes (6.3 GB, 5.9 GiB) copied, 15.0255 s, 419 MB/s
+Filesystem      1B-blocks       Used  Available Use% Mounted on
+/dev/vdc       8350298112 6291566592 2041954304  76% /root/zfsify-inplace-test.ta5Xn231/old
+Manifest saved: 9 entries
+ZFSIFY_START 0 7365265631
+ZFSIFY_FILES 0 7
+ZFSIFY_PROGRESS 67108864 7365265631
+ZFSIFY_FILES 0 7
+67.1/7,365.3 MB | 270.2 MB/s | 'large.bin'
+INTERRUPTED: committed 268435456 bytes of large.bin; resuming the same manifest.
+ZFSIFY_START 268435456 7365265631
+ZFSIFY_FILES 0 7
+ZFSIFY_PROGRESS 335544320 7365265631
+ZFSIFY_FILES 0 7
+335.5/7,365.3 MB | 288.2 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 872415232 7365265631
+ZFSIFY_FILES 0 7
+872.4/7,365.3 MB | 261.2 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 1409286144 7365265631
+ZFSIFY_FILES 0 7
+1,409.3/7,365.3 MB | 260.5 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 2013265920 7365265631
+ZFSIFY_FILES 0 7
+2,013.3/7,365.3 MB | 266.1 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 2617245696 7365265631
+ZFSIFY_FILES 0 7
+2,617.2/7,365.3 MB | 269.1 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 3221225472 7365265631
+ZFSIFY_FILES 0 7
+3,221.2/7,365.3 MB | 269.9 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 3825205248 7365265631
+ZFSIFY_FILES 0 7
+3,825.2/7,365.3 MB | 270.3 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 4429185024 7365265631
+ZFSIFY_FILES 0 7
+4,429.2/7,365.3 MB | 271.6 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 5033164800 7365265631
+ZFSIFY_FILES 0 7
+5,033.2/7,365.3 MB | 271.6 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 5637144576 7365265631
+ZFSIFY_FILES 0 7
+5,637.1/7,365.3 MB | 272.8 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 6241124352 7365265631
+ZFSIFY_FILES 0 7
+6,241.1/7,365.3 MB | 274.2 MB/s | 'large.bin'
+ZFSIFY_PROGRESS 6358564864 7365265631
+ZFSIFY_FILES 1 7
+6,358.6/7,365.3 MB | 159.6 MB/s | 'sparse.bin'
+ZFSIFY_PROGRESS 6962544640 7365265631
+ZFSIFY_FILES 1 7
+6,962.5/7,365.3 MB | 166.3 MB/s | 'sparse.bin'
+ZFSIFY_PROGRESS 7365197831 7365265631
+ZFSIFY_FILES 2 7
+7,365.2/7,365.3 MB | 167.6 MB/s | 'é'
+ZFSIFY_PROGRESS 7365265631 7365265631
+ZFSIFY_FILES 7 7
+VERIFIED: 9 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+/dev/vdc: 18/524288 files (0.0% non-contiguous), 1599636/2097152 blocks
+setting log level to INFO  
+fsremap: starting job 1, persistence data and logs are in '/root/zfsify-inplace-test.ta5Xn231/fstransform/fsremap.job.1'
+if this job is interrupted, for example by a power failure,
+you CAN RESUME it with: fsremap -q --resume-job=1 -- /dev/vdc
+device length is 8.00 gigabytes
+analyzing device '/dev/vdc', this may take some minutes ...
+device effective block size = 4096
+using reduced (32 bit) remapping algorithm
+analysis completed: 5.88 gigabytes must be relocated
+primary-storage: located 19.67 megabytes (4 fragments) usable in device (free, invariant, contiguous and aligned)
+primary-storage: actually using 19.67 megabytes (4 fragments) from device
+allocated 32.00 megabytes RAM as memory buffer
+secondary-storage: writing 32.00 megabytes to '/root/zfsify-inplace-test.ta5Xn231/fstransform/fsremap.job.1/storage.bin' ...
+secondary-storage: file created
+primary-storage + secondary-storage is 51.67 megabytes, initialized and mmapped() to contiguous RAM
+unmounting device '/dev/vdc'... command: /bin/umount /dev/vdc
+successfully unmounted device '/dev/vdc'
+starting in-place remapping. this may take a LONG time ...
+filling storage by moving 51.67 megabytes from device ...
+storage filled
+progress:  0.4% done,   5.9 gigabytes still to remap
+moving 2.09 gigabytes from device to target ...
+finished moving from device to target
+moving 51.67 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 51.67 megabytes from device ...
+storage filled
+progress: 36.8% done,   3.7 gigabytes still to remap, estimated 10 seconds left
+moving 1.46 gigabytes from device to target ...
+finished moving from device to target
+moving 11.72 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 11.72 megabytes from device ...
+storage filled
+progress: 61.9% done,   2.3 gigabytes still to remap, estimated  7 seconds left
+moving 757.91 megabytes from device to target ...
+finished moving from device to target
+moving 27.75 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 27.75 megabytes from device ...
+storage filled
+progress: 74.9% done,   1.5 gigabytes still to remap, estimated  4 seconds left
+moving 445.61 megabytes from device to target ...
+finished moving from device to target
+moving 11.34 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 11.34 megabytes from device ...
+storage filled
+progress: 82.5% done,   1.1 gigabytes still to remap, estimated  3 seconds left
+moving 349.17 megabytes from device to target ...
+finished moving from device to target
+moving 51.67 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 51.67 megabytes from device ...
+storage filled
+progress: 89.2% done, 678.4 megabytes still to remap, estimated  2 seconds left
+moving 245.85 megabytes from device to target ...
+finished moving from device to target
+moving 36.73 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 36.73 megabytes from device ...
+storage filled
+progress: 93.9% done, 395.8 megabytes still to remap, estimated  1 second left
+moving 193.81 megabytes from device to target ...
+finished moving from device to target
+moving 35.56 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 35.56 megabytes from device ...
+storage filled
+progress: 97.7% done, 166.5 megabytes still to remap, estimated  0 seconds left
+moving 75.82 megabytes from device to target ...
+finished moving from device to target
+moving 35.82 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 35.82 megabytes from device ...
+storage filled
+progress: 99.5% done,  54.8 megabytes still to remap, estimated  0 seconds left
+moving 3.14 megabytes from device to target ...
+finished moving from device to target
+moving 51.67 megabytes from storage to target ...
+finished moving from storage to target
+blocks remapping completed.
+clearing 2.12 gigabytes free-space from device ...
+device free-space cleared
+job completed.
+VERIFIED: 9 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+  pool: zfsify_test
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:01 with 0 errors on Thu Sep 10 08:40:28 2026
+config:
+
+	NAME         STATE     READ WRITE CKSUM
+	zfsify_test  ONLINE       0     0     0
+	  /dev/vdc   ONLINE       0     0     0
+
+errors: No known data errors
+NAME FSTYPE     FSVER LABEL       UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+vdc  zfs_member 5000  zfsify_test 11021965767187853113                                
+PASS: >50% usage, file larger than free space, interrupted mover resumed, native remap, metadata, hashes and scrub.
+Logs/manifest: /root/zfsify-inplace-test.ta5Xn231
