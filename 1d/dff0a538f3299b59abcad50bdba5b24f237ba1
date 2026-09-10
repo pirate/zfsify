@@ -1,0 +1,45 @@
+README.md
+  s_3dff2a00c4a5b5::t_b31eee8ee24c80 16-17,66-95,103-104,165,174-175,179-181
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_274449f300d888 1
+docs/backup.md
+  s_3dff2a00c4a5b5::t_29ff998eae028f 11-17
+docs/cloud-init.md
+  s_3dff2a00c4a5b5::t_26fbfaa202eddd 33-34,38-41
+docs/inplace.md
+  s_3dff2a00c4a5b5::t_d8a0e2741cf277 3-6,94
+docs/volumes.md
+  s_3dff2a00c4a5b5::t_09968c5887e7b0 27-30,34-35,88-92
+install.sh
+  s_3dff2a00c4a5b5::t_f6cdcef2cff99d 8,16,23-24,31,33-37,139,154-170,172-184,236-237,239-244,248,440-654,1750,1755,1847-1858,1867-1870,1963-1964,1974-1975,1993,2012,2039-2040,2042-2046,2079-2096,2196
+reformat.sh
+  s_3dff2a00c4a5b5::t_04727c8266d11f 8,16,23-24,31,33-37,139,154-170,172-184,236-237,239-244,248,440-654,1750,1755,1847-1858,1867-1870,1963-1964,1974-1975,1993,2012,2039-2040,2042-2046,2079-2096,2196
+scripts/package.py
+  s_3dff2a00c4a5b5::t_a6854bc3258f85 17
+scripts/test-strategy.py
+  s_3dff2a00c4a5b5::t_87e3522654e5d5 1-220
+src/backup.sh
+  s_3dff2a00c4a5b5::t_ddba28c94859be 10-11,29,48,75-76,78-82,115-132
+src/stage.sh
+  s_3dff2a00c4a5b5::t_0586fbb6c7f6c3 8,15-16,23,25-29,131,146-162,164-176,228-229,231-236,240
+src/strategy.py
+  s_3dff2a00c4a5b5::t_016cc28dac1ea2 1-211
+src/volume.sh
+  s_3dff2a00c4a5b5::t_0928b91cd33063 5,97-108,117-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "1ddff0a538f3299b59abcad50bdba5b24f237ba1",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
