@@ -1,0 +1,90 @@
+src/stage.sh
+  s_3dff2a00c4a5b5::t_a6cdb9fe50ac9c 63-69,92-94,252-255,257,259-261,273,278-283
+  s_3dff2a00c4a5b5::t_540d72a29bab51 111
+  s_3dff2a00c4a5b5::t_f4fe6fbee36648 71-75,251,274
+docs/evidence/arm64-512mb-acceptance.txt
+  s_3dff2a00c4a5b5::t_08af4e201931d9 1-272
+scripts/verify-network.py
+  s_3dff2a00c4a5b5::t_c54bb1260db300 2
+scripts/package.py
+  s_3dff2a00c4a5b5::t_a6cdb9fe50ac9c 17
+scripts/setup-fixture.sh
+  s_3dff2a00c4a5b5::t_b2cbfd6a439d99 2
+src/ram-init.sh
+  s_3dff2a00c4a5b5::t_ba7376646517c5 134-137
+src/build-rescue.py
+  s_3dff2a00c4a5b5::t_a6cdb9fe50ac9c 27
+scripts/verify-preserved.sh
+  s_3dff2a00c4a5b5::t_b39b52117768a8 2
+  s_3dff2a00c4a5b5::t_fb16b0e98a1760 16-18
+README.md
+  s_3dff2a00c4a5b5::t_f2070ba5ec4680 100-101
+  s_3dff2a00c4a5b5::t_23176a4dbbea1a 94,97-99
+  s_3dff2a00c4a5b5::t_96d05dfe7cf5a5 102-103
+scripts/verify.sh
+  s_3dff2a00c4a5b5::t_b2cbfd6a439d99 2,15
+  s_3dff2a00c4a5b5::t_a6cdb9fe50ac9c 30-31
+docs/evidence/arm64-noble-acceptance.txt
+  s_3dff2a00c4a5b5::t_237038a280dc6f 1-270
+docs/validation.md
+  s_3dff2a00c4a5b5::t_b39b52117768a8 5-6
+  s_3dff2a00c4a5b5::t_24d8209d4103d5 21
+  s_3dff2a00c4a5b5::t_96d05dfe7cf5a5 19-20,22
+reformat.sh
+  s_3dff2a00c4a5b5::t_03646e62b1eb62 8,71-77,79-83,100-102,119,259-263,265,267-269,281-282,286-291,399-400,425,460-461,478,491,504-506,509-510,644-647,736-737,761,793-804,808-810,842,1205,1232,1261-1262,1293-1297,1303,1305,1335-1420
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_e197523a6dbf52 1
+docs/validation-zfsbootmenu.md
+  s_3dff2a00c4a5b5::t_96d05dfe7cf5a5 4-5
+  s_3dff2a00c4a5b5::t_b39b52117768a8 3
+docs/evidence/arm64-resolute-acceptance.txt
+  s_3dff2a00c4a5b5::t_2ef3b30d7238a9 1-344
+src/target.sh
+  s_3dff2a00c4a5b5::t_798a656a851972 24
+  s_3dff2a00c4a5b5::t_f4fe6fbee36648 56-67,71-73
+src/zbm-build.sh
+  s_3dff2a00c4a5b5::t_0133d13c934c7f 51-55
+  s_3dff2a00c4a5b5::t_7c74c3b35eb692 74
+  s_3dff2a00c4a5b5::t_ba9a0fa2f81d1e 1-9,14-31,47-50,56-73,75-76,78-82
+  s_3dff2a00c4a5b5::t_a0af9b50398a40 33-38
+  s_3dff2a00c4a5b5::t_9345dd8dec17c9 10-13
+  s_3dff2a00c4a5b5::t_a397f95cc78b9b 32
+  s_3dff2a00c4a5b5::t_de438499414713 77
+  s_3dff2a00c4a5b5::t_3285ce96c8d0ef 39-46
+docs/recovery.md
+  s_3dff2a00c4a5b5::t_f2070ba5ec4680 11-12,18-28
+  s_3dff2a00c4a5b5::t_798a656a851972 13-17
+CONTRIBUTING.md
+  s_3dff2a00c4a5b5::t_c16874ba0257c5 5,17,77
+  s_3dff2a00c4a5b5::t_0e9e28847d953b 43,65-69
+  s_3dff2a00c4a5b5::t_b3709f3e70a157 45-49
+  s_3dff2a00c4a5b5::t_d47484531f7619 70
+src/network.py
+  s_3dff2a00c4a5b5::t_c54bb1260db300 25
+install.sh
+  s_3dff2a00c4a5b5::t_46bce9f526c55f 8,71-77,79-83,100-102,119,259-263,265,267-269,281-282,286-291,399-400,425,460-461,478,491,504-506,509-510,644-647,736-737,761,793-804,808-810,842,1205,1232,1261-1262,1293-1297,1303,1305,1335-1420
+scripts/verify-boot-config.py
+  s_3dff2a00c4a5b5::t_23176a4dbbea1a 34-35
+src/zbm-install.sh
+  s_3dff2a00c4a5b5::t_a6cdb9fe50ac9c 31-35,41,43
+docs/evidence/amd64-architecture-acceptance.txt
+  s_3dff2a00c4a5b5::t_9700b368f22bbc 1-99
+src/boot-config.py
+  s_3dff2a00c4a5b5::t_23176a4dbbea1a 17,30,43-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "0464ecb81a1dac0dd7ab56245c325d7ec80ed3d7",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
