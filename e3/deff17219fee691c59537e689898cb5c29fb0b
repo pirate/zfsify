@@ -1,0 +1,55 @@
+src/stage.sh
+  s_3dff2a00c4a5b5::t_66c0d2158c91a7 21
+  s_3dff2a00c4a5b5::t_5edbc1dc89ded1 16,29-30,52,113-115,163-166,183-193,297-299,352,364
+src/inplace-move.py
+  s_3dff2a00c4a5b5::t_e0ea524c349ce0 171
+  s_3dff2a00c4a5b5::t_01b5184b04b9a1 172
+  s_3dff2a00c4a5b5::t_d84554855905f6 193
+  s_3dff2a00c4a5b5::t_5907d88c5501bc 130-136,192
+  s_3dff2a00c4a5b5::t_d800c1c09d341a 1-112,115-129,137-144,146-170,173-191,194-230
+  s_3dff2a00c4a5b5::t_e33d2e4a026098 113-114,145
+README.md
+  s_3dff2a00c4a5b5::t_03df5008776d92 16-19
+scripts/package.py
+  s_3dff2a00c4a5b5::t_5edbc1dc89ded1 17
+src/progress.py
+  s_3dff2a00c4a5b5::t_01b5184b04b9a1 127-128
+src/inplace.sh
+  s_3dff2a00c4a5b5::t_c976fd3d11bf17 57-59
+  s_3dff2a00c4a5b5::t_4c229d8697b547 20-23,27
+  s_3dff2a00c4a5b5::t_66c0d2158c91a7 46
+  s_3dff2a00c4a5b5::t_374100cba8b0d4 1-19,24-26,28-45,47-56,60-64
+docs/inplace.md
+  s_3dff2a00c4a5b5::t_5907d88c5501bc 26
+  s_3dff2a00c4a5b5::t_03df5008776d92 1-2,4-25,27-55
+  s_3dff2a00c4a5b5::t_5da01e40c4c255 3
+scripts/test-inplace-mover.sh
+  s_3dff2a00c4a5b5::t_5529e750dd3606 1-47,50-78
+  s_3dff2a00c4a5b5::t_7a997a96c20783 48-49
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_f90b9e62262e91 1
+docs/evidence/inplace-mover-acceptance.txt
+  s_3dff2a00c4a5b5::t_300cfcc2abc34a 1-148
+install.sh
+  s_3dff2a00c4a5b5::t_6760474fa2e185 8,24,29,37-38,60,121-123,171-174,191-201,305-307,360,372,425,536,616-624,626-628,682,697,738-739,771,878,1005-1006,1031,1946-2245
+reformat.sh
+  s_3dff2a00c4a5b5::t_a3896bfe4fc18b 8,24,29,37-38,60,121-123,171-174,191-201,305-307,360,372,425,536,616-624,626-628,682,697,738-739,771,878,1005-1006,1031,1946-2245
+src/ram-init.sh
+  s_3dff2a00c4a5b5::t_d07c6f6bf27d7c 80-88,90-92,146,161,202-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "e3deff17219fee691c59537e689898cb5c29fb0b",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
