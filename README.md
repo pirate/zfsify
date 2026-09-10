@@ -13,6 +13,10 @@ using the disks and data you already have.
 
 </div>
 
+**Branch experiment:** [`--inplace`](docs/inplace.md) tries root conversion above
+50% usage by recycling ext4 space and using fstransform's block remapper. It is
+opt-in and intended for disposable VMs; the commands below keep their usual behavior.
+
 [![Ubuntu root conversion to ZFS on a real DigitalOcean Droplet](docs/assets/recordings/happy-path.gif)](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)
 
 [Watch the conversion](https://pirate.github.io/zfsify/docs/recordings.html?demo=root)

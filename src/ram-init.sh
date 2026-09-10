@@ -77,7 +77,19 @@ part() { local name; while read -r name; do [[ $(cat "/sys/class/block/${name##*
 [[ -z $(zpool list -H -o name 2>/dev/null) ]]
 echo "Independent RAM OS ready. Mode: $MODE. Devices: $DEVICES"
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
+create_root_pool() {
+# Ubuntu's root-pool defaults, with boot-image compatibility and disk growth.
+# Keep ext4's distinct Unicode filenames distinct rather than normalizing them.
+phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target rpool "$ZPART"
+zfs create -o canmount=off -o mountpoint=none rpool/ROOT
+zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
+zfs mount rpool/ROOT/ubuntu
+zpool set bootfs=rpool/ROOT/ubuntu rpool
+}
 MIGRATION_STARTED=1
+if [[ $MODE = inplace ]]; then
+    source /etc/zfs-on-boot/inplace.sh
+else
 if [[ $MODE = preserve ]]; then
     . /etc/zfs-on-boot/plan.env
     # Free staging space only after this archive has successfully booted into RAM.
@@ -131,13 +143,7 @@ if [[ $MODE != preserve ]]; then
 fi
 [[ -b $ZPART ]]
 DEVICES=$DISK,$ROOTDEV,${BOOTDEV:-$ROOTDEV},$ZPART${BACKUPDEV:+,$BACKUPDEV}
-# Ubuntu's root-pool defaults, with boot-image compatibility and disk growth.
-# Keep ext4's distinct Unicode filenames distinct rather than normalizing them.
-phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim=on -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target rpool "$ZPART"
-zfs create -o canmount=off -o mountpoint=none rpool/ROOT
-zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
-zfs mount rpool/ROOT/ubuntu
-zpool set bootfs=rpool/ROOT/ubuntu rpool
+create_root_pool
 # Do not traverse virtual filesystems or include our RAM installer/staging data.
 # A separate source /boot is deliberately included; unsupported mounts were refused.
 EXCLUDES=(--exclude=/proc/*** --exclude=/sys/*** --exclude=/dev/*** --exclude=/run/*** --exclude=/target/*** --exclude=/old/*** --exclude=/tmp/*** --exclude=/init --exclude=/rescue-media/*** --exclude=/etc/zfs-on-boot/*** --exclude=/var/lib/zfs-on-boot/*** --exclude=/boot/zfs-on-boot/*** --exclude=/boot/efi/*** --exclude=/var/log/zfs-on-boot/*** --exclude=/swapfile --exclude=/swap.img)
@@ -152,6 +158,7 @@ python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 5 --label "Copy $SOUR
 phase 6 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
+fi  # Existing preservation/backup/erase backend.
 phase 7 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
 phase 7 'Flush the configured ZFS root to disk' zpool sync rpool
 if [[ $MODE = preserve ]]; then
@@ -192,6 +199,8 @@ if [[ $MODE = preserve ]]; then
     phase 9 "Remove temporary partition $TEMP" sgdisk -d 32 "$DISK"
     partx -d --nr 32 "$DISK"
     ZPART=$FRONT
+elif [[ $MODE = inplace ]]; then
+    phase 8 'Native remap complete: no mirror relocation required' true
 else
     phase 8 'Fresh install: no relocation required' true
 fi

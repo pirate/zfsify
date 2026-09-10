@@ -1,0 +1,121 @@
+Collected 2026-09-10 UTC on a disposable Ubuntu 24.04 ARM64 VM.
+QEMU 10.2.0 with Apple HVF, 2 vCPUs, 1 GiB RAM. An unused 8 GiB guest disk
+was the destructive test target. No host disk passthrough or filesystem shares.
+
+Command: ZFSIFY_DISPOSABLE_TEST=1 bash scripts/test-inplace-mover.sh /dev/vdc
+The test kills only the mover process after a durable checkpoint and confirms
+that source extents were already released. It is not a power-loss test.
+A 6000 MiB incompressible file exceeds the approximately 2 GiB of free space.
+Also tests hard links, sparse files, symlinks, POSIX ACLs, user xattrs,
+security.capability, and distinct composed/decomposed Unicode filenames.
+
+Mover SHA256: cf8091d1db227eea76c4c3d8772ff78ff2693ca032d36d444b7238eefa1db41c
+
+Filesystem      1B-blocks       Used  Available Use% Mounted on
+/dev/vdc       8350298112 6291566592 2041954304  76% /root/zfsify-inplace-test.nMZbp1Fm/old
+Manifest saved: 9 entries
+ZFSIFY_PROGRESS 67108864 7365265631
+67.1/7,365.3 MB | 285.8 MB/s | large.bin
+INTERRUPTED: committed 268435456 bytes of large.bin; resuming the same manifest.
+ZFSIFY_PROGRESS 335544320 7365265631
+335.5/7,365.3 MB | 332.8 MB/s | large.bin
+ZFSIFY_PROGRESS 1006632960 7365265631
+1,006.6/7,365.3 MB | 309.0 MB/s | large.bin
+ZFSIFY_PROGRESS 1610612736 7365265631
+1,610.6/7,365.3 MB | 305.3 MB/s | large.bin
+ZFSIFY_PROGRESS 2281701376 7365265631
+2,281.7/7,365.3 MB | 306.1 MB/s | large.bin
+ZFSIFY_PROGRESS 2952790016 7365265631
+2,952.8/7,365.3 MB | 305.1 MB/s | large.bin
+ZFSIFY_PROGRESS 3623878656 7365265631
+3,623.9/7,365.3 MB | 304.9 MB/s | large.bin
+ZFSIFY_PROGRESS 4227858432 7365265631
+4,227.9/7,365.3 MB | 303.7 MB/s | large.bin
+ZFSIFY_PROGRESS 4831838208 7365265631
+4,831.8/7,365.3 MB | 301.1 MB/s | large.bin
+ZFSIFY_PROGRESS 5435817984 7365265631
+5,435.8/7,365.3 MB | 300.4 MB/s | large.bin
+ZFSIFY_PROGRESS 6039797760 7365265631
+6,039.8/7,365.3 MB | 299.3 MB/s | large.bin
+ZFSIFY_PROGRESS 6291456008 7365265631
+6,291.5/7,365.3 MB | 160.8 MB/s | é
+ZFSIFY_PROGRESS 6962612447 7365265631
+6,962.6/7,365.3 MB | 169.1 MB/s | sparse.bin
+VERIFIED: 9 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+/dev/vdc: 18/524288 files (0.0% non-contiguous), 1599428/2097152 blocks
+setting log level to INFO
+fsremap: starting job 1, persistence data and logs are in '/root/zfsify-inplace-test.nMZbp1Fm/fstransform/fsremap.job.1'
+if this job is interrupted, for example by a power failure,
+you CAN RESUME it with: fsremap -q --resume-job=1 -- /dev/vdc
+device length is 8.00 gigabytes
+analyzing device '/dev/vdc', this may take some minutes ...
+device effective block size = 4096
+using reduced (32 bit) remapping algorithm
+analysis completed: 5.88 gigabytes must be relocated
+primary-storage: located 16.08 megabytes (4 fragments) usable in device (free, invariant, contiguous and aligned)
+primary-storage: actually using 16.08 megabytes (4 fragments) from device
+allocated 32.00 megabytes RAM as memory buffer
+secondary-storage: writing 32.00 megabytes to '/root/zfsify-inplace-test.nMZbp1Fm/fstransform/fsremap.job.1/storage.bin' ...
+secondary-storage: file created
+primary-storage + secondary-storage is 48.08 megabytes, initialized and mmapped() to contiguous RAM
+unmounting device '/dev/vdc'... command: /bin/umount /dev/vdc
+successfully unmounted device '/dev/vdc'
+starting in-place remapping. this may take a LONG time ...
+filling storage by moving 48.08 megabytes from device ...
+storage filled
+progress:  0.4% done,   5.9 gigabytes still to remap
+moving 2.10 gigabytes from device to target ...
+finished moving from device to target
+moving 48.08 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 48.08 megabytes from device ...
+storage filled
+progress: 36.9% done,   3.7 gigabytes still to remap, estimated  9 seconds left
+moving 1.34 gigabytes from device to target ...
+finished moving from device to target
+moved 0 bytes from storage to target (not so useful)
+progress: 59.6% done,   2.4 gigabytes still to remap, estimated  6 seconds left
+moving 1.21 gigabytes from device to target ...
+finished moving from device to target
+moving 48.08 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 48.08 megabytes from device ...
+storage filled
+progress: 81.0% done,   1.1 gigabytes still to remap, estimated  3 seconds left
+moving 796.63 megabytes from device to target ...
+finished moving from device to target
+moving 48.08 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 48.08 megabytes from device ...
+storage filled
+progress: 95.0% done, 322.6 megabytes still to remap, estimated  1 second left
+moving 198.70 megabytes from device to target ...
+finished moving from device to target
+moving 48.08 megabytes from storage to target ...
+finished moving from storage to target
+filling storage by moving 48.08 megabytes from device ...
+storage filled
+progress: 99.1% done,  75.8 megabytes still to remap, estimated  0 seconds left
+moving 27.75 megabytes from device to target ...
+finished moving from device to target
+moving 48.08 megabytes from storage to target ...
+finished moving from storage to target
+blocks remapping completed.
+clearing 2.12 gigabytes free-space from device ...
+device free-space cleared
+job completed.
+VERIFIED: 9 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+  pool: zfsify_test
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:02 with 0 errors on Thu Sep 10 02:57:31 2026
+config:
+
+	NAME         STATE     READ WRITE CKSUM
+	zfsify_test  ONLINE       0     0     0
+	  /dev/vdc   ONLINE       0     0     0
+
+errors: No known data errors
+NAME FSTYPE     FSVER LABEL       UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+vdc  zfs_member 5000  zfsify_test 3748129320305974439
+PASS: >50% usage, file larger than free space, interrupted mover resumed, native remap, metadata, hashes and scrub.
+Logs/manifest: /root/zfsify-inplace-test.nMZbp1Fm

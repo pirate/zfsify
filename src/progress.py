@@ -124,6 +124,8 @@ with LOG.open('a') as log:
                 match = rsync.match(line)
                 if match:
                     state['done'] = int(match[1].replace(',', ''))
+                elif match := re.fullmatch(r'ZFSIFY_PROGRESS ([0-9]{1,20}) ([0-9]{1,20})', line):
+                    state['done'], state['total'] = int(match[1]), int(match[2])
                 elif line:
                     print(line, flush=True)
                     log.write(line+'\n')

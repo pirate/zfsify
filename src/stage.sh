@@ -13,11 +13,12 @@ TARGET_COUNT=0
 for arg in "$@"; do
     case "$arg" in
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
+        --inplace) MODE=inplace; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup) MODE=backup; BACKUP=ask; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--erase | --backup[=REMOTE:PATH|/MOUNT/DIR]] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
 Default: preserve your installation or data in place when less than 50% is used.
   --backup                 Guide me through a temporary Volume or rclone remote.
@@ -25,6 +26,8 @@ Default: preserve your installation or data in place when less than 50% is used.
   --backup=myremote:path   Use an existing root-user rclone configuration.
   --erase                  Fresh Ubuntu with limited settings restore for /;
                            discard ALL files when targeting a data volume.
+  --inplace                EXPERIMENTAL root conversion using recycled ext4 space.
+                           Requires UEFI and a separate ext4 /boot before /.
 
 The positional path is the disk to CONVERT; --backup= is where to KEEP its backup.
 Examples: --backup=/mnt/backup /          (convert the boot disk)
@@ -46,6 +49,7 @@ if [[ $TARGET != / ]]; then
     fi
     resolved=$(readlink -f "$TARGET")
     if [[ $resolved != "$running_root" && $resolved != "$running_disk" ]]; then
+        [[ $MODE != inplace ]] || { echo '--inplace currently supports the boot drive only.' >&2; exit 2; }
         exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP"
     fi
 fi
@@ -106,6 +110,9 @@ if [[ $BOOT_MOUNT = /boot ]]; then
     BOOT_PREFIX=
     [[ /dev/$(lsblk -dn -o PKNAME "$(findmnt -n -o SOURCE /boot)") = "$DISK" ]] || die '/boot must be on the root disk.'
 fi
+if [[ $MODE = inplace ]]; then
+    [[ $FIRMWARE = uefi && $BOOT_MOUNT = /boot ]] || die 'Experimental --inplace requires UEFI and a separate ext4 /boot.'
+fi
 read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
 echo "Detected Ubuntu $VERSION_ID | $ARCH | $FIRMWARE boot"
@@ -153,6 +160,10 @@ if [[ $MODE != erase ]]; then
     sfdisk --json "$DISK" > "$SOURCE/table.json"
     python3 "$SOURCE/plan.py" "$SOURCE/table.json" "$ROOTDEV" "$(findmnt -n -o SOURCE --target /boot)" "$(findmnt -n -o SOURCE --target /boot/efi 2>/dev/null || true)" > "$SOURCE/plan.env"
 fi
+if [[ $MODE = inplace ]]; then
+    . "$SOURCE/plan.env"
+    (( ROOT_START >= 1050624 )) || die 'Experimental --inplace needs at least 512 MiB of boot space before the root partition.'
+fi
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
 if [[ $MODE = preserve ]]; then
@@ -168,6 +179,17 @@ $DISK (512 MiB ZFSBootMenu partition omitted):
 The server reboots into RAM. Services are offline during migration.
 Original ext4 is removed only after the copy is checksum-verified.
 Power loss during repartitioning can require provider recovery.
+EOF
+elif [[ $MODE = inplace ]]; then
+    cat <<EOF
+EXPERIMENTAL IN-PLACE CONVERSION: $ROOTDEV -> one native ZFS root partition.
+  [ ext4 files + free space                    ]
+  [ ext4 files shrinking | sparse ZFS growing  ]  copy, sync, verify, release 64 MiB batches
+  [ completed ZFS image inside ext4           ]  verify the complete manifest
+  [ native ZFS partition; no image or mapper  ]  fsremap relocates physical blocks
+The existing boot area holds the migration journal until remapping completes.
+Original file data is released progressively. This is not a retained full backup.
+Automatic restart after power loss is NOT implemented. Use only disposable VMs.
 EOF
 elif [[ $MODE = backup ]]; then
     echo "BACKUP AND RESTORE: $ROOTDEV -> archive on a separate Volume or rclone remote"
@@ -272,6 +294,9 @@ cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
 phase 2 'Update rescue package indexes' chroot "$ROOT" apt-get update
 # Only boot utilities are needed here; do not install a GRUB loader on the live disk.
 phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual "$INITRAMFS_PACKAGE" zfsutils-linux "${BOOT_PACKAGES[@]}" openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static rclone binutils efibootmgr </dev/null
+if [[ $MODE = inplace ]]; then
+    phase 2 'Install experimental block remapper' chroot "$ROOT" apt-get install -y --no-install-recommends fstransform dmsetup
+fi
 mkdir -p "$ROOT/etc/zfs-on-boot"
 printf '%s\n' "$FIRMWARE" > "$ROOT/etc/zfs-on-boot/firmware"
 python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
@@ -324,7 +349,7 @@ printf '%s\n' "$ROOTDEV" > "$ROOT/etc/zfs-on-boot/old-root-device"
 if [[ $BOOT_MOUNT = /boot ]]; then
     findmnt -n -o UUID /boot > "$ROOT/etc/zfs-on-boot/old-boot-uuid"
 fi
-[[ $MODE != preserve ]] || cp "$SOURCE/plan.env" "$ROOT/etc/zfs-on-boot/plan.env"
+[[ $MODE != preserve && $MODE != inplace ]] || cp "$SOURCE/plan.env" "$ROOT/etc/zfs-on-boot/plan.env"
 mkdir -p "$ROOT/usr/local/lib/zfs-on-boot" "$ROOT/usr/local/sbin"
 cp "$PROGRESS" "$ROOT/usr/local/lib/zfs-on-boot/progress.py"
 install -m 755 "$SOURCE/status.sh" "$ROOT/usr/local/sbin/zfs-on-boot-status"
@@ -336,6 +361,7 @@ cp "$SOURCE/backup.sh" "$ROOT/etc/zfs-on-boot/backup.sh"
 cp "$SOURCE/zbm-install.sh" "$ROOT/etc/zfs-on-boot/zbm-install.sh"
 cp "$SOURCE/identity.py" "$ROOT/etc/zfs-on-boot/identity.py"
 cp "$SOURCE/ram-init.sh" "$ROOT/init"
+cp "$SOURCE/inplace.sh" "$SOURCE/inplace-move.py" "$ROOT/etc/zfs-on-boot/"
 chmod 755 "$ROOT/init"
 # Capture address/route state as shell commands selected by MAC, not guessed eth0.
 python3 "$SOURCE/network.py" "$ROOT/etc/zfs-on-boot/network.sh"
