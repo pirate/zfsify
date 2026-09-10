@@ -1,0 +1,81 @@
+scripts/arm64-e2e.sh
+  s_3dff2a00c4a5b5::t_1a07ff17f9dcda 1-46,51-69,71-82,84-96
+  s_3dff2a00c4a5b5::t_35ad2bcf563b8a 83
+  s_3dff2a00c4a5b5::t_48ef17c49dcb9c 47-50,70
+src/ram-init.sh
+  s_3dff2a00c4a5b5::t_262b22cf6b38f8 65-66,68-69,169,171,214-219
+  s_3dff2a00c4a5b5::t_7baf61a6999d01 18,67,173
+  s_3dff2a00c4a5b5::t_0ca751e2687e6f 25-26
+src/ram-boot.sh
+  s_3dff2a00c4a5b5::t_c0fecd6624691e 32-36
+  s_3dff2a00c4a5b5::t_262b22cf6b38f8 12-15
+scripts/setup-inplace-fill.py
+  s_3dff2a00c4a5b5::t_e6be2fd80306b1 1-29
+src/zbm-install.sh
+  s_3dff2a00c4a5b5::t_fb281a80f247d2 30-40
+src/stage.sh
+  s_3dff2a00c4a5b5::t_c0fecd6624691e 30,99-102,187,189-190
+src/inplace.sh
+  s_3dff2a00c4a5b5::t_b8a86038b94c53 79
+  s_3dff2a00c4a5b5::t_edafaaf38109f7 134-138,147-154
+  s_3dff2a00c4a5b5::t_230244ea9b5f4a 116-118
+  s_3dff2a00c4a5b5::t_6424835c6269d2 2,4,9-37,39-78,80-115,119-133,139-146,155-179,181
+  s_3dff2a00c4a5b5::t_22dd40b5ebb03e 38
+  s_3dff2a00c4a5b5::t_e94bd2f4889945 183-184
+scripts/do-e2e.sh
+  s_3dff2a00c4a5b5::t_35ad2bcf563b8a 68,80
+  s_3dff2a00c4a5b5::t_e6be2fd80306b1 12,14,47-52,59
+src/inplace-move.py
+  s_3dff2a00c4a5b5::t_b8a86038b94c53 144-149
+  s_3dff2a00c4a5b5::t_6dc4f4e86dcab9 105-109,111,185,201,209
+  s_3dff2a00c4a5b5::t_01051b373b5e68 110
+scripts/test-inplace-mover.sh
+  s_3dff2a00c4a5b5::t_2294802e9b42c2 3-4
+  s_3dff2a00c4a5b5::t_bcda62f017d8f3 70
+src/progress.py
+  s_3dff2a00c4a5b5::t_6dc4f4e86dcab9 25-26,134-135
+  s_3dff2a00c4a5b5::t_01051b373b5e68 35,82,96,129-131
+docs/inplace.md
+  s_3dff2a00c4a5b5::t_789289efea94d0 14-15,22-25,31-32,34-35,51-77,82-88
+  s_3dff2a00c4a5b5::t_0bf7113e0a2d35 89
+README.md
+  s_3dff2a00c4a5b5::t_9385a65757c216 16-17,345
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_69e0124a4ab0e3 1
+docs/evidence/inplace-arm64-final.txt
+  s_3dff2a00c4a5b5::t_ad3264ec4fe3d8 1-158
+docs/evidence/inplace-arm64-recovery.txt
+  s_3dff2a00c4a5b5::t_101b1e20609949 1-199
+docs/evidence/inplace-do-512mb-final.txt
+  s_3dff2a00c4a5b5::t_1c1103a9eaaaae 1-171
+docs/evidence/inplace-do-512mb-recovery.txt
+  s_3dff2a00c4a5b5::t_8f05c2c6f5b1b2 1-154
+docs/evidence/inplace-do-recovery.txt
+  s_3dff2a00c4a5b5::t_3ade878ed03ab0 1-152
+docs/evidence/inplace-mover-recovery.txt
+  s_3dff2a00c4a5b5::t_bf03c1edf24727 1-193
+docs/evidence/inplace-progress-recovery.txt
+  s_3dff2a00c4a5b5::t_e8898ca42b36b3 1-32
+docs/validation.md
+  s_3dff2a00c4a5b5::t_7037db4f97126b 22
+install.sh
+  s_3dff2a00c4a5b5::t_d273610c312237 8,38,107-110,195,197-198,423,534,552,559-560,599-603,703,705,707,748-753,785,892,917-918,927,974,988,1021-1023,1026-1027,1052,1210,1222-1225,1242-1246,1271,1329,1359-1369,1413,1987,1989,1991,1996-2166,2168,2170-2171,2173-2174,2279-2285,2318-2323,2359,2375,2383,2422
+reformat.sh
+  s_3dff2a00c4a5b5::t_95e3b6ebeb0c74 8,38,107-110,195,197-198,423,534,552,559-560,599-603,703,705,707,748-753,785,892,917-918,927,974,988,1021-1023,1026-1027,1052,1210,1222-1225,1242-1246,1271,1329,1359-1369,1413,1987,1989,1991,1996-2166,2168,2170-2171,2173-2174,2279-2285,2318-2323,2359,2375,2383,2422
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9d818a9eeb6bd71d14490ceeae0801394f820215",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
