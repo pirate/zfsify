@@ -1,0 +1,186 @@
+Collected 2026-09-10 UTC. Disposable Ubuntu 24.04 ARM64 VM.
+QEMU 10.2.0 with Apple HVF on an ARM64 Mac; UEFI, 2 vCPUs, 1 GiB RAM,
+25 GiB boot disk. Only the boot disk and read-only cloud-init seed attached.
+No external backup, extra writable disk, host share, or disk passthrough.
+
+Command served from the guest's local HTTP server:
+curl -fsSL http://127.0.0.1:8765/reformat.sh | bash -s -- --inplace
+This invocation completed without intervention after starting.
+The root-migration bundle hash is recorded below. Later progress-display-only
+edits are covered separately by inplace-cli-acceptance.txt.
+
+INPUT AND INVOCATION
+326bac13d47ac700b96045b801529eba490991597a735d078a7eb59916f62732  /root/zfsify/reformat.sh
+Filesystem       1B-blocks        Used  Available Use% Mounted on
+/dev/vda1      24883167232 18374959104 6491430912  74% /
+Running as unit: zfsify-convert-final.service; invocation ID: f7681bceaf8e4fd1b2fb78393e479d0b
+
+RAM ENVIRONMENT
+Linux (none) 6.8.0-139-generic #139-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 03:32:48 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+TARGET SOURCE  FSTYPE  OPTIONS
+/      overlay overlay rw,relatime,lowerdir=/payload/lower,upperdir=/payload/upper,workdir=/payload/work,uuid=on,xino=off,nouserxattr
+               total        used        free      shared  buff/cache   available
+Mem:             951         506          74         177         675         445
+Swap:              0           0           0
+NAME             SIZE FSTYPE     MOUNTPOINTS
+loop0          176.1M squashfs   /rescue-media/lower
+loop1             24G
+`-zfsify-image    24G zfs_member
+vda               25G
+|-vda1            24G ext4       /old
+|-vda15           99M vfat
+`-vda16          923M ext4       /old/boot
+                                 /scratch
+vdb               66K iso9660
+76179acfb86fcbb526d8f955f21eff0176042ae8e0ae432c6f2ccc1b6ea0b75b  /etc/zfs-on-boot/inplace.sh
+fstransform	0.9.4-1ubuntu0.24.04.1
+zfsutils-linux	2.2.2-0ubuntu9.5
+
+MIGRATION EXCERPTS
+Unused blocks in the temporary image were reclaimed five times during copying.
+[#######-----------------] phase 4/10: Record original file hashes and metadata on the separate boot filesystem [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16 | elapsed 30s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 54.5 W 0.0 MB/s 13049 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda16: R 54.4 W 0.0 MB/s 13042 IOPS
+
+[###########-------------] phase 5/10: Copy, checksum and release original data in 64 MiB batches [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/mapper/zfsify-image | elapsed 1078s
+  20,395.4/20,395.4 MB (100.0%) | 18.9 MB/s logical (phase average)
+  /dev/vda: R 0.1 W 22.7 MB/s 561 IOPS | /dev/vda1: R 0.1 W 22.7 MB/s 561 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS
+
+VERIFIED: 123526 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+
+[############------------] phase 6/10: Verify complete original manifest against the ZFS image [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/mapper/zfsify-image | elapsed 87s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 356.3 W 0.0 MB/s 7257 IOPS | /dev/vda1: R 355.9 W 0.0 MB/s 7244 IOPS | /dev/vda16: R 0.4 W 0.0 MB/s 13 IOPS
+
+[############------------] phase 6/10: Remap ZFS image onto /dev/vda1 with fstransform's fsremap [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16 | elapsed 90s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 0.6 W 73.6 MB/s 185 IOPS | /dev/vda1: R 0.6 W 73.5 MB/s 173 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 12 IOPS
+
+VERIFIED: 123526 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+
+[############------------] phase 6/10: Verify the native ZFS partition after remapping [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16 | elapsed 34s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 1167.9 W 0.0 MB/s 4867 IOPS | /dev/vda1: R 1167.9 W 0.0 MB/s 4867 IOPS | /dev/vda16: R 0.0 W 0.0 MB/s 0 IOPS
+
+[############------------] phase 6/10: Finalize GPT around the already-verified native ZFS root [complete]
+  devices: /dev/vda,/dev/vda1,/dev/vda16 | elapsed 1s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 5.3 W 0.0 MB/s 1431 IOPS
+
+[##############----------] phase 7/10: Configure ZFS root, initramfs and boot services [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 12s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 56.7 W 68.3 MB/s 2131 IOPS | /dev/vda2: R 56.7 W 68.3 MB/s 2131 IOPS
+
+[################--------] phase 8/10: Install ZFSBootMenu on /dev/vda1; Ubuntu /boot remains on ZFS [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 2s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 2.5 W 271.5 MB/s 709 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 9 IOPS
+
+[########################] phase 10/10: Ready to reboot [complete]
+  devices: /dev/vda,/dev/vda2 | elapsed 0s
+  data total: n/a (streaming or metadata operation)
+  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS
+
+FIRST BOOT ACCEPTANCE
+2026-09-10T03:21:19Z
+Installed by zfsify (inplace) at 2026-09-10T03:20:37Z
+Linux zfsify-inplace-test 6.8.0-139-generic #139-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 03:32:48 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+               total        used        free      shared  buff/cache   available
+Mem:             951         340         591           1          94         611
+Swap:              0           0           0
+326bac13d47ac700b96045b801529eba490991597a735d078a7eb59916f62732  /root/zfsify/reformat.sh
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              16.2G  6.55G    96K  none
+rpool/ROOT         16.2G  6.55G    96K  none
+rpool/ROOT/ubuntu  16.2G  6.55G  16.2G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot0009* ZFSBootMenu	HD(1,GPT,a7e0aefe-c5d9-45a8-af2c-ad9d2c541fdf,0x800,0x200000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  1.17M      -  16.2G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+/root/inplace-payload.bin: OK
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:06 with 0 errors on Thu Sep 10 03:21:50 2026
+config:
+
+	NAME         STATE     READ WRITE CKSUM
+	rpool        ONLINE       0     0     0
+	  /dev/vda2  ONLINE       0     0     0
+
+errors: No known data errors
+NAME   SIZE FSTYPE     MOUNTPOINTS
+vda     25G
+├─vda1   1G vfat       /boot/efi
+└─vda2  24G zfs_member
+vdb     66K iso9660
+# / and /boot are on rpool/ROOT/ubuntu, mounted by the ZFS initramfs.
+UUID=2036-9C27 /boot/efi vfat defaults,umask=0077 0 2
+-rw-r--r-- 1 root root 38M Sep 10 03:20 /boot/initrd.img-6.8.0-138-generic
+-rw-r--r-- 1 root root 38M Sep 10 03:20 /boot/initrd.img-6.8.0-139-generic
+-rw------- 1 root root 18M Jul 31 20:56 /boot/vmlinuz-6.8.0-138-generic
+-rw------- 1 root root 18M Aug  1 02:26 /boot/vmlinuz-6.8.0-139-generic
+700 /var/log/zfs-on-boot/inplace
+PASS: original root data, native single ZFS partition, boot/network services, no migration mapper/image, scrub.
+
+BOOT CONFIGURATION
+root=zfs:rpool/ROOT/ubuntu console=tty1 console=ttyAMA0 spl.spl_hostid=0x00bab10c
+ZFSBootMenu 3.1.0; aarch64 UEFI
+15291383808 /root/inplace-payload.bin
+NAME   PROPERTY    VALUE     SOURCE
+rpool  autoexpand  on        local
+rpool  autotrim    on        local
+
+NORMAL REBOOT ACCEPTANCE
+2026-09-10T03:23:10Z
+Installed by zfsify (inplace) at 2026-09-10T03:20:37Z
+Linux zfsify-inplace-test 6.8.0-139-generic #139-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 03:32:48 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+  scan: scrub repaired 0B in 00:00:06 with 0 errors on Thu Sep 10 03:21:50 2026
+errors: No known data errors
+ZFS root verification passed.
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+/root/inplace-payload.bin: OK
+  scan: scrub repaired 0B in 00:00:05 with 0 errors on Thu Sep 10 03:23:31 2026
+errors: No known data errors
+PASS: original root data, native single ZFS partition, boot/network services, no migration mapper/image, scrub.

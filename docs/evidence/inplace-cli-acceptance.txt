@@ -1,0 +1,11 @@
+Collected 2026-09-10 UTC on the disposable Ubuntu 24.04 ARM64 / 1 GiB VM.
+A 128 MiB ext4 loop filesystem and temporary ZFS pool were created and removed.
+The progress state/log were isolated from the installer.
+
+e6336e845900344726621890f01ba8901c03d9988a5d202115a8def7f6dd4ddb  src/inplace-move.py
+a17b923cc5ed14a7900b9bfa2b289e2b4aab61563730b549db368f1e4d59b8ee  src/progress.py
+
+mke2fs 1.47.0 (5-Feb-2023)
+Manifest saved: 3 entries
+VERIFIED: 3 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+PASS: escaped newline/ANSI filename, exact final byte totals, malformed progress packets harmless.

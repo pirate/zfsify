@@ -43,6 +43,19 @@ per-batch verification used here. Keeping those pieces in zfsify and calling
 `fsremap` is a smaller integration than moving the Ubuntu installer upstream or
 implementing another block-remapping algorithm.
 
+## Validation
+
+- Ubuntu 24.04 ARM64, 1 GiB RAM, 25 GiB boot disk, about 74% used: unattended
+  root conversion, all 123,526 manifest entries verified before and after remapping,
+  ZFSBootMenu boot, normal reboot, preservation checks, and scrub. No extra writable disk.
+  [Root acceptance](evidence/inplace-root-acceptance.txt).
+- An 8 GiB disk at 76% usage, with a 6000 MiB file: interrupt the mover after
+  freeing source blocks, resume, remap, verify metadata/hashes, and scrub.
+  [Mover acceptance](evidence/inplace-mover-acceptance.txt) ·
+  [Repeat the disposable-VM test](../scripts/test-inplace-mover.sh).
+- [CLI checks](evidence/inplace-cli-acceptance.txt) cover unusual filenames,
+  malformed progress output, and completed byte totals.
+
 ## Limits
 
 Original data is released progressively, so there is no retained complete ext4
