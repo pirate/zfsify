@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run only on the DigitalOcean migration fixture.
+# Run only inside a disposable VM containing the migration fixture.
 set -Eeuo pipefail
 sha256sum -c /root/migration-fixture.SHA256SUMS
 sha256sum -c /root/hostkeys.before
@@ -13,7 +13,9 @@ getfacl -cp /root/migration-fixture/random.bin | grep -q '^user:migrationtest:r-
 grep -qx 'retained config' /etc/zfsify-test.conf
 [[ $(zpool get -H -o value autoexpand rpool) = on ]]
 [[ $(zpool status -P rpool | awk '$1 ~ /^\/dev\// {n++} END {print n}') = 1 ]]
-[[ $(lsblk -nr -o FSTYPE /dev/vda | awk 'NF && $1!="zfs_member" && $1!="ext4" {n++} END {print n+0}') = 0 ]]
+BOOT_FS=ext4
+[[ ! -d /sys/firmware/efi ]] || BOOT_FS=vfat
+[[ $(lsblk -nr -o FSTYPE /dev/vda | awk -v boot="$BOOT_FS" 'NF && $1!="zfs_member" && $1!=boot {n++} END {print n+0}') = 0 ]]
 [[ $(zpool list -Hp -o size rpool) -gt 8000000000 ]]
 systemctl is-enabled zfs-on-boot-grow.service
 systemctl show zfs-on-boot-grow -p Result

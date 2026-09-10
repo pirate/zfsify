@@ -22,7 +22,7 @@ def render(links, routes):
             f'ip link set "$iface" mtu {int(link["mtu"])} up',
         ]
         for addr in link.get('addr_info', []):
-            if addr['scope'] == 'global':
+            if addr['scope'] in ('global', 'site'):
                 lines.append(f'ip addr replace {q(addr["local"] + "/" + str(addr["prefixlen"]))} dev "$iface"')
         for family in ['-4', '-6']:
             # ip route show usually lists the default first. With a /32 address,

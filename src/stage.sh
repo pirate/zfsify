@@ -60,8 +60,19 @@ die() { echo "zfs-on-boot: $*" >&2; exit 1; }
 exec 9>/run/zfsify-migrate.lock
 flock -n 9 || die 'Another zfsify conversion is running.'
 . /etc/os-release
-[[ $ID = ubuntu && ( $VERSION_ID = 22.04 || $VERSION_ID = 24.04 || $VERSION_ID = 26.04 ) && $(uname -m) = x86_64 ]] || die 'Ubuntu 22.04, 24.04, or 26.04 amd64 is required.'
+[[ $ID = ubuntu && ( $VERSION_ID = 22.04 || $VERSION_ID = 24.04 || $VERSION_ID = 26.04 ) ]] || die 'Ubuntu 22.04, 24.04, or 26.04 is required.'
+ARCH=$(dpkg --print-architecture)
+case $ARCH in
+    amd64) MIRROR=http://archive.ubuntu.com/ubuntu; SECURITY_MIRROR=http://security.ubuntu.com/ubuntu ;;
+    arm64) MIRROR=http://ports.ubuntu.com/ubuntu-ports; SECURITY_MIRROR=$MIRROR ;;
+    *) die 'Root conversion supports amd64 and arm64 Ubuntu.' ;;
+esac
 CODENAME=$VERSION_CODENAME
+# Match Ubuntu's installed initramfs implementation, including newer releases.
+INITRAMFS_PACKAGE=zfs-initramfs
+if [[ $(dpkg-query -W -f='${db:Status-Status}' dracut 2>/dev/null || true) = installed ]]; then
+    INITRAMFS_PACKAGE=zfs-dracut
+fi
 RESOLVED_PACKAGE=systemd-resolved
 [[ $VERSION_ID != 22.04 ]] || RESOLVED_PACKAGE=
 [[ ! -e /etc/zfs-on-boot-installed ]] || die 'Already installed; nothing to do.'
@@ -78,6 +89,9 @@ if [[ -d /sys/firmware/efi ]]; then
         [[ $secure_state = *"doesn't support Secure Boot"* ]] || die 'Cannot determine UEFI Secure Boot state.'
     fi
 fi
+[[ $ARCH != arm64 || $FIRMWARE = uefi ]] || die 'ARM64 root conversion requires UEFI firmware (not a board-specific U-Boot boot chain).'
+BOOT_PACKAGES=(grub2-common)
+[[ $FIRMWARE != bios ]] || BOOT_PACKAGES+=(grub-pc-bin extlinux syslinux-common)
 [[ -f /boot/grub/grub.cfg ]] || die 'GRUB is required.'
 [[ $(findmnt -n -o FSTYPE /) = ext4 ]] || die 'Only a plain ext4 root partition is supported.'
 [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 450000 ]] || die 'At least 512 MiB RAM is required; the compressed rescue size is checked before reboot.'
@@ -94,6 +108,7 @@ if [[ $BOOT_MOUNT = /boot ]]; then
 fi
 read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
+echo "Detected Ubuntu $VERSION_ID | $ARCH | $FIRMWARE boot"
 echo "Root filesystem: $ROOTDEV on $DISK | used $USED_PCT% ($USED_BYTES / $FS_BYTES bytes)"
 if (( USED_BYTES * 2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
     cat <<'EOF'
@@ -233,13 +248,17 @@ phase 2 'Install staging tools' apt-get install -y --no-install-recommends deboo
 [[ $MODE != backup ]] || bash "$SOURCE/backup.sh" configure "$BACKUP" "$WORK/backup" "$DISK" "$USED_BYTES"
 if [[ $MODE != erase ]]; then
     # Install boot support into the OS that will actually be migrated.
-    phase 2 'Prepare existing Ubuntu for ZFS boot' apt-get install -y --no-install-recommends linux-image-virtual zfs-initramfs zfsutils-linux grub-pc-bin grub2-common cloud-guest-utils rsync extlinux syslinux-common
+    phase 2 'Prepare existing Ubuntu for ZFS boot' apt-get install -y --no-install-recommends linux-image-virtual "$INITRAMFS_PACKAGE" zfsutils-linux "${BOOT_PACKAGES[@]}" cloud-guest-utils rsync
 fi
-phase 2 'Build independent RAM rescue Ubuntu' debootstrap --variant=minbase "$CODENAME" "$ROOT" http://archive.ubuntu.com/ubuntu
+if [[ $ARCH = arm64 ]]; then
+    python3 "$SOURCE/boot-config.py" "$WORK/boot"
+    phase 2 'Build ARM64 ZFSBootMenu automatically' bash "$SOURCE/zbm-build.sh" "$WORK"
+fi
+phase 2 'Build independent RAM rescue Ubuntu' debootstrap --variant=minbase "$CODENAME" "$ROOT" "$MIRROR"
 cat > "$ROOT/etc/apt/sources.list" <<EOF
-deb http://archive.ubuntu.com/ubuntu $CODENAME main universe
-deb http://archive.ubuntu.com/ubuntu $CODENAME-updates main universe
-deb http://security.ubuntu.com/ubuntu $CODENAME-security main universe
+deb $MIRROR $CODENAME main universe
+deb $MIRROR $CODENAME-updates main universe
+deb $SECURITY_MIRROR $CODENAME-security main universe
 EOF
 printf '#!/bin/sh\nexit 101\n' > "$ROOT/usr/sbin/policy-rc.d"
 chmod 755 "$ROOT/usr/sbin/policy-rc.d"
@@ -251,12 +270,17 @@ cleanup_mounts() { umount -R "$ROOT/dev" 2>/dev/null || true; umount "$ROOT/proc
 trap 'cleanup_mounts; cleanup_swap' EXIT
 cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
 phase 2 'Update rescue package indexes' chroot "$ROOT" apt-get update
-# grub-pc-bin avoids package installation trying to install GRUB on the live disk.
-phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual zfs-initramfs zfsutils-linux grub-pc-bin grub2-common openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static extlinux syslinux-common rclone binutils efibootmgr </dev/null
+# Only boot utilities are needed here; do not install a GRUB loader on the live disk.
+phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual "$INITRAMFS_PACKAGE" zfsutils-linux "${BOOT_PACKAGES[@]}" openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static rclone binutils efibootmgr </dev/null
 mkdir -p "$ROOT/etc/zfs-on-boot"
 printf '%s\n' "$FIRMWARE" > "$ROOT/etc/zfs-on-boot/firmware"
 python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
-phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
+if [[ $ARCH = arm64 ]]; then
+    mkdir -p "$ROOT/etc/zfs-on-boot/zbm"
+    mv "$WORK/zfsbootmenu.EFI" "$ROOT/etc/zfs-on-boot/zbm/"
+else
+    phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
+fi
 mkdir -p "$ROOT/root/.ssh" "$ROOT/etc/zfs-on-boot" "$ROOT/etc/ssh/sshd_config.d"
 chmod 700 "$ROOT/root/.ssh"
 cp /root/.ssh/authorized_keys "$ROOT/root/.ssh/authorized_keys"

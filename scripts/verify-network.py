@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run only on a disposable DigitalOcean test VM; uses isolated Linux netns."""
+"""Run only on a disposable test VM; uses isolated Linux netns."""
 import json
 from pathlib import Path
 import subprocess

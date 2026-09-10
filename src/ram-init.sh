@@ -131,8 +131,10 @@ if [[ $MODE != preserve ]]; then
 fi
 [[ -b $ZPART ]]
 DEVICES=$DISK,$ROOTDEV,${BOOTDEV:-$ROOTDEV},$ZPART${BACKUPDEV:+,$BACKUPDEV}
-phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O atime=off -O xattr=sa -O acltype=posixacl -O mountpoint=none -R /target rpool "$ZPART"
-zfs create -o mountpoint=none rpool/ROOT
+# Ubuntu's root-pool defaults, with boot-image compatibility and disk growth.
+# Keep ext4's distinct Unicode filenames distinct rather than normalizing them.
+phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim=on -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target rpool "$ZPART"
+zfs create -o canmount=off -o mountpoint=none rpool/ROOT
 zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
 zfs mount rpool/ROOT/ubuntu
 zpool set bootfs=rpool/ROOT/ubuntu rpool

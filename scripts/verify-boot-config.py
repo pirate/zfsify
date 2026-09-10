@@ -31,8 +31,8 @@ assert 'console=ttyS0,115200n8' not in args
 assert 'quiet' in args and 'panic=10' in args
 assert 'quiet' not in shlex.split(result['rescue'])
 assert 'panic=10' not in shlex.split(result['rescue'])
-assert shlex.split(config.commandlines('root=/dev/vda1 ro')['ubuntu']) == [
-    'console=ttyS0,115200n8', 'console=tty0']
+assert shlex.split(config.commandlines('root=/dev/vda1 ro', ['tty0', 'ttyAMA0'])['ubuntu']) == [
+    'console=tty0', 'console=ttyAMA0']
 assert config.commandlines('console="ttyS1,57600n8"')['ubuntu'] == 'console="ttyS1,57600n8"'
 
 # Verify GRUB accepts the command containing quoted kernel values.

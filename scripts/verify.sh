@@ -1,5 +1,5 @@
 #!/bin/bash
-# Execute on the test Droplet. Does not reboot or change packages.
+# Execute inside the disposable test VM. Does not reboot or change packages.
 set -Eeuo pipefail
 [[ -f /etc/zfs-on-boot-installed ]]
 [[ $(findmnt -n -o FSTYPE /) = zfs ]]
@@ -12,7 +12,7 @@ set -Eeuo pipefail
 systemctl is-active ssh systemd-networkd systemd-resolved
 cloud-init status --wait
 getent ahostsv4 archive.ubuntu.com >/dev/null
-if [[ ${ZFSIFY_NESTED_DO_GUEST:-0} != 1 ]]; then
+if [[ ${ZFSIFY_SKIP_DO_METADATA:-${ZFSIFY_NESTED_DO_GUEST:-0}} != 1 ]]; then
     curl --fail --silent --show-error --max-time 15 http://169.254.169.254/metadata/v1/id
 fi
 printf '\n'
@@ -27,7 +27,8 @@ systemctl --failed --no-pager
 if [[ -d /sys/firmware/efi ]]; then
     [[ $(findmnt -n -o FSTYPE --target /boot/efi) = vfat ]]
     [[ -s /boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI ]]
-    cmp /boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI /boot/efi/EFI/BOOT/BOOTX64.EFI
+    case $(uname -m) in x86_64) fallback=BOOTX64.EFI;; aarch64) fallback=BOOTAA64.EFI;; *) exit 1;; esac
+    cmp /boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI "/boot/efi/EFI/BOOT/$fallback"
     efibootmgr | grep -F ZFSBootMenu
 else
     [[ $(findmnt -n -o FSTYPE --target /boot/syslinux) = ext4 ]]

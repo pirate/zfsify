@@ -8,6 +8,24 @@ therefore provide an environment to repair an Ubuntu installation that cannot bo
 Keep provider backups or an independent backup too. Root snapshots share the
 same disk and do not protect against loss of that disk or its firmware partition.
 
+## Ubuntu integration
+
+Ubuntu's packaged kernel, ZFS modules, and normal APT/kernel hooks manage the
+installed OS. The installer retains Ubuntu's initramfs implementation and adds
+the matching `zfs-initramfs` or `zfs-dracut` package, as
+[Canonical's installer does](https://github.com/canonical/curtin/blob/master/curtin/commands/curthooks.py).
+ZFS mounts `/`; `fstab` holds the firmware
+partition and other retained mounts. Pool defaults follow Ubuntu's installer,
+while a compatibility feature set keeps the pool readable by ZFSBootMenu.
+
+This differs from [Subiquity's ZFS layout](https://github.com/canonical/subiquity/blob/26.04.1/subiquity/server/controllers/filesystem.py#L736):
+ZFSBootMenu replaces GRUB, and `/boot`, system files, package databases, and user
+data remain together in one boot-environment dataset. A recovery clone therefore
+contains matching kernels and userspace. Existing Unicode filenames remain
+distinct, without enabling filename normalization during migration. ZFSBootMenu
+is a separate upstream bootloader, not part of Canonical's installer support;
+APT updates Ubuntu's kernels, not the standalone ZFSBootMenu image.
+
 ## Network failure before disk migration
 
 `Nexthop has invalid gateway` followed by failure at the `network.sh` step means

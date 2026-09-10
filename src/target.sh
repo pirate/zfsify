@@ -21,7 +21,7 @@ mount --bind /run /target/run
 cp /etc/hostid /target/etc/hostid
 cp /etc/modprobe.d/zfs-on-boot.conf /target/etc/modprobe.d/zfs-on-boot.conf
 cp /target/etc/fstab /target/etc/fstab.before-zfsify
-{ printf '# / and /boot are on rpool/ROOT/ubuntu, mounted by zfs-initramfs.\n';
+{ printf '# / and /boot are on rpool/ROOT/ubuntu, mounted by the ZFS initramfs.\n';
   awk '$1 ~ /^#/ || NF == 0 || ($2 != "/" && $2 != "/boot" && $2 != "/boot/efi" && $3 != "swap")' /target/etc/fstab.before-zfsify;
 } > /target/etc/fstab
 # ZFSBootMenu supplies root= dynamically, including for recovery clones.
@@ -53,10 +53,24 @@ chroot /target systemctl enable zfs-on-boot-grow.service
 zpool set cachefile=/target/etc/zfs/zpool.cache rpool
 # Existing kernels must have ZFS modules too; install missing module packages in
 # staging, never download anything after the source disk is removed.
+DRACUT=0
+if [[ $(chroot /target dpkg-query -W -f='${db:Status-Status}' dracut 2>/dev/null || true) = installed ]]; then
+    DRACUT=1
+    mkdir -p /target/etc/dracut.conf.d
+    # Let ZFSBootMenu choose the root dataset; do not bake RAM rescue's command
+    # line or a particular boot environment into this or future initramfs files.
+    cat > /target/etc/dracut.conf.d/90-zfsify.conf <<'EOF'
+add_dracutmodules+=" zfs "
+hostonly="no"
+hostonly_cmdline="no"
+EOF
+fi
 for kernel in /target/boot/vmlinuz-*; do
     version=${kernel##*/vmlinuz-}
     chroot /target modinfo -k "$version" zfs >/dev/null
-    if [[ -f /target/boot/initrd.img-$version ]]; then
+    if (( DRACUT )); then
+        chroot /target dracut --force "/boot/initrd.img-$version" "$version"
+    elif [[ -f /target/boot/initrd.img-$version ]]; then
         chroot /target update-initramfs -u -k "$version"
     else
         chroot /target update-initramfs -c -k "$version"

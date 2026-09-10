@@ -28,14 +28,19 @@ fi
 [[ $ACTION = install ]]
 DISK=${3:?} BOOTDEV=${4:?}
 if [[ $FIRMWARE = uefi ]]; then
+    case $(uname -m) in
+        x86_64) EFI_FALLBACK=BOOTX64.EFI ;;
+        aarch64) EFI_FALLBACK=BOOTAA64.EFI ;;
+        *) echo 'Unsupported UEFI architecture' >&2; exit 1 ;;
+    esac
     mkfs.vfat -F 32 -n ZFSBOOTMENU "$BOOTDEV"
     mkdir -p "$ROOT/boot/efi"
     mount "$BOOTDEV" "$ROOT/boot/efi"
     mkdir -p "$ROOT/boot/efi/EFI/BOOT" "$ROOT/boot/efi/EFI/ZFSBootMenu"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI"
-    cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI"
+    cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/$EFI_FALLBACK"
     printf 'UUID=%s /boot/efi vfat defaults,umask=0077 0 2\n' "$(blkid -s UUID -o value "$BOOTDEV")" >> "$ROOT/etc/fstab"
-    printf 'ZFSBootMenu 3.1.0; upstream UEFI linux6.6\n' > "$ROOT/etc/zfsbootmenu-version"
+    printf 'ZFSBootMenu 3.1.0; %s UEFI\n' "$(uname -m)" > "$ROOT/etc/zfsbootmenu-version"
     sync
     umount "$ROOT/boot/efi"
     efibootmgr --create --disk "$DISK" --part 1 --label ZFSBootMenu --loader '\EFI\ZFSBootMenu\zfsbootmenu.EFI'

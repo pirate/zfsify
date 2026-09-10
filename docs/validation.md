@@ -2,7 +2,8 @@
 
 The [ZFSBootMenu validation report](validation-zfsbootmenu.md) records the tested
 Ubuntu releases, memory sizes, disk layouts, installer checksums, and remaining
-limits. Runtime validation uses disposable DigitalOcean infrastructure.
+limits. Runtime validation uses disposable DigitalOcean infrastructure and native
+ARM64 VMs with UEFI.
 
 | Workflow | Evidence |
 |---|---|
@@ -15,6 +16,10 @@ limits. Runtime validation uses disposable DigitalOcean infrastructure.
 | Boot a snapshot clone and take automatic snapshots | [Recovery and snapshot evidence](validation-zfsbootmenu.md) |
 | Restore RAM networking with gateway host routes and renamed NICs | [DigitalOcean network regression](evidence/network-route-replay.txt) — targeted route replay, not a full conversion |
 | Preserve hardware/console boot arguments and NIC MTUs | [Boot portability acceptance](evidence/boot-portability.txt) — full DigitalOcean conversion and subsequent reboot |
+| ARM64 UEFI conversion, APT kernel maintenance, recovery clone, and disk growth | [Ubuntu 24.04, 1 GiB](evidence/arm64-noble-acceptance.txt) |
+| ARM64 UEFI conversion and APT kernel maintenance with 512 MiB RAM | [Ubuntu 24.04, 10 GiB disk](evidence/arm64-512mb-acceptance.txt) |
+| ARM64 UEFI conversion, APT kernel maintenance, and recovery-clone boot with dracut | [Ubuntu 26.04, 1 GiB](evidence/arm64-resolute-acceptance.txt) |
+| amd64 boot regression | [Ubuntu 24.04 DigitalOcean acceptance](evidence/amd64-architecture-acceptance.txt) |
 
 The recordings offer selected highlights and full terminal captures. Their notes
 identify the installer build, fixture, timing edits, and acceptance results.

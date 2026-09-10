@@ -1,8 +1,8 @@
 # ZFSBootMenu and low-memory validation
 
-Runtime tests run on disposable DigitalOcean infrastructure only. No installer,
-VM, filesystem migration, or formatting test ran on the development workstation.
-Results below were collected on 2026-09-07 UTC.
+The checks below were collected on disposable DigitalOcean infrastructure on
+2026-09-07 UTC. Native ARM64 and subsequent amd64 acceptance runs are listed in
+the [validation index](validation.md).
 
 ## Completed checks
 

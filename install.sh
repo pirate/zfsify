@@ -5,7 +5,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; e
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_ab25b010f98f36b4a2c5f3e58ef4ca34eedfd05d0f195e7c0a48f3ee108100a0'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_fe9b00354e3e174027f33452e7f238b9d54c911abc8ea79e6976e81c0a1a5258'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -68,8 +68,19 @@ die() { echo "zfs-on-boot: $*" >&2; exit 1; }
 exec 9>/run/zfsify-migrate.lock
 flock -n 9 || die 'Another zfsify conversion is running.'
 . /etc/os-release
-[[ $ID = ubuntu && ( $VERSION_ID = 22.04 || $VERSION_ID = 24.04 || $VERSION_ID = 26.04 ) && $(uname -m) = x86_64 ]] || die 'Ubuntu 22.04, 24.04, or 26.04 amd64 is required.'
+[[ $ID = ubuntu && ( $VERSION_ID = 22.04 || $VERSION_ID = 24.04 || $VERSION_ID = 26.04 ) ]] || die 'Ubuntu 22.04, 24.04, or 26.04 is required.'
+ARCH=$(dpkg --print-architecture)
+case $ARCH in
+    amd64) MIRROR=http://archive.ubuntu.com/ubuntu; SECURITY_MIRROR=http://security.ubuntu.com/ubuntu ;;
+    arm64) MIRROR=http://ports.ubuntu.com/ubuntu-ports; SECURITY_MIRROR=$MIRROR ;;
+    *) die 'Root conversion supports amd64 and arm64 Ubuntu.' ;;
+esac
 CODENAME=$VERSION_CODENAME
+# Match Ubuntu's installed initramfs implementation, including newer releases.
+INITRAMFS_PACKAGE=zfs-initramfs
+if [[ $(dpkg-query -W -f='${db:Status-Status}' dracut 2>/dev/null || true) = installed ]]; then
+    INITRAMFS_PACKAGE=zfs-dracut
+fi
 RESOLVED_PACKAGE=systemd-resolved
 [[ $VERSION_ID != 22.04 ]] || RESOLVED_PACKAGE=
 [[ ! -e /etc/zfs-on-boot-installed ]] || die 'Already installed; nothing to do.'
@@ -86,6 +97,9 @@ if [[ -d /sys/firmware/efi ]]; then
         [[ $secure_state = *"doesn't support Secure Boot"* ]] || die 'Cannot determine UEFI Secure Boot state.'
     fi
 fi
+[[ $ARCH != arm64 || $FIRMWARE = uefi ]] || die 'ARM64 root conversion requires UEFI firmware (not a board-specific U-Boot boot chain).'
+BOOT_PACKAGES=(grub2-common)
+[[ $FIRMWARE != bios ]] || BOOT_PACKAGES+=(grub-pc-bin extlinux syslinux-common)
 [[ -f /boot/grub/grub.cfg ]] || die 'GRUB is required.'
 [[ $(findmnt -n -o FSTYPE /) = ext4 ]] || die 'Only a plain ext4 root partition is supported.'
 [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -ge 450000 ]] || die 'At least 512 MiB RAM is required; the compressed rescue size is checked before reboot.'
@@ -102,6 +116,7 @@ if [[ $BOOT_MOUNT = /boot ]]; then
 fi
 read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
+echo "Detected Ubuntu $VERSION_ID | $ARCH | $FIRMWARE boot"
 echo "Root filesystem: $ROOTDEV on $DISK | used $USED_PCT% ($USED_BYTES / $FS_BYTES bytes)"
 if (( USED_BYTES * 2 >= FS_BYTES )) && [[ $MODE = preserve ]]; then
     cat <<'EOF'
@@ -241,13 +256,17 @@ phase 2 'Install staging tools' apt-get install -y --no-install-recommends deboo
 [[ $MODE != backup ]] || bash "$SOURCE/backup.sh" configure "$BACKUP" "$WORK/backup" "$DISK" "$USED_BYTES"
 if [[ $MODE != erase ]]; then
     # Install boot support into the OS that will actually be migrated.
-    phase 2 'Prepare existing Ubuntu for ZFS boot' apt-get install -y --no-install-recommends linux-image-virtual zfs-initramfs zfsutils-linux grub-pc-bin grub2-common cloud-guest-utils rsync extlinux syslinux-common
+    phase 2 'Prepare existing Ubuntu for ZFS boot' apt-get install -y --no-install-recommends linux-image-virtual "$INITRAMFS_PACKAGE" zfsutils-linux "${BOOT_PACKAGES[@]}" cloud-guest-utils rsync
 fi
-phase 2 'Build independent RAM rescue Ubuntu' debootstrap --variant=minbase "$CODENAME" "$ROOT" http://archive.ubuntu.com/ubuntu
+if [[ $ARCH = arm64 ]]; then
+    python3 "$SOURCE/boot-config.py" "$WORK/boot"
+    phase 2 'Build ARM64 ZFSBootMenu automatically' bash "$SOURCE/zbm-build.sh" "$WORK"
+fi
+phase 2 'Build independent RAM rescue Ubuntu' debootstrap --variant=minbase "$CODENAME" "$ROOT" "$MIRROR"
 cat > "$ROOT/etc/apt/sources.list" <<EOF
-deb http://archive.ubuntu.com/ubuntu $CODENAME main universe
-deb http://archive.ubuntu.com/ubuntu $CODENAME-updates main universe
-deb http://security.ubuntu.com/ubuntu $CODENAME-security main universe
+deb $MIRROR $CODENAME main universe
+deb $MIRROR $CODENAME-updates main universe
+deb $SECURITY_MIRROR $CODENAME-security main universe
 EOF
 printf '#!/bin/sh\nexit 101\n' > "$ROOT/usr/sbin/policy-rc.d"
 chmod 755 "$ROOT/usr/sbin/policy-rc.d"
@@ -259,12 +278,17 @@ cleanup_mounts() { umount -R "$ROOT/dev" 2>/dev/null || true; umount "$ROOT/proc
 trap 'cleanup_mounts; cleanup_swap' EXIT
 cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
 phase 2 'Update rescue package indexes' chroot "$ROOT" apt-get update
-# grub-pc-bin avoids package installation trying to install GRUB on the live disk.
-phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual zfs-initramfs zfsutils-linux grub-pc-bin grub2-common openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static extlinux syslinux-common rclone binutils efibootmgr </dev/null
+# Only boot utilities are needed here; do not install a GRUB loader on the live disk.
+phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual "$INITRAMFS_PACKAGE" zfsutils-linux "${BOOT_PACKAGES[@]}" openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static rclone binutils efibootmgr </dev/null
 mkdir -p "$ROOT/etc/zfs-on-boot"
 printf '%s\n' "$FIRMWARE" > "$ROOT/etc/zfs-on-boot/firmware"
 python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
-phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
+if [[ $ARCH = arm64 ]]; then
+    mkdir -p "$ROOT/etc/zfs-on-boot/zbm"
+    mv "$WORK/zfsbootmenu.EFI" "$ROOT/etc/zfs-on-boot/zbm/"
+else
+    phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
+fi
 mkdir -p "$ROOT/root/.ssh" "$ROOT/etc/zfs-on-boot" "$ROOT/etc/ssh/sshd_config.d"
 chmod 700 "$ROOT/root/.ssh"
 cp /root/.ssh/authorized_keys "$ROOT/root/.ssh/authorized_keys"
@@ -372,8 +396,8 @@ echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM instal
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_ab25b010f98f36b4a2c5f3e58ef4ca34eedfd05d0f195e7c0a48f3ee108100a0
-cat > "$work/network.py" <<'ZFS_ON_BOOT_19f036f4cc23e2fc077a320be1d8be051c0c1b507bd42a0680af16767c7f0594'
+ZFS_ON_BOOT_fe9b00354e3e174027f33452e7f238b9d54c911abc8ea79e6976e81c0a1a5258
+cat > "$work/network.py" <<'ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec'
 #!/usr/bin/env python3
 """Capture hardware NIC addresses and main-table routes for the RAM installer."""
 import json
@@ -398,7 +422,7 @@ def render(links, routes):
             f'ip link set "$iface" mtu {int(link["mtu"])} up',
         ]
         for addr in link.get('addr_info', []):
-            if addr['scope'] == 'global':
+            if addr['scope'] in ('global', 'site'):
                 lines.append(f'ip addr replace {q(addr["local"] + "/" + str(addr["prefixlen"]))} dev "$iface"')
         for family in ['-4', '-6']:
             # ip route show usually lists the default first. With a /32 address,
@@ -433,8 +457,8 @@ if __name__ == '__main__':
               for link in links for family in ['-4', '-6']}
     Path(sys.argv[1]).write_text(render(links, routes))
 
-ZFS_ON_BOOT_19f036f4cc23e2fc077a320be1d8be051c0c1b507bd42a0680af16767c7f0594
-cat > "$work/boot-config.py" <<'ZFS_ON_BOOT_ca83e9c2a154721a2ee5317404bd077f2e2866829de270056668a855bdeb3925'
+ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec
+cat > "$work/boot-config.py" <<'ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b'
 #!/usr/bin/env python3
 """Retain existing boot options while replacing the old root/initramfs contract."""
 from pathlib import Path
@@ -451,7 +475,7 @@ REPLACED = {
 }
 
 
-def commandlines(text):
+def commandlines(text, consoles=('tty0',)):
     # Linux command lines use double quotes, not shell evaluation. Retain their
     # spelling, including quoted values containing spaces, for the final kernel.
     tokens = re.findall(r'(?:[^\s"]|"[^"]*")+', text)
@@ -464,7 +488,7 @@ def commandlines(text):
             continue
         kept.append(token)
     if not any(t.split('=', 1)[0].strip('"') == 'console' for t in kept):
-        kept += ['console=ttyS0,115200n8', 'console=tty0']
+        kept += ['console=' + console for console in consoles]
     # Keep diagnostics visible and leave the RAM/ZBM init program in control.
     # All other existing CPU, PCI, I/O, display and driver options pass through.
     rescue = [t for t in kept if t.split('=', 1)[0].strip('"') not in
@@ -477,11 +501,13 @@ def commandlines(text):
 if __name__ == '__main__':
     out = Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
-    for name, value in commandlines(Path('/proc/cmdline').read_text()).items():
+    active = Path('/sys/class/tty/console/active')
+    consoles = active.read_text().split() if active.exists() else ['tty0']
+    for name, value in commandlines(Path('/proc/cmdline').read_text(), consoles or ['tty0']).items():
         (out / ('cmdline-' + name)).write_text(value + '\n')
 
-ZFS_ON_BOOT_ca83e9c2a154721a2ee5317404bd077f2e2866829de270056668a855bdeb3925
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_9615a62d86e5f81d162ddd81f187d3b4e1fc2b756496ef0ad69736a822ae19c0'
+ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_16d61fd25edb57a90bc0d156bf995e0da2245094b21b33dcae35998867e00d07'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -615,8 +641,10 @@ if [[ $MODE != preserve ]]; then
 fi
 [[ -b $ZPART ]]
 DEVICES=$DISK,$ROOTDEV,${BOOTDEV:-$ROOTDEV},$ZPART${BACKUPDEV:+,$BACKUPDEV}
-phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O atime=off -O xattr=sa -O acltype=posixacl -O mountpoint=none -R /target rpool "$ZPART"
-zfs create -o mountpoint=none rpool/ROOT
+# Ubuntu's root-pool defaults, with boot-image compatibility and disk growth.
+# Keep ext4's distinct Unicode filenames distinct rather than normalizing them.
+phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim=on -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target rpool "$ZPART"
+zfs create -o canmount=off -o mountpoint=none rpool/ROOT
 zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
 zfs mount rpool/ROOT/ubuntu
 zpool set bootfs=rpool/ROOT/ubuntu rpool
@@ -705,8 +733,8 @@ echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_9615a62d86e5f81d162ddd81f187d3b4e1fc2b756496ef0ad69736a822ae19c0
-cat > "$work/target.sh" <<'ZFS_ON_BOOT_e53132ebe849b94a27eaf88e04338d91ae196bc8a09f27cea87c46d3d47b36ba'
+ZFS_ON_BOOT_16d61fd25edb57a90bc0d156bf995e0da2245094b21b33dcae35998867e00d07
+cat > "$work/target.sh" <<'ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
 set -Eeuo pipefail
@@ -730,7 +758,7 @@ mount --bind /run /target/run
 cp /etc/hostid /target/etc/hostid
 cp /etc/modprobe.d/zfs-on-boot.conf /target/etc/modprobe.d/zfs-on-boot.conf
 cp /target/etc/fstab /target/etc/fstab.before-zfsify
-{ printf '# / and /boot are on rpool/ROOT/ubuntu, mounted by zfs-initramfs.\n';
+{ printf '# / and /boot are on rpool/ROOT/ubuntu, mounted by the ZFS initramfs.\n';
   awk '$1 ~ /^#/ || NF == 0 || ($2 != "/" && $2 != "/boot" && $2 != "/boot/efi" && $3 != "swap")' /target/etc/fstab.before-zfsify;
 } > /target/etc/fstab
 # ZFSBootMenu supplies root= dynamically, including for recovery clones.
@@ -762,10 +790,24 @@ chroot /target systemctl enable zfs-on-boot-grow.service
 zpool set cachefile=/target/etc/zfs/zpool.cache rpool
 # Existing kernels must have ZFS modules too; install missing module packages in
 # staging, never download anything after the source disk is removed.
+DRACUT=0
+if [[ $(chroot /target dpkg-query -W -f='${db:Status-Status}' dracut 2>/dev/null || true) = installed ]]; then
+    DRACUT=1
+    mkdir -p /target/etc/dracut.conf.d
+    # Let ZFSBootMenu choose the root dataset; do not bake RAM rescue's command
+    # line or a particular boot environment into this or future initramfs files.
+    cat > /target/etc/dracut.conf.d/90-zfsify.conf <<'EOF'
+add_dracutmodules+=" zfs "
+hostonly="no"
+hostonly_cmdline="no"
+EOF
+fi
 for kernel in /target/boot/vmlinuz-*; do
     version=${kernel##*/vmlinuz-}
     chroot /target modinfo -k "$version" zfs >/dev/null
-    if [[ -f /target/boot/initrd.img-$version ]]; then
+    if (( DRACUT )); then
+        chroot /target dracut --force "/boot/initrd.img-$version" "$version"
+    elif [[ -f /target/boot/initrd.img-$version ]]; then
         chroot /target update-initramfs -u -k "$version"
     else
         chroot /target update-initramfs -c -k "$version"
@@ -797,7 +839,7 @@ umount /target/run /target/proc
 umount -R /target/sys
 umount -R /target/dev
 
-ZFS_ON_BOOT_e53132ebe849b94a27eaf88e04338d91ae196bc8a09f27cea87c46d3d47b36ba
+ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168
 cat > "$work/progress.py" <<'ZFS_ON_BOOT_188b5977b14b29e4d6dc2addc0ea491f68961aae7e8a5926449ca330a3c4b6e0'
 #!/usr/bin/python3
 """Run a phase with live Linux disk telemetry, or follow it across SSH sessions."""
@@ -1160,7 +1202,7 @@ umount /dev
 exec switch_root /rescue /init
 
 ZFS_ON_BOOT_67f6d2616ea5352e8cc71452ba3951bd86e70af36c5e4b2707ac6f40f21e97c3
-cat > "$work/build-rescue.py" <<'ZFS_ON_BOOT_88bc0bc7e3934015c264b050943a85bccbb6873cc69c47b4ab0022a88ba6813c'
+cat > "$work/build-rescue.py" <<'ZFS_ON_BOOT_6937b61de010540f98d6814303fa45e6671b21a2273402e37bcc911d198d235a'
 #!/usr/bin/python3
 """Build a small disk-independent boot shim; execute only on the target Ubuntu VPS."""
 from pathlib import Path
@@ -1187,7 +1229,7 @@ for binary, alias in [('/usr/bin/kmod', '/sbin/modprobe'), ('/usr/sbin/blkid', '
     for path in re.findall(r'(/[^\s()]+)', ldd): copy(path)
 modules = []
 required = ['ext4', 'loop', 'squashfs', 'overlay']
-controllers = ['virtio_pci', 'virtio_blk', 'virtio_scsi', 'scsi_mod', 'sd_mod', 'nvme', 'nvme_core', 'ahci', 'libata', 'hv_vmbus', 'hv_storvsc']
+controllers = ['virtio_pci', 'virtio_mmio', 'virtio_blk', 'virtio_scsi', 'scsi_mod', 'sd_mod', 'nvme', 'nvme_core', 'ahci', 'libata', 'hv_vmbus', 'hv_storvsc']
 # Discover the running boot disk's driver chain as well as common fallback
 # controllers. This covers another hypervisor/controller without naming a cloud.
 disk = Path('/sys/class/block') / Path(sys.argv[6]).name
@@ -1216,8 +1258,8 @@ with image.open('rb') as stream:
     digest = hasher.hexdigest()
 (shim/'config').write_text(f'SOURCE_UUID={uuid}\nRESCUE_SHA={digest}\nMODULES="{" ".join(modules)}"\n')
 
-ZFS_ON_BOOT_88bc0bc7e3934015c264b050943a85bccbb6873cc69c47b4ab0022a88ba6813c
-cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_a7bb9baa90bcf1738690116aae2c146018b662fbebc08c64d87dd9a2f4d9fae0'
+ZFS_ON_BOOT_6937b61de010540f98d6814303fa45e6671b21a2273402e37bcc911d198d235a
+cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_5d784d9aa58e2da9e5c4cac4aa3414d4fb237da2092bb56621aceb755c6bafc5'
 #!/bin/bash
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -1248,14 +1290,19 @@ fi
 [[ $ACTION = install ]]
 DISK=${3:?} BOOTDEV=${4:?}
 if [[ $FIRMWARE = uefi ]]; then
+    case $(uname -m) in
+        x86_64) EFI_FALLBACK=BOOTX64.EFI ;;
+        aarch64) EFI_FALLBACK=BOOTAA64.EFI ;;
+        *) echo 'Unsupported UEFI architecture' >&2; exit 1 ;;
+    esac
     mkfs.vfat -F 32 -n ZFSBOOTMENU "$BOOTDEV"
     mkdir -p "$ROOT/boot/efi"
     mount "$BOOTDEV" "$ROOT/boot/efi"
     mkdir -p "$ROOT/boot/efi/EFI/BOOT" "$ROOT/boot/efi/EFI/ZFSBootMenu"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI"
-    cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/BOOTX64.EFI"
+    cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/$EFI_FALLBACK"
     printf 'UUID=%s /boot/efi vfat defaults,umask=0077 0 2\n' "$(blkid -s UUID -o value "$BOOTDEV")" >> "$ROOT/etc/fstab"
-    printf 'ZFSBootMenu 3.1.0; upstream UEFI linux6.6\n' > "$ROOT/etc/zfsbootmenu-version"
+    printf 'ZFSBootMenu 3.1.0; %s UEFI\n' "$(uname -m)" > "$ROOT/etc/zfsbootmenu-version"
     sync
     umount "$ROOT/boot/efi"
     efibootmgr --create --disk "$DISK" --part 1 --label ZFSBootMenu --loader '\EFI\ZFSBootMenu\zfsbootmenu.EFI'
@@ -1285,7 +1332,92 @@ umount "$ROOT/boot/syslinux"
 # Activate the BIOS loader only after its files are durable.
 dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc,fsync
 
-ZFS_ON_BOOT_a7bb9baa90bcf1738690116aae2c146018b662fbebc08c64d87dd9a2f4d9fae0
+ZFS_ON_BOOT_5d784d9aa58e2da9e5c4cac4aa3414d4fb237da2092bb56621aceb755c6bafc5
+cat > "$work/zbm-build.sh" <<'ZFS_ON_BOOT_4c76357c973dd0cf134c763bf14137a2d5fafead0fd40a9e34313a98f32866a3'
+#!/bin/bash
+# Build upstream ARM64 ZFSBootMenu without changing the host's initramfs tooling.
+set -Eeuo pipefail
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin DEBIAN_FRONTEND=noninteractive
+WORK=${1:?}
+BUILD=$WORK/zbm-build
+[[ $(dpkg --print-architecture) = arm64 ]]
+mkdir -p "$BUILD"
+cleanup() {
+    local point
+    for point in dev proc sys; do
+        if mountpoint -q "$BUILD/$point"; then umount -R "$BUILD/$point" || return; fi
+    done
+}
+trap cleanup EXIT
+# A fixed, independent Ubuntu builder keeps dracut out of both installed systems.
+# No kernel compilation is needed: Ubuntu supplies the ARM64 kernel and ZFS.
+debootstrap --variant=minbase noble "$BUILD" http://ports.ubuntu.com/ubuntu-ports
+cat > "$BUILD/etc/apt/sources.list" <<'EOF'
+deb http://ports.ubuntu.com/ubuntu-ports noble main universe
+deb http://ports.ubuntu.com/ubuntu-ports noble-updates main universe
+deb http://ports.ubuntu.com/ubuntu-ports noble-security main universe
+EOF
+printf '#!/bin/sh\nexit 101\n' > "$BUILD/usr/sbin/policy-rc.d"
+chmod 755 "$BUILD/usr/sbin/policy-rc.d"
+cp -L /etc/resolv.conf "$BUILD/etc/resolv.conf"
+mount --rbind /dev "$BUILD/dev"
+mount --make-rslave "$BUILD/dev"
+mount -t proc proc "$BUILD/proc"
+mount -t sysfs sysfs "$BUILD/sys"
+chroot "$BUILD" apt-get update
+chroot "$BUILD" apt-get install -y --no-install-recommends linux-image-virtual zfsutils-linux dracut-core systemd-boot-efi kexec-tools fzf libyaml-pp-perl libsort-versions-perl libboolean-perl make binutils file bsdextrautils kbd ca-certificates
+# Ubuntu 26.04 ARM64 kernels use PE zboot, which noble's kexec cannot load.
+# This Ubuntu package runs against noble's libraries; only the isolated boot
+# image gets it. Keep the installed OS and the builder's other packages intact.
+curl --fail --location --retry 3 https://ports.ubuntu.com/ubuntu-ports/pool/main/k/kexec-tools/kexec-tools_2.0.32-3ubuntu1_arm64.deb -o "$BUILD/tmp/kexec.deb"
+echo 'bce6037e64e248fc03663fa607a3ad65dc0d3d7042a246d5691fd8dcae5dfbba  '"$BUILD/tmp/kexec.deb" | sha256sum -c -
+chroot "$BUILD" dpkg -i /tmp/kexec.deb
+# Ubuntu ARM64 vmlinuz may be gzip-wrapped; an EFI stub needs the raw kernel.
+# This changes only the disposable builder, not the installed Ubuntu kernels.
+for kernel in "$BUILD"/boot/vmlinuz-*; do
+    if gzip -t "$kernel" 2>/dev/null; then
+        gzip -dc "$kernel" > "$kernel.uncompressed"
+        mv "$kernel.uncompressed" "$kernel"
+    fi
+done
+curl --fail --location --retry 3 https://codeload.github.com/zbm-dev/zfsbootmenu/tar.gz/refs/tags/v3.1.0 -o "$BUILD/zbm.tar.gz"
+echo '55aa61ff7450131348dcfe45c2b7ea01bec84b559f0e8e149b3dc8dbd093eaff  '"$BUILD/zbm.tar.gz" | sha256sum -c -
+mkdir "$BUILD/zbm-src"
+tar -xzf "$BUILD/zbm.tar.gz" --strip-components=1 -C "$BUILD/zbm-src"
+if [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -lt 750000 ]]; then
+    # kexec_file_load duplicates the decompressed ARM kernel in memory and can
+    # OOM at 512 MiB. The supported kexec_load syscall avoids that extra copy.
+    sed -i 's/kexec -a -l/kexec -c -l/' "$BUILD/zbm-src/zfsbootmenu/lib/zfsbootmenu-core.sh"
+fi
+chroot "$BUILD" make -C /zbm-src core dracut
+cat > "$BUILD/etc/zfsbootmenu/config.yaml" <<'EOF'
+Global:
+  ManageImages: true
+  DracutConfDir: /etc/zfsbootmenu/dracut.conf.d
+Components:
+  Enabled: false
+EFI:
+  Enabled: true
+  ImageDir: /output
+  Versions: false
+Kernel:
+  Prefix: zfsbootmenu
+EOF
+cat > "$BUILD/etc/zfsbootmenu/dracut.conf.d/zfsify.conf" <<'EOF'
+hostonly="no"
+hostonly_cmdline="no"
+compress="gzip"
+zfsbootmenu_release_build="1"
+EOF
+KCL="$(cat "$WORK/boot/cmdline-rescue") zbm.timeout=15 zbm.prefer=rpool zbm.sort_key=creation zfs.zfs_arc_min=16777216 zfs.zfs_arc_max=67108864"
+chroot "$BUILD" generate-zbm --no-initcpio --cmdline "$KCL"
+test -s "$BUILD/output/zfsbootmenu.EFI"
+cp "$BUILD/output/zfsbootmenu.EFI" "$WORK/zfsbootmenu.EFI"
+cleanup
+trap - EXIT
+rm -rf "$BUILD"
+
+ZFS_ON_BOOT_4c76357c973dd0cf134c763bf14137a2d5fafead0fd40a9e34313a98f32866a3
 cat > "$work/snapshot.sh" <<'ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717'
 #!/bin/bash
 # Own only zfsify-{apt,daily,boot}-* snapshots; never remove user snapshots.

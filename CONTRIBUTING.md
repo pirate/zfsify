@@ -2,7 +2,7 @@
 
 Contributions should make ZFS on Ubuntu easier to set up, operate, and recover.
 Keep destructive behavior explicit, make supported inputs clear, and back changes
-to conversion behavior with evidence from disposable DigitalOcean machines.
+to conversion behavior with evidence from disposable VMs.
 
 ## Repository map
 
@@ -14,7 +14,7 @@ to conversion behavior with evidence from disposable DigitalOcean machines.
 | `cloud-init/` | First-boot templates that schedule the same installer |
 | `tools/volumes/` | Advanced inspection, named-pool, vdev, wizard, and benchmark helpers |
 | `tools/digitalocean/` | DigitalOcean metadata, Volume listing, and Terraform provisioning |
-| `scripts/` | Packaging and DigitalOcean acceptance harness |
+| `scripts/` | Packaging, guest verification, and DigitalOcean acceptance harness |
 | `scripts/recordings/` | Recording and presentation helpers |
 | `docs/` | Usage guides and validation index |
 | `docs/assets/recordings/` | Captured terminal output, previews, and provenance |
@@ -40,11 +40,13 @@ The disposable `dist/` packaging output is ignored by Git. Signed Ubuntu
 repositories can supply newer packages even when the installer checksum stays
 unchanged, so preserve package versions with runtime evidence.
 
-## Validate on DigitalOcean
+## Validate in disposable VMs
 
-Installer runtime testing belongs on disposable DigitalOcean infrastructure.
-Do not run formatting, migration, RAM-boot, or installer tests on a workstation
-or a server holding needed data. The acceptance harness requires Python 3, curl,
+Installer runtime testing belongs in disposable VMs: DigitalOcean for amd64,
+or a native ARM64 VM with UEFI for ARM64. Local VMs must use disposable virtual
+disks without host disk passthrough or shared host folders. Never run the installer
+on the workstation itself or a server holding needed data.
+The DigitalOcean acceptance harness requires Python 3, curl,
 OpenSSH, and an API token supplied privately as `DIGITALOCEAN_TOKEN`.
 
 ```sh
@@ -60,13 +62,19 @@ installer, verifies the result and another reboot, then deletes the resources
 recorded in its state file. The smaller-plan override above exercises Ubuntu
 22.04 with 512 MiB RAM.
 
+Native ARM64 tests must boot Ubuntu through UEFI and GRUB, so they exercise the
+firmware path used after conversion. A hypervisor's direct-kernel boot skips that
+path. Inside the VM, use `scripts/setup-fixture.sh preserve`, run `reformat.sh`,
+then run `ZFSIFY_SKIP_DO_METADATA=1 bash scripts/verify.sh` and
+`bash scripts/verify-preserved.sh` after conversion and again after a reboot.
+
 The harness does not cover every workflow in the [validation index](docs/validation.md).
 For example, provider disk growth, console recovery, attached data disks, and
 first-boot templates require evidence for their own behavior. Run only checks
 appropriate to the change; record failures and limitations rather than broadening
 a success claim to untested layouts.
 
-For RAM networking changes, copy the checkout to a disposable DigitalOcean VM and
+For RAM networking changes, copy the checkout to a disposable Ubuntu VM and
 run `sudo python3 scripts/verify-network.py` there. It exercises IPv4/IPv6 gateway
 dependencies, connected subnets, `onlink`, MTUs, and replay after NIC renaming in
 isolated network namespaces. It also captures the VM's actual NICs and routes;

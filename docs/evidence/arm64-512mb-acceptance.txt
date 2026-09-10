@@ -1,0 +1,272 @@
+Collected 2026-09-10 UTC. Native ARM64 QEMU 10.2.0 with Apple HVF on an ARM64 Mac.
+Ubuntu 24.04 cloud image, UEFI, 2 vCPUs, 512 MiB RAM, 10 GiB virtual disk.
+No host filesystem shares or disk passthrough.
+Installer SHA256: daa232d61b2acd8219c62d75bb427f73f4cfcd3f1f99c3fae0706ac51513d28d
+Invoked through curl | sh without flags or intervention.
+
+BASELINE
+status: done
+Linux zfsify-arm64-native 6.8.0-138-generic #138-Ubuntu SMP PREEMPT_DYNAMIC Fri Jul 31 22:20:42 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+NAME    FSTYPE  FSVER            LABEL           UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+vda
+├─vda1  ext4    1.0              cloudimg-rootfs f04fc0a0-a851-4173-ac9b-df0666934299    6.9G    20% /
+├─vda15 vfat    FAT32            UEFI            521B-9831                              91.1M     6% /boot/efi
+└─vda16 ext4    1.0              BOOT            97add064-7a7d-4f65-b4d3-c7664d01099f  767.9M     7% /boot
+vdb     iso9660 Joliet Extension cidata          2026-09-10-00-14-50-00
+BOOT_IMAGE=/vmlinuz-6.8.0-138-generic root=LABEL=cloudimg-rootfs ro console=tty1 console=ttyAMA0
+MemTotal:         460892 kB
+MemFree:           38676 kB
+MemAvailable:     274752 kB
+
+BOOT AND NETWORK REGRESSIONS
+PASS: inherited console/hardware options; old root/resume/init removed; GRUB syntax and quoted values
+PASS: IPv4 /32 with DHCP gateway host route (kernel route lookup, repeat replay, MTU)
+PASS: IPv4 /32 with kernel gateway host route (kernel route lookup, repeat replay, MTU)
+PASS: IPv4 directly connected /24 gateway (kernel route lookup, repeat replay, MTU)
+PASS: IPv4 /32 explicitly onlink gateway (kernel route lookup, repeat replay, MTU)
+PASS: IPv6 /128 with gateway host route (kernel route lookup, repeat replay, MTU)
+PASS: IPv6 /128 explicitly onlink gateway (kernel route lookup, repeat replay, MTU)
+PASS: live capture of 1 hardware NICs; MAC matching after rename, IPv4/IPv6 replay
+
+RAM ENVIRONMENT
+aarch64
+MemTotal:         460888 kB
+MemFree:           23476 kB
+MemAvailable:     111072 kB
+TARGET SOURCE  FSTYPE  OPTIONS
+/      overlay overlay rw,relatime,lowerdir=/payload/lower,upperdir=/payload/upper,workdir=/payload/work,uuid=on,xino=off,nouserxattr
+BOOT_IMAGE=/zfs-on-boot/vmlinuz console=tty1 console=ttyAMA0 rdinit=/init panic=0
+-rw-r--r-- 1 root root 176M Sep 10 00:59 /rescue-media/rescue.squashfs
+Filename				Type		Size		Used		Priority
+
+INITIAL ZFS BOOT AND PRESERVATION
+Linux zfsify-arm64-native 6.8.0-139-generic #139-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 03:32:48 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+MemTotal:         460956 kB
+MemFree:          120688 kB
+MemAvailable:     198292 kB
+5aac0ec2-f13a-483f-aefe-be0d71d93b34
+root=zfs:rpool/ROOT/ubuntu console=tty1 console=ttyAMA0 spl.spl_hostid=0x00bab10c
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: resilvered 2.03G in 00:00:02 with 0 errors on Thu Sep 10 01:00:43 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              1.93G  6.79G    96K  none
+rpool/ROOT         1.93G  6.79G    96K  none
+rpool/ROOT/ubuntu  1.93G  6.79G  1.93G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot0009* ZFSBootMenu	HD(1,GPT,a927292f-3839-46dc-b051-bb1dc6a0a9c5,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000A* ZFSBootMenu	HD(1,GPT,8bb823f1-07a4-480a-be79-d8b7731c93be,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000B* ZFSBootMenu	HD(1,GPT,aaccea64-2e9e-49d6-872b-c92b364ce01a,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed   716K      -  1.93G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+NAME   FSTYPE     FSVER            LABEL       UUID                                 FSAVAIL FSUSE% MOUNTPOINTS
+vda
+├─vda1 vfat       FAT32            ZFSBOOTMENU 135C-2962                             347.8M    32% /boot/efi
+└─vda2 zfs_member 5000             rpool       812158128422472072
+vdb    iso9660    Joliet Extension cidata      2026-09-10-00-14-50-00
+# / and /boot are on rpool/ROOT/ubuntu, mounted by the ZFS initramfs.
+UUID=135C-2962 /boot/efi vfat defaults,umask=0077 0 2
+ZFSBootMenu 3.1.0; aarch64 UEFI
+
+APT KERNEL MAINTENANCE
+Reading package lists...
+Building dependency tree...
+Reading state information...
+The following packages were automatically installed and are no longer required:
+  efibootmgr libefiboot1t64 libefivar1t64 mokutil
+Use 'apt autoremove' to remove them.
+Recovery snapshot: rpool/ROOT/ubuntu@zfsify-apt-20260910T010603-1367
+0 upgraded, 0 newly installed, 2 reinstalled, 0 to remove and 63 not upgraded.
+Need to get 0 B/18.3 MB of archives.
+After this operation, 0 B of additional disk space will be used.
+(Reading database ...
+(Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+(Reading database ... 75%
+(Reading database ... 80%
+(Reading database ... 85%
+(Reading database ... 90%
+(Reading database ... 95%
+(Reading database ... 100%
+(Reading database ... 112327 files and directories currently installed.)
+Preparing to unpack .../linux-image-6.8.0-139-generic_6.8.0-139.139_arm64.deb ...
+Unpacking linux-image-6.8.0-139-generic (6.8.0-139.139) over (6.8.0-139.139) ...
+Preparing to unpack .../zfs-initramfs_2.2.2-0ubuntu9.5_arm64.deb ...
+Unpacking zfs-initramfs (2.2.2-0ubuntu9.5) over (2.2.2-0ubuntu9.5) ...
+Setting up linux-image-6.8.0-139-generic (6.8.0-139.139) ...
+Setting up zfs-initramfs (2.2.2-0ubuntu9.5) ...
+Processing triggers for initramfs-tools (0.142ubuntu25.8) ...
+update-initramfs: Generating /boot/initrd.img-6.8.0-139-generic
+Warning: root device  does not exist
+flash-kernel: requested kernel 6.8.0-139-generic is in state triggers-pending.
+flash-kernel: quitting cleanly, anticipating a future run
+Processing triggers for linux-image-6.8.0-139-generic (6.8.0-139.139) ...
+/etc/kernel/postinst.d/initramfs-tools:
+update-initramfs: Generating /boot/initrd.img-6.8.0-139-generic
+Warning: root device  does not exist
+flash-kernel: deferring update (trigger activated)
+/etc/kernel/postinst.d/zz-flash-kernel:
+flash-kernel: deferring update (trigger activated)
+Processing triggers for flash-kernel (3.107ubuntu13~24.04.6) ...
+System running in EFI mode, skipping.
+
+Running kernel seems to be up-to-date.
+
+No services need to be restarted.
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+
+REBOOT AFTER KERNEL MAINTENANCE
+9ccb53d1-6550-494e-a779-b7d15b76b504
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: resilvered 2.03G in 00:00:02 with 0 errors on Thu Sep 10 01:00:43 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              2.02G  6.70G    96K  none
+rpool/ROOT         2.02G  6.70G    96K  none
+rpool/ROOT/ubuntu  2.02G  6.70G  1.93G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot0009* ZFSBootMenu	HD(1,GPT,a927292f-3839-46dc-b051-bb1dc6a0a9c5,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000A* ZFSBootMenu	HD(1,GPT,8bb823f1-07a4-480a-be79-d8b7731c93be,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000B* ZFSBootMenu	HD(1,GPT,aaccea64-2e9e-49d6-872b-c92b364ce01a,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed   852K      -  1.93G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+
+UPDATED ARM64 LOADER BOOT
+The boot image was rebuilt with Ubuntu kexec-tools 2.0.32 and the same low-memory kexec_load setting, then installed in both EFI paths. This separately checks the final loader change on the already-converted 512 MiB VM.
+7dd56714179c05feba3f3fce282f0cfdff7321800616903725e5b72e9c58a22d  /mnt/esp/EFI/BOOT/BOOTAA64.EFI
+Linux zfsify-arm64-native 6.8.0-139-generic #139-Ubuntu SMP PREEMPT_DYNAMIC Sat Aug  1 03:32:48 UTC 2026 aarch64 aarch64 aarch64 GNU/Linux
+MemTotal:         460956 kB
+MemFree:          113372 kB
+MemAvailable:     190900 kB
+active
+active
+active
+status: done
+
+2.2.2-0ubuntu9.4
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: resilvered 2.03G in 00:00:02 with 0 errors on Thu Sep 10 01:00:43 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              2.02G  6.70G    96K  none
+rpool/ROOT         2.02G  6.70G    96K  none
+rpool/ROOT/ubuntu  2.02G  6.70G  1.93G  /
+6.8.0-139-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+Boot0009* ZFSBootMenu	HD(1,GPT,a927292f-3839-46dc-b051-bb1dc6a0a9c5,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000A* ZFSBootMenu	HD(1,GPT,8bb823f1-07a4-480a-be79-d8b7731c93be,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+Boot000B* ZFSBootMenu	HD(1,GPT,aaccea64-2e9e-49d6-872b-c92b364ce01a,0x800,0x100000)/File(\EFI\ZFSBootMenu\zfsbootmenu.EFI)
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed   852K      -  1.93G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.

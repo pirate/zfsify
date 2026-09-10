@@ -1,5 +1,5 @@
 #!/bin/bash
-# Test data only; run inside the disposable DO Droplet before conversion.
+# Test data only; run inside a disposable VM before conversion.
 set -Eeuo pipefail
 case ${1:-preserve} in
 preserve)

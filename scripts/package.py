@@ -14,7 +14,7 @@ work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
 '''
-for name in ['stage.sh', 'network.py', 'boot-config.py', 'ram-init.sh', 'target.sh', 'progress.py', 'plan.py', 'grow.sh', 'grow.service', 'status.sh', 'identity.py', 'ram-boot.sh', 'build-rescue.py', 'zbm-install.sh', 'snapshot.sh', 'volume.sh', 'backup.sh', 'priority.py']:
+for name in ['stage.sh', 'network.py', 'boot-config.py', 'ram-init.sh', 'target.sh', 'progress.py', 'plan.py', 'grow.sh', 'grow.service', 'status.sh', 'identity.py', 'ram-boot.sh', 'build-rescue.py', 'zbm-install.sh', 'zbm-build.sh', 'snapshot.sh', 'volume.sh', 'backup.sh', 'priority.py']:
     content = (root / 'src' / name).read_text()
     marker = 'ZFS_ON_BOOT_' + hashlib.sha256(content.encode()).hexdigest()
     script += f"cat > \"$work/{name}\" <<'{marker}'\n{content}\n{marker}\n"

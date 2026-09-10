@@ -24,7 +24,7 @@ for binary, alias in [('/usr/bin/kmod', '/sbin/modprobe'), ('/usr/sbin/blkid', '
     for path in re.findall(r'(/[^\s()]+)', ldd): copy(path)
 modules = []
 required = ['ext4', 'loop', 'squashfs', 'overlay']
-controllers = ['virtio_pci', 'virtio_blk', 'virtio_scsi', 'scsi_mod', 'sd_mod', 'nvme', 'nvme_core', 'ahci', 'libata', 'hv_vmbus', 'hv_storvsc']
+controllers = ['virtio_pci', 'virtio_mmio', 'virtio_blk', 'virtio_scsi', 'scsi_mod', 'sd_mod', 'nvme', 'nvme_core', 'ahci', 'libata', 'hv_vmbus', 'hv_storvsc']
 # Discover the running boot disk's driver chain as well as common fallback
 # controllers. This covers another hypervisor/controller without naming a cloud.
 disk = Path('/sys/class/block') / Path(sys.argv[6]).name

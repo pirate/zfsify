@@ -91,11 +91,16 @@ and **500 MB free in `/boot`**. It checks the actual compressed rescue size befo
 changing the boot entry. Package preparation may temporarily use a 512 MiB swap
 file on the original disk; offline conversion uses no disk swap.
 
-Root conversion accepts Ubuntu 22.04, 24.04, and 26.04 **amd64**, a direct ext4
+Root conversion accepts Ubuntu 22.04, 24.04, and 26.04 **amd64 or arm64**, a direct ext4
 root partition on a GPT disk, and optional separate ext4 `/boot`. LVM, encrypted
 source disks, RAID, multiple data partitions on the root disk, and 4K logical
-sectors are refused. UEFI requires Secure Boot disabled. See the validation
-record for tested releases and firmware; provider names above describe the goal,
+sectors are refused. ARM64 requires UEFI; UEFI requires Secure Boot disabled.
+Architecture and firmware are detected automatically. ARM64 builds ZFSBootMenu
+using Ubuntu packages before conversion; no image selection or extra command is needed.
+Ubuntu's normal kernel and ZFS packages manage the installed system; see
+[Ubuntu integration](docs/recovery.md#ubuntu-integration) for the boot-layout differences.
+See the [validation record](docs/validation.md) for tested releases and firmware;
+provider names above describe the goal,
 not a claim that every provider layout has been tested.
 
 ## How it works

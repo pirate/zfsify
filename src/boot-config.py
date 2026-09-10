@@ -14,7 +14,7 @@ REPLACED = {
 }
 
 
-def commandlines(text):
+def commandlines(text, consoles=('tty0',)):
     # Linux command lines use double quotes, not shell evaluation. Retain their
     # spelling, including quoted values containing spaces, for the final kernel.
     tokens = re.findall(r'(?:[^\s"]|"[^"]*")+', text)
@@ -27,7 +27,7 @@ def commandlines(text):
             continue
         kept.append(token)
     if not any(t.split('=', 1)[0].strip('"') == 'console' for t in kept):
-        kept += ['console=ttyS0,115200n8', 'console=tty0']
+        kept += ['console=' + console for console in consoles]
     # Keep diagnostics visible and leave the RAM/ZBM init program in control.
     # All other existing CPU, PCI, I/O, display and driver options pass through.
     rescue = [t for t in kept if t.split('=', 1)[0].strip('"') not in
@@ -40,5 +40,7 @@ def commandlines(text):
 if __name__ == '__main__':
     out = Path(sys.argv[1])
     out.mkdir(parents=True, exist_ok=True)
-    for name, value in commandlines(Path('/proc/cmdline').read_text()).items():
+    active = Path('/sys/class/tty/console/active')
+    consoles = active.read_text().split() if active.exists() else ['tty0']
+    for name, value in commandlines(Path('/proc/cmdline').read_text(), consoles or ['tty0']).items():
         (out / ('cmdline-' + name)).write_text(value + '\n')
