@@ -1,0 +1,39 @@
+README.md
+  s_3dff2a00c4a5b5::t_0516aac4a3b36f 305-312
+SHA256SUMS
+  s_3dff2a00c4a5b5::t_4304cdec97106d 1
+docs/assets/recordings/progress-preview.cast
+  s_3dff2a00c4a5b5::t_0c14f53655d6cb 1-61
+install.sh
+  s_3dff2a00c4a5b5::t_951ffbf1a20af9 765,929,966,1016,1123,1125,1132,1139-1194,1196-1266,1282-1307,1312-1317,1319-1323,1325-1399,1401-1469,1936,1942,2087,2096-2098,2152,2436,2488,2622
+reformat.sh
+  s_3dff2a00c4a5b5::t_fce171ee69e7ce 765,929,966,1016,1123,1125,1132,1139-1194,1196-1266,1282-1307,1312-1317,1319-1323,1325-1399,1401-1469,1936,1942,2087,2096-2098,2152,2436,2488,2622
+scripts/test-progress.py
+  s_3dff2a00c4a5b5::t_bca2e0e27fab7b 1-201
+src/inplace.sh
+  s_3dff2a00c4a5b5::t_f8e2f02a03e7a5 52
+src/progress.py
+  s_3dff2a00c4a5b5::t_64344e07c3a685 2,9,16,18-71,73-143,159-184,189-194,196-200,202-276,278-344
+src/ram-init.sh
+  s_3dff2a00c4a5b5::t_742e0c8a82bcb9 164,201
+src/volume.sh
+  s_3dff2a00c4a5b5::t_5fcd32c626434e 6,151,160-162
+tools/volumes/zfs-wizard.sh
+  s_3dff2a00c4a5b5::t_42eb71f638c162 22,33,35-36,38-48,51
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "7a50205229d7055c0c581e6603de0a6729f3b763",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
