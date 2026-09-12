@@ -49,7 +49,7 @@ if [[ -z $SCRATCH ]]; then
     ZFS_START=$((ROOT_START+IMAGE_OFFSET))
     ZFS_END=$((ROOT_START+IMAGE_BYTES/512-1))
     phase 4 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
-    phase 4 'Reserve space for the persistent rescue and journal' resize2fs -p "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
+    phase 4 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
     sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$COPY_END" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SCRATCH_START:$ROOT_END" -t 32:8300 "$DISK"
     partprobe "$DISK"
     udevadm settle

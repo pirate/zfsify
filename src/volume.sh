@@ -3,6 +3,7 @@
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask}
+[[ ! -t 1 ]] || export ZFS_PROGRESS_TTY=1
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'
 exec 9>/run/zfsify-migrate.lock
@@ -147,7 +148,7 @@ if [[ $MODE = preserve ]]; then
     zfs create -o mountpoint="$WORK/new" "$POOL/data"
     mount -o ro "$DEV" "$WORK/old"
     TOTAL=$(rsync -aHAXS --numeric-ids --dry-run --stats "$WORK/old/" "$WORK/new/" | awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2);print $2}')
-    python3 "$SOURCE/progress.py" run --phase 5 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
+    python3 "$SOURCE/progress.py" run --phase 5 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --source "$DEV" --target "$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
     phase 6 'Verify every copied file and its metadata' bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$1/" "$2/" > "$3"; cat "$3"; test ! -s "$3"' _ "$WORK/old" "$WORK/new" "$WORK/differences"
     umount "$WORK/old"
     # The verified tail ends before the backup GPT; writing the new GPT cannot touch it.
@@ -156,7 +157,9 @@ if [[ $MODE = preserve ]]; then
     udevadm settle
     FRONT=$(part 1)
     [[ -b $FRONT && $(blockdev --getsize64 "$FRONT") -ge $(blockdev --getsize64 "$LOOP") ]]
-    phase 8 "Resilver $LOOP to $FRONT" zpool attach -f -w "$POOL" "$LOOP" "$FRONT"
+    python3 "$SOURCE/progress.py" run --phase 8 --label "Relocate verified data via mirror" \
+        --devices "$DISK,$LOOP,$FRONT" --source "$LOOP" --target "$FRONT" --resilver --pool "$POOL" \
+        -- zpool attach -f -w "$POOL" "$LOOP" "$FRONT"
     [[ $(zpool list -H -o health "$POOL") = ONLINE ]]
     zpool status "$POOL" | grep -q 'errors: No known data errors'
     zpool detach "$POOL" "$LOOP"

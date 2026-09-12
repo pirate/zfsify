@@ -302,8 +302,14 @@ See the [recovery guide](docs/recovery.md) for the console workflow.
 
 ## Progress and recovery
 
-The installer shows the current operation, target devices, elapsed time, copy
-progress, and disk throughput. After reconnecting, view the current state with:
+The live dashboard shows animated copy blocks, phase progress, source and target,
+bytes moved, throughput, ETA, file counts, and per-device IOPS. Blocks represent
+logical bytes copied; operations without a total show activity instead of a percentage.
+Logs and `--once` stay plain text; `NO_COLOR=1` disables color.
+
+![CLI preview: a real local file copy](docs/assets/recordings/progress-preview.gif)
+
+After reconnecting, view the same dashboard with:
 
 ```sh
 zfs-on-boot-status

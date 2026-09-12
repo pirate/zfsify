@@ -19,9 +19,8 @@ SCRIPT="$SCRIPT_DIR/$(basename -- "${BASH_SOURCE[0]}")"
 # Function to handle interruption
 cleanup() {
   # Kill any background processes we might be monitoring
-  if [[ -n "$progress_pid" && -n "$monitored_pid" ]]; then
+  if [[ -n "$monitored_pid" ]]; then
     kill $monitored_pid 2>/dev/null
-    kill $progress_pid 2>/dev/null
   fi
   
   echo -e "\n${RED}Operation interrupted by user${NC}"
@@ -31,28 +30,25 @@ cleanup() {
 # Set trap for Ctrl+C
 trap cleanup SIGINT SIGTERM
 
-# Function to display progress bar
+# Indeterminate activity only: these commands do not expose byte totals.
 progress() {
-  declare -i pid=$1
-  local delay=0.1
-  local spinstr='|/-\'
-  
-  # Store PIDs in global variables so the trap can access them
+  local pid=$1 frame=0 pulse
+  local -a tiles=('▰▱▱▱▱▱▱▱' '▱▰▱▱▱▱▱▱' '▱▱▰▱▱▱▱▱' '▱▱▱▰▱▱▱▱' '▱▱▱▱▰▱▱▱' '▱▱▱▱▱▰▱▱' '▱▱▱▱▱▱▰▱' '▱▱▱▱▱▱▱▰')
   monitored_pid=$pid
-  progress_pid=$
-  
-  while kill -0 $pid 2>/dev/null; do
-    local temp=${spinstr#?}
-    printf " [%c]  " "$spinstr"
-    local spinstr=$temp${spinstr%"$temp"}
-    sleep $delay
-    printf "\b\b\b\b\b\b"
+  while kill -0 "$pid" 2>/dev/null; do
+    if [[ -t 1 && ${TERM:-} != dumb ]]; then
+      pulse=${tiles[$((frame % 8))]}
+      if [[ -z ${NO_COLOR+x} ]]; then
+        printf '\r\033[2K  \033[36m%s\033[0m  Working · %ss' "$pulse" "$((frame / 8))"
+      else
+        printf '\r  %s  Working · %ss' "$pulse" "$((frame / 8))"
+      fi
+    fi
+    sleep 0.125
+    frame=$((frame + 1))
   done
-  
-  # Clear progress variables when done
   monitored_pid=""
-  progress_pid=""
-  printf "    \b\b\b\b"
+  [[ ! -t 1 || ${TERM:-} = dumb ]] || printf '\r\033[2K'
 }
 
 # Install required packages

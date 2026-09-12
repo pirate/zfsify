@@ -762,7 +762,7 @@ if __name__ == '__main__':
         (out / ('cmdline-' + name)).write_text(value + '\n')
 
 ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_e3bdb73c177fb4c5d911f95d263f813f92119e2ad827f0af2883085ede2b8672'
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_7dad8f083911d88745ba0fbc5848010198194c395895a424e1ac1cb263b2554b'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -926,7 +926,7 @@ else
 rsync -aHAXS --numeric-ids --dry-run --stats "${EXCLUDES[@]}" "$SOURCE" /target/ > /run/copy-size.txt
 TOTAL=$(awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2); print $2}' /run/copy-size.txt)
 # Real copy errors (including ENOSPC) stop before original data is deleted.
-python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 5 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
+python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 5 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --source "$SOURCE" --target "$ZPART" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
 phase 6 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
@@ -963,7 +963,7 @@ umount /target/proc
 umount -R /target/sys
 umount -R /target/dev
 if [[ $MODE = preserve ]]; then
-    python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 8 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
+    python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 8 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --source "$TEMP" --target "$FRONT" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
     [[ $(zpool list -H -o health rpool) = ONLINE ]]
     zpool status -p rpool
     zpool status rpool | grep -q 'errors: No known data errors'
@@ -1013,7 +1013,7 @@ echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_e3bdb73c177fb4c5d911f95d263f813f92119e2ad827f0af2883085ede2b8672
+ZFS_ON_BOOT_7dad8f083911d88745ba0fbc5848010198194c395895a424e1ac1cb263b2554b
 cat > "$work/target.sh" <<'ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
@@ -1120,36 +1120,150 @@ umount -R /target/sys
 umount -R /target/dev
 
 ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168
-cat > "$work/progress.py" <<'ZFS_ON_BOOT_9fce3e2089fa92725adeb9ffa41f9cf0d469ecb86d9388a45448009f143c9c52'
+cat > "$work/progress.py" <<'ZFS_ON_BOOT_d18ef74b2e2f3466754064bdd47b3aedf0aac496f9e707a6f701857c44d7df75'
 #!/usr/bin/python3
-"""Run a phase with live Linux disk telemetry, or follow it across SSH sessions."""
+"""Dependency-free migration dashboard, live Linux telemetry and durable plain logs."""
 import argparse
 import json
 import os
 from pathlib import Path
 import re
 import selectors
+import signal
 import subprocess
 import sys
 import time
 
 STATE = Path('/run/zfs-on-boot-progress.json')
 LOG = Path('/var/log/zfs-on-boot/progress.log')
+ANSI = re.compile(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))')
 
-def render(s):
-    fraction = min(1, s.get('done', 0) / s['total']) if s.get('total') else 0
-    fraction = 1 if s.get('status') == 'complete' else fraction
-    overall = ((s['phase'] - 1) + (fraction * .95 if s.get('total') else 0)) / 10
-    if s['label'].startswith('Ready') and s['status'] == 'complete': overall = 1
-    bar = '#' * int(overall * 24) + '-' * (24 - int(overall * 24))
-    data = (f"{'~' if s.get('approximate') else ''}{s.get('done', 0)/1e6:,.1f}/{s['total']/1e6:,.1f} MB "
-            f"({fraction*100:.1f}%) | {s.get('speed', 0)/1e6:,.1f} MB/s logical"
-            + (' (phase average)' if s['status'] != 'running' else '')) if s.get('total') else 'data total: n/a (streaming or metadata operation)'
+
+def clean(value):
+    return ''.join(c for c in ANSI.sub('', str(value)) if c.isprintable())
+
+
+def amount(n):
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB', 'PB'):
+        if abs(n) < 1000 or unit == 'PB':
+            return f'{n:,.1f} {unit}'
+        n /= 1000
+
+
+def duration(seconds):
+    seconds = max(0, int(seconds))
+    return f'{seconds//3600}h {seconds%3600//60:02d}m' if seconds >= 3600 else f'{seconds//60:02d}:{seconds%60:02d}'
+
+
+def render(s, width=88, frame=0, color=False, unicode=True):
+    """Each tile represents a share of logical bytes, not a physical disk extent."""
+    width = max(1, width)
+    total, done = s.get('total', 0), s.get('done', 0)
+    fraction = min(1, max(0, done / total)) if total else 0
+    status = s.get('status', 'running')
+    running = status == 'running'
+    solid, empty, active = ('█', '░', '▓') if unicode else ('#', '.', '>')
+    tick, arrow, dot = ('✓', '→', '·') if unicode else ('+', '->', '.')
+    pulses = '·•●•' if unicode else '|/-\\'
+    spinner = pulses[frame % len(pulses)]
+    badge = spinner if running else tick if status == 'complete' else '!'
+    phase = s['phase']
+    rail = ' '.join(tick if i < phase or (i == phase and status == 'complete') else
+                    ('●' if unicode else '*') if i == phase else dot for i in range(1, 11))
+    lines = [f'  zfsify  {dot}  {badge} {status.upper()}  {dot}  PHASE {phase:02d}/10',
+             f'  {rail}', f"  {s['label']}", '']
+    if s.get('source') or s.get('target'):
+        lines.append(f"  {s.get('source') or 'source'}  {arrow}  {s.get('target') or 'destination'}")
+    else:
+        lines.append(f"  Devices  {s['devices']}")
+    cells = max(1, min(28, (width - 12) // 2))
+    if total:
+        filled = int(fraction * cells)
+        blocks = solid * filled + empty * (cells - filled)
+        if running and filled < cells:
+            blocks = blocks[:filled] + (active if frame % 4 < 2 else solid) + blocks[filled+1:]
+        lines += [f'  {" ".join(blocks)}  {fraction*100:5.1f}%',
+                  f"  {'~' if s.get('approximate') else ''}{amount(done)} / {amount(total)}  {dot}  logical bytes"]
+    else:
+        head = frame % (cells + 4)
+        blocks = ''.join(active if 0 <= head-i < 4 and running else empty for i in range(cells))
+        lines += [f'  {" ".join(blocks)}', f'  {"Working" if running else status.capitalize()}  {dot}  total unavailable (streaming / metadata)']
+    speed = max(0, s.get('speed', 0))
+    eta = duration((total - done) / speed) if total > done and speed > 0 and running else '--'
+    rate = f'{amount(speed)}/s' if total else '--'
+    lines.append(f"  {rate}{' avg' if not running and total else ''}  {dot}  elapsed {duration(s['elapsed'])}  {dot}  ETA {eta}")
     if s.get('files_total'):
-        data += f" | files: {s.get('files_done', 0):,}/{s['files_total']:,}"
-    io = ' | '.join(f"{d}: R {v[0]:.1f} W {v[1]:.1f} MB/s {v[2]:.0f} IOPS" for d, v in s.get('io', {}).items())
-    return (f"[{bar}] phase {s['phase']}/10: {s['label']} [{s['status']}]\n"
-            f"  devices: {s['devices']} | elapsed {s['elapsed']:.0f}s\n  {data}\n  {io}")
+        lines.append(f"  Files  {s.get('files_done', 0):,} / {s['files_total']:,}")
+    for device, values in s.get('io', {}).items():
+        lines.append(f'  {device}  R {values[0]:.1f} MB/s  W {values[1]:.1f} MB/s  {values[2]:.0f} IOPS')
+    if not s.get('io'):
+        lines.append('  Device I/O  waiting for counters' if running else '  Device I/O  unavailable')
+    lines = [clean(line)[:width] for line in lines]
+    if color:
+        accent = '31' if status == 'failed' else '32' if status == 'complete' else '36'
+        lines[0] = f'\033[1;{accent}m{lines[0]}\033[0m'
+        lines[1] = f'\033[2m{lines[1]}\033[0m'
+        tiles = re.compile('(' + '|'.join(re.escape(c)+'+' for c in (solid, empty, active)) + ')')
+        lines[5] = tiles.sub(lambda match: f'\033[{"90" if match[0][0] == empty else "1;"+accent}m'
+                             + match[0] + '\033[0m', lines[5])
+    return '\n'.join(lines)
+
+
+class Display:
+    """Redraw only our own rows; never erase the user's terminal scrollback."""
+    def __init__(self, animate=True):
+        self.stream = sys.stdout
+        self.owned = False
+        if animate and not self.stream.isatty() and os.environ.get('ZFS_PROGRESS_TTY') == '1':
+            try:
+                self.stream = open('/dev/tty', 'w', buffering=1)
+                self.owned = True
+            except OSError:
+                pass
+        self.live = animate and self.stream.isatty() and os.environ.get('TERM') != 'dumb'
+        self.color = self.live and 'NO_COLOR' not in os.environ
+        self.unicode = 'UTF' in (self.stream.encoding or '').upper().replace('-', '')
+        self.rows = 0
+        self.frame = 0
+        self.width = None
+        if self.live:
+            self.stream.write('\033[?25l')
+
+    def clear(self):
+        if self.rows:
+            self.stream.write(f'\033[{self.rows}A\r\033[J')
+            self.rows = 0
+
+    def draw(self, state):
+        if not self.live:
+            print(render(state, width=160, unicode=False), file=self.stream, flush=True)
+            return
+        size = os.get_terminal_size(self.stream.fileno())
+        width = max(1, (size.columns or 80) - 1)
+        # After resize, old rows may have reflowed. Start below them instead of
+        # moving the cursor into unrelated terminal history.
+        if self.width != width:
+            self.rows = 0
+            self.width = width
+        self.clear()
+        lines = render(state, width, self.frame, self.color, self.unicode).splitlines()
+        lines = lines[:max(1, (size.lines or 24) - 1)]
+        self.stream.write('\n'.join(lines) + '\n')
+        self.stream.flush()
+        self.rows = len(lines)
+        self.frame += 1
+
+    def message(self, text):
+        self.clear()
+        print(clean(text), file=self.stream, flush=True)
+
+    def close(self):
+        if self.live:
+            self.stream.write('\033[0m\033[?25h')
+            self.stream.flush()
+        if self.owned:
+            self.stream.close()
+
 
 def disks(names):
     result = {}
@@ -1161,126 +1275,198 @@ def disks(names):
             pass
     return result
 
-p = argparse.ArgumentParser(description=__doc__)
-sub = p.add_subparsers(dest='action', required=True)
-f = sub.add_parser('watch')
-f.add_argument('--once', action='store_true')
-r = sub.add_parser('run')
-r.add_argument('--phase', type=int, required=True)
-r.add_argument('--label', required=True)
-r.add_argument('--devices', required=True)
-r.add_argument('--total', type=int, default=0)
-r.add_argument('--resilver', action='store_true')
-r.add_argument('command', nargs=argparse.REMAINDER)
 
 def zbytes(value):
     match = re.fullmatch(r'([\d.,]+)([KMGTPE]?)', value)
     return int(float(match[1].replace(',', '')) * 1024 ** (' KMGTPE'.index(match[2]) if match[2] else 0))
-a = p.parse_args()
-if a.action == 'watch':
+
+
+class Counters:
+    def __init__(self, state):
+        self.state = state
+        self.initial = 0
+
+    def consume(self, line):
+        s = self.state
+        if match := re.match(r'^\s*([\d,]+)\s+(\d+)%\s+', line):
+            s['done'] = int(match[1].replace(',', ''))
+        elif match := re.fullmatch(r'ZFSIFY_(START|PROGRESS|FILES) ([0-9]{1,20}) ([0-9]{1,20})', line):
+            kind, done, total = match.groups()
+            if kind == 'FILES':
+                s['files_done'], s['files_total'] = int(done), int(total)
+            else:
+                s['done'], s['total'] = int(done), int(total)
+                if kind == 'START':
+                    self.initial = int(done)
+        else:
+            return False
+        return True
+
+
+def watch(args, display):
+    last_version = None
     while True:
         source = STATE if STATE.exists() else Path('/var/log/zfs-on-boot/last-progress.json')
         try:
             state = json.loads(source.read_text())
-            if sys.stdout.isatty(): print('\033[H\033[2J', end='')
-            print(render(state), flush=True)
-            if state['label'].startswith('Ready') and state['status'] == 'complete':
+            ready = state['label'].startswith('Ready') and state['status'] == 'complete'
+            version = json.dumps(state, sort_keys=True)
+            if display.live or version != last_version or args.once:
+                display.draw(state)
+                last_version = version
+            if ready:
                 next_steps = Path('/var/log/zfs-on-boot/backup-next-steps.txt')
-                if next_steps.exists(): print('\n' + next_steps.read_text(), flush=True)
-            if a.once or state['status'] == 'failed' or (state['label'].startswith('Ready') and state['status'] == 'complete'):
-                break
+                if next_steps.exists():
+                    for line in next_steps.read_text().splitlines():
+                        display.message(line)
+            if args.once or state['status'] == 'failed' or ready:
+                return 0
         except (OSError, ValueError):
-            print('Waiting for installer status...', flush=True)
-            if a.once: sys.exit(1)
-        time.sleep(1)
-    sys.exit(0)
+            if last_version != 'waiting':
+                display.message('Waiting for installer status...')
+                last_version = 'waiting'
+            if args.once:
+                return 1
+        time.sleep(.125 if display.live else 1)
 
-cmd = a.command[1:] if a.command[:1] == ['--'] else a.command
-if not cmd: p.error('A phase command is required')
-LOG.parent.mkdir(parents=True, exist_ok=True)
-start = tick = time.monotonic()
-prev = disks(a.devices.split(','))
-state = dict(phase=a.phase, label=a.label, devices=','.join(dict.fromkeys(a.devices.split(','))), total=a.total,
-             done=0, speed=0, elapsed=0, status='running', io={})
-last_done = initial_done = 0
-buffer = ''
-last_print = 0
-rsync = re.compile(r'^\s*([\d,]+)\s+(\d+)%\s+')
 
-def publish(final=False):
-    global tick, prev, last_done, last_print
-    now = time.monotonic()
-    dt = max(now-tick, .001)
-    current = disks(a.devices.split(','))
-    state['io'] = {d: [(v[0]-prev[d][0])/dt/1e6, (v[1]-prev[d][1])/dt/1e6, (v[2]-prev[d][2])/dt]
-                   for d, v in current.items() if d in prev
-                   # Partition recreation resets counters; establish a new baseline.
-                   if all(new >= old for new, old in zip(v, prev[d]))}
-    state['speed'] = (state['done']-initial_done)/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
-    state['elapsed'] = now-start
-    prev, tick, last_done = current, now, state['done']
-    tmp = STATE.with_suffix('.tmp')
-    tmp.write_text(json.dumps(state))
-    tmp.replace(STATE)
-    if final or now-last_print >= (1 if os.environ.get('ZFS_PROGRESS_TTY') == '1' else 5):
-        message = render(state)
-        print(message, flush=True)
-        with LOG.open('a') as log: log.write(message+'\n')
-        last_print = now
+def run(args, display):
+    cmd = args.command[1:] if args.command[:1] == ['--'] else args.command
+    if not cmd:
+        raise ValueError('A phase command is required')
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    start = tick = time.monotonic()
+    names = list(dict.fromkeys(args.devices.split(',')))
+    prev = disks(names)
+    state = dict(phase=args.phase, label=args.label, devices=','.join(names), total=args.total,
+                 source=args.source, target=args.target, done=0, speed=0, elapsed=0, status='running', io={})
+    counters = Counters(state)
+    last_done = last_print = last_frame = 0
+    buffer = ''
 
-publish()
-with LOG.open('a') as log:
-    log.write('COMMAND: '+repr(cmd)+'\n')
-    child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL,
-                             env={**os.environ, 'LC_ALL':'C'})
-    selector = selectors.DefaultSelector()
-    selector.register(child.stdout, selectors.EVENT_READ)
-    eof = False
-    while not eof:
-        for key, _ in selector.select(timeout=1):
-            chunk = os.read(key.fileobj.fileno(), 65536)
-            if not chunk:
-                eof = True
-                break
-            buffer += chunk.decode(errors='replace')
-            lines = re.split('[\r\n]', buffer)
-            buffer = lines.pop()
-            for line in lines:
-                match = rsync.match(line)
-                if match:
-                    state['done'] = int(match[1].replace(',', ''))
-                elif match := re.fullmatch(r'ZFSIFY_START ([0-9]{1,20}) ([0-9]{1,20})', line):
-                    state['done'], state['total'] = int(match[1]), int(match[2])
-                    initial_done = last_done = state['done']
-                elif match := re.fullmatch(r'ZFSIFY_PROGRESS ([0-9]{1,20}) ([0-9]{1,20})', line):
-                    state['done'], state['total'] = int(match[1]), int(match[2])
-                elif match := re.fullmatch(r'ZFSIFY_FILES ([0-9]{1,20}) ([0-9]{1,20})', line):
-                    state['files_done'], state['files_total'] = int(match[1]), int(match[2])
-                elif line:
-                    print(line, flush=True)
-                    log.write(line+'\n')
+    def publish(final=False):
+        nonlocal tick, prev, last_done, last_print
+        now = time.monotonic()
+        dt = max(now-tick, .001)
+        current = disks(names)
+        state['io'] = {d: [(v[0]-prev[d][0])/dt/1e6, (v[1]-prev[d][1])/dt/1e6, (v[2]-prev[d][2])/dt]
+                       for d, v in current.items() if d in prev and all(new >= old for new, old in zip(v, prev[d]))}
+        state['speed'] = max(0, state['done']-counters.initial)/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
+        state['elapsed'] = now-start
+        prev, tick, last_done = current, now, state['done']
+        tmp = STATE.with_suffix('.tmp')
+        tmp.write_text(json.dumps(state))
+        tmp.replace(STATE)
+        if final or now-last_print >= 5:
+            message = render(state, width=160, unicode=False)
+            with LOG.open('a') as log:
+                log.write(message+'\n')
+            if not display.live:
+                display.draw(state)
+            last_print = now
+        if final:
+            if display.live:
+                display.draw(state)
+
+    publish()
+    child = None
+    try:
+        with LOG.open('a') as log, selectors.DefaultSelector() as selector:
+            log.write('COMMAND: '+repr(cmd)+'\n')
+            child = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                     stdin=subprocess.DEVNULL, env={**os.environ, 'LC_ALL':'C'})
+            selector.register(child.stdout, selectors.EVENT_READ)
+            eof = False
+            while not eof:
+                for key, _ in selector.select(timeout=.125 if display.live else 1):
+                    chunk = os.read(key.fileobj.fileno(), 65536)
+                    if not chunk:
+                        eof = True
+                        break
+                    buffer += chunk.decode(errors='replace')
+                    lines = re.split('[\r\n]', buffer)
+                    buffer = lines.pop()
+                    # Bound output from tools that emit very long unterminated lines.
+                    if len(buffer) > 65536:
+                        lines.append(buffer)
+                        buffer = ''
+                    for line in lines:
+                        if counters.consume(line):
+                            if line.startswith('ZFSIFY_START '):
+                                last_done = counters.initial
+                        elif line:
+                            display.message(line)
+                            log.write(clean(line)+'\n')
                     log.flush()
-        if a.resilver:
-            try:
-                scan = subprocess.check_output(['zpool', 'status', '-p', 'rpool'], text=True)
-                m = re.search(r'([\d.,]+[KMGTPE]?) / ([\d.,]+[KMGTPE]?) issued', scan)
-                if m: state['done'], state['total'] = map(zbytes, m.groups())
-                elif (m := re.search(r'scan: resilvered ([\d.,]+[KMGTPE]?)', scan)):
-                    state['done'] = state['total'] = zbytes(m[1])
-                state['approximate'] = True
-            except subprocess.CalledProcessError:
-                pass
-        if time.monotonic()-tick >= 1: publish()
-    if buffer:
-        print(buffer, flush=True)
-        log.write(buffer+'\n')
-    code = child.wait()
-state['status'] = 'complete' if code == 0 else 'failed'
-if code == 0 and state['total']: state['done'] = state['total']
-publish(final=True)
-sys.exit(code)
+                now = time.monotonic()
+                if now-tick >= 1:
+                    if args.resilver:
+                        try:
+                            scan = subprocess.check_output(['zpool', 'status', '-p', args.pool], text=True)
+                            match = re.search(r'([\d.,]+[KMGTPE]?) / ([\d.,]+[KMGTPE]?) issued', scan)
+                            if match:
+                                state['done'], state['total'] = map(zbytes, match.groups())
+                            elif match := re.search(r'scan: resilvered ([\d.,]+[KMGTPE]?)', scan):
+                                state['done'] = state['total'] = zbytes(match[1])
+                            state['approximate'] = True
+                        except subprocess.CalledProcessError:
+                            pass
+                    publish()
+                if display.live and now-last_frame >= .125:
+                    display.draw(state)
+                    last_frame = now
+            if buffer and not counters.consume(buffer):
+                display.message(buffer)
+                log.write(clean(buffer)+'\n')
+            code = child.wait()
+            child.stdout.close()
+    except BaseException:
+        if child is not None and child.poll() is None:
+            child.terminate()
+            child.wait()
+        state['status'] = 'failed'
+        publish(final=True)
+        raise
+    state['status'] = 'complete' if code == 0 else 'failed'
+    if code == 0 and state['total']:
+        state['done'] = state['total']
+    publish(final=True)
+    return code
 
-ZFS_ON_BOOT_9fce3e2089fa92725adeb9ffa41f9cf0d469ecb86d9388a45448009f143c9c52
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__)
+    sub = p.add_subparsers(dest='action', required=True)
+    f = sub.add_parser('watch')
+    f.add_argument('--once', action='store_true')
+    r = sub.add_parser('run')
+    r.add_argument('--phase', type=int, choices=range(1, 11), required=True)
+    r.add_argument('--label', required=True)
+    r.add_argument('--devices', required=True)
+    r.add_argument('--source', default='')
+    r.add_argument('--target', default='')
+    r.add_argument('--total', type=int, default=0)
+    r.add_argument('--resilver', action='store_true')
+    r.add_argument('--pool', default='rpool')
+    r.add_argument('command', nargs=argparse.REMAINDER)
+    args = p.parse_args()
+    def terminate(signum, _frame):
+        raise SystemExit(128 + signum)
+    previous = signal.signal(signal.SIGTERM, terminate)
+    display = Display(animate=not getattr(args, 'once', False))
+    try:
+        return watch(args, display) if args.action == 'watch' else run(args, display)
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        display.close()
+        signal.signal(signal.SIGTERM, previous)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+
+ZFS_ON_BOOT_d18ef74b2e2f3466754064bdd47b3aedf0aac496f9e707a6f701857c44d7df75
 cat > "$work/plan.py" <<'ZFS_ON_BOOT_41be88f6c01738992b7ab4ff60d30d2075d0c3276563a104254ed48a510c340b'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""
@@ -1747,12 +1933,13 @@ for ((i=0; i<${#OWNED[@]}-KEEP; i++)); do
 done
 
 ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717
-cat > "$work/volume.sh" <<'ZFS_ON_BOOT_a1f316505618d54662a18767ae022300914c36465aa4376ce565681e35cfee0b'
+cat > "$work/volume.sh" <<'ZFS_ON_BOOT_5eaf49c4beff6959a8b4e183b8d51d5e663cd38065f1f93498f5cfdd31a0ffd9'
 #!/bin/bash
 # Non-root ext4 conversion. The running OS stays on its own disk.
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask}
+[[ ! -t 1 ]] || export ZFS_PROGRESS_TTY=1
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'
 exec 9>/run/zfsify-migrate.lock
@@ -1897,7 +2084,7 @@ if [[ $MODE = preserve ]]; then
     zfs create -o mountpoint="$WORK/new" "$POOL/data"
     mount -o ro "$DEV" "$WORK/old"
     TOTAL=$(rsync -aHAXS --numeric-ids --dry-run --stats "$WORK/old/" "$WORK/new/" | awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2);print $2}')
-    python3 "$SOURCE/progress.py" run --phase 5 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
+    python3 "$SOURCE/progress.py" run --phase 5 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --source "$DEV" --target "$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
     phase 6 'Verify every copied file and its metadata' bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$1/" "$2/" > "$3"; cat "$3"; test ! -s "$3"' _ "$WORK/old" "$WORK/new" "$WORK/differences"
     umount "$WORK/old"
     # The verified tail ends before the backup GPT; writing the new GPT cannot touch it.
@@ -1906,7 +2093,9 @@ if [[ $MODE = preserve ]]; then
     udevadm settle
     FRONT=$(part 1)
     [[ -b $FRONT && $(blockdev --getsize64 "$FRONT") -ge $(blockdev --getsize64 "$LOOP") ]]
-    phase 8 "Resilver $LOOP to $FRONT" zpool attach -f -w "$POOL" "$LOOP" "$FRONT"
+    python3 "$SOURCE/progress.py" run --phase 8 --label "Relocate verified data via mirror" \
+        --devices "$DISK,$LOOP,$FRONT" --source "$LOOP" --target "$FRONT" --resilver --pool "$POOL" \
+        -- zpool attach -f -w "$POOL" "$LOOP" "$FRONT"
     [[ $(zpool list -H -o health "$POOL") = ONLINE ]]
     zpool status "$POOL" | grep -q 'errors: No known data errors'
     zpool detach "$POOL" "$LOOP"
@@ -1960,7 +2149,7 @@ phase 10 'Ready: data volume converted' zpool status "$POOL"
 echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
 [[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"
 
-ZFS_ON_BOOT_a1f316505618d54662a18767ae022300914c36465aa4376ce565681e35cfee0b
+ZFS_ON_BOOT_5eaf49c4beff6959a8b4e183b8d51d5e663cd38065f1f93498f5cfdd31a0ffd9
 cat > "$work/backup.sh" <<'ZFS_ON_BOOT_e2bfc8707b78361fcdf3849cf43bc8fc2f04d09e6c01b597150899d2b353543a'
 #!/bin/bash
 # Whole-filesystem archive transport. rclone owns all remote configuration.
@@ -2244,7 +2433,7 @@ print('First selected files:\n'+'\n'.join(preview))
 print('Complete KEEP/OMIT preview:', output.with_suffix('.manifest'))
 
 ZFS_ON_BOOT_30f084bb342a56cb18894353d441529c4b70c40d8929df99548c01212793b161
-cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_ec1e8dc78772f198cb35c85dc9b0b13b049ec208e77962048f8a9d2e51b6ef32'
+cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_68f27b4745026c11870c8494bc84365cb5a852bf8260c79eab890f96f7d79a1d'
 #!/bin/bash
 # Sourced by the RAM installer. Persistent state lives outside the source.
 . /etc/zfs-on-boot/plan.env
@@ -2296,7 +2485,7 @@ if [[ -z $SCRATCH ]]; then
     ZFS_START=$((ROOT_START+IMAGE_OFFSET))
     ZFS_END=$((ROOT_START+IMAGE_BYTES/512-1))
     phase 4 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
-    phase 4 'Reserve space for the persistent rescue and journal' resize2fs -p "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
+    phase 4 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
     sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$COPY_END" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SCRATCH_START:$ROOT_END" -t 32:8300 "$DISK"
     partprobe "$DISK"
     udevadm settle
@@ -2430,7 +2619,7 @@ zfs mount rpool/ROOT/ubuntu
 mkdir -p -m 700 /target/var/log/zfs-on-boot/inplace
 DEVICES=$DISK,$ZPART,$SCRATCH
 
-ZFS_ON_BOOT_ec1e8dc78772f198cb35c85dc9b0b13b049ec208e77962048f8a9d2e51b6ef32
+ZFS_ON_BOOT_68f27b4745026c11870c8494bc84365cb5a852bf8260c79eab890f96f7d79a1d
 cat > "$work/inplace-move.py" <<'ZFS_ON_BOOT_e48c067a76dd746fc2782b206265a3db15b24d6c8f6a4f2906cba152ccb2aca8'
 #!/usr/bin/python3
 """Experimental offline mover: verify and journal each batch before freeing ext4.
