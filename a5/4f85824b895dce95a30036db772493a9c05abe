@@ -1,0 +1,40 @@
+scripts/verify-preserved.sh
+  s_04b6d5dde7bccf::t_2a466a5f84cc23 19-23,27
+  s_04b6d5dde7bccf::t_19e7d4cd6617f4 24-26
+src/inplace.sh
+  s_04b6d5dde7bccf::t_86ecf3d66c8337 51-58,75
+src/plan.py
+  s_04b6d5dde7bccf::t_4443acfea848c8 23
+  s_04b6d5dde7bccf::t_dbbd3acaf4e254 21-22
+src/stage.sh
+  s_04b6d5dde7bccf::t_052aaa7e526ff1 414-416
+  s_04b6d5dde7bccf::t_5a4b27659debd5 401,403-407
+README.md
+  s_04b6d5dde7bccf::t_c36b4edb34fced 64-68,137-138
+SHA256SUMS
+  s_04b6d5dde7bccf::t_24ac8c894f11e5 1
+docs/cloud-init.md
+  s_04b6d5dde7bccf::t_e993dd09cc0303 26-27
+docs/inplace.md
+  s_04b6d5dde7bccf::t_2fdba1022242e3 17-21
+install.sh
+  s_04b6d5dde7bccf::t_5e22018bb5960f 8,409,411-415,422-424,445,1494,1515-1517,1527,2462,2513-2520,2537,2656
+reformat.sh
+  s_04b6d5dde7bccf::t_b5d5c03d700fe4 8,409,411-415,422-424,445,1494,1515-1517,1527,2462,2513-2520,2537,2656
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a54f85824b895dce95a30036db772493a9c05abe",
+  "prompts": {},
+  "sessions": {
+    "s_04b6d5dde7bccf": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a09a30-325a-7792-84fb-2b1ef0c3a4db",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
