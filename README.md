@@ -36,15 +36,14 @@ from snapshots, and all the other benefits of ZFS.
 
 ## Before you start
 
-**This software is experimental. Always make a full offsite backup before
-proceeding.** Conversion repartitions the selected disk. A failure can leave it
-unbootable or destroy data; snapshots on that same disk are not an offsite backup.
+**Experimental software: make a full offsite backup before proceeding.**
+Repartitioning or an interrupted conversion can destroy data or leave the disk
+unbootable. Snapshots on the same disk do not replace an offsite backup.
 
-Converting `/` takes the server offline and reboots it twice. Have working access
-to the VM or provider's recovery console.
+Before running the command:
 
-Converting an attached volume makes that volume unavailable during conversion.
-Stop any applications that use it so it can be unmounted.
+- **Boot drive (`/`):** allow server downtime and two reboots; confirm access to the VM or provider's recovery console.
+- **Attached volume:** stop applications that use it; allow volume downtime until conversion finishes.
 
 ## Quick start
 
@@ -56,61 +55,52 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/by-id/YOUR-DISK
 ```
 
-Architecture, boot mode, and available space are detected automatically. Review
-the displayed disk and plan: **automatic choices proceed after a 15-second countdown**.
-Backup setup waits for input; explicit options skip selection prompts.
-One invocation converts one disk.
+Review the selected disk and plan before the **15-second countdown** ends.
+Backup destination selection waits for confirmation; explicit command-line
+options skip selection prompts. Convert one disk per invocation.
 
 <details>
-<summary><strong>What happens to your data, bootability, and recovery options</strong></summary>
+<summary><strong>Process, data safety, and recovery</strong></summary>
 
-- **Below 50% used, with enough working space:** ext4 is shrunk and files are copied
-  to a temporary ZFS partition at the end of the disk. The original copy stays until
-  verification succeeds; ZFS is then moved to the front and expanded. We try to
-  retain a bootable path for most of the process, but partition and bootloader
-  replacement still have interruption windows. A disk failure can affect both copies.
-- **At least 50% used on `/`, or two copies otherwise won't fit:** files are copied
-  and verified in slices, releasing their old ext4 space as the conversion advances.
-  **The original Ubuntu installation can no longer boot once its data starts being
-  reclaimed**, until ZFS boot setup finishes. A temporary rescue entry can resume
-  interrupted copying or relocation; interruption during the final partition or
-  bootloader changes may require the provider's rescue image.
-- **If you choose backup and restore:** a separate disk or remote destination holds
-  a complete archive, which is read back and verified before the source is erased.
-  Ubuntu cannot boot from that source again until restoration and boot setup finish.
-  Keep the destination accessible until the restored system works. `--backup` opens
-  guided setup; `--backup=/mnt/backup` or `--backup=remote:path` uses that destination
-  without prompting. [Backup setup and cleanup](docs/backup.md).
-- **If you choose `--erase`:** the disk is erased. For `/`, zfsify installs fresh
-  Ubuntu of the same release, retaining accounts, SSH access, and `/etc`, then as
-  much home/application data as fits its displayed restore budget. **Anything omitted
-  is lost; applications may need reinstalling. On a data volume, all files are lost.**
-  Erasure requires this explicit option or confirmation; it is never an automatic fallback.
+1. **Inspect the selected disk and choose a method.**
 
-The installer checks actual capacity, so 50% is a guide rather than a guarantee.
-If neither method fits `/`, it asks for a backup destination. Attached data disks
-need space for a second copy or a separate backup destination. Interactive backup
-setup waits for your selection and confirmation, without a countdown.
+   - **Enough room for two copies:** use a temporary partition (usually below 50% used).
+   - **Less free space on `/`:** rewrite in place, slice by slice.
+   - **Insufficient working space:** ask for a separate backup destination. Attached volumes require room for two copies or a separate backup.
+   - **On request:** use backup and restore (`--backup`) or erase (`--erase`). Erasure is never an automatic fallback.
 
-![Conversion with room for a second copy](docs/assets/disk-conversion.svg)
+2. **Prepare for conversion.**
 
-Files and metadata are preserved; boot and mount settings are updated for ZFS.
-ZFSBootMenu replaces GRUB, while Ubuntu packages remain managed through APT.
-A small firmware/bootloader partition stays outside ZFS.
+   - **Boot drive:** install a temporary RAM boot environment, then reboot into it; prepare persistent rescue storage for slice-based conversion.
+   - **Attached volume:** unmount the source filesystem.
+   - **Backup and restore:** select and confirm a destination, then create a complete archive and read it back to verify it before erasing the source. An explicit `--backup=/mnt/backup` or `--backup=remote:path` skips destination prompts. [Backup setup](docs/backup.md).
 
-Follow progress after reconnecting with `zfs-on-boot-status`. On failure, **do not
-blindly reboot or delete temporary partitions**. See the [recovery guide](docs/recovery.md)
-and [interrupted conversion](docs/inplace.md#limits).
+3. **Convert ext4 to ZFS.**
 
-After conversion, snapshots are taken daily and before package changes. Use
-ZFSBootMenu in your provider's preboot console to boot a clone of a working
-snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
+   - **Two-copy method:** shrink ext4, copy files to ZFS at the disk's end, and verify before replacing the original. Move ZFS to the front and expand it. Bootability is preserved where possible, but partition and bootloader replacement have interruption windows; disk failure can destroy both copies.
+   - **Slice-based method:** copy and verify files in slices, then reuse their ext4 space. **The original Ubuntu installation becomes unbootable when its data starts being reclaimed.** The temporary rescue entry supports resuming interrupted copying or relocation.
+   - **Backup and restore:** erase the source, create ZFS, and restore the archive. The source remains unbootable until restoration and boot setup finish; keep the backup until the restored system works.
+   - **Erase (`--erase`):** for `/`, install fresh Ubuntu of the same release, preserve accounts, SSH access, and `/etc`, then restore as much home/application data as the displayed budget allows. **Omitted data is lost; applications may need reinstalling. For an attached volume, erase all files.**
+
+   ![Conversion with room for a second copy](docs/assets/disk-conversion.svg)
+
+4. **Finish disk and boot setup.**
+
+   - Preserve file metadata and update mount settings for ZFS.
+   - **Boot drive:** update Ubuntu boot settings, replace GRUB with ZFSBootMenu, and reboot into Ubuntu. Keep a small firmware/bootloader partition outside ZFS; continue managing Ubuntu packages with APT.
+   - **Attached volume:** restore its mount point. You can then restart applications that use it.
+
+5. **Use and maintain ZFS.**
+
+   - **Snapshots:** automatic daily snapshots and snapshots before package changes. To recover a boot drive, use ZFSBootMenu in the provider's preboot console to boot a clone of a working snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
+   - **Disk growth:** enlarge the actual disk through the provider, then reboot; ZFS expands without guest-side resize commands. Tested for boot disks and attached Volumes on DigitalOcean.
+
+**If conversion stops:** reconnect and run `zfs-on-boot-status`. Do not blindly
+reboot or delete temporary partitions. Interruptions during final partition or
+bootloader replacement may require a provider rescue image.
+[Recovery guide](docs/recovery.md) · [Interrupted conversion](docs/inplace.md#limits)
 
 ![Snapshot selection in DigitalOcean's recovery console](docs/assets/screenshots/digitalocean-snapshots.jpg)
-
-After enlarging the actual disk through your provider, reboot to expand ZFS
-without guest-side resize commands. Boot-disk and attached-volume growth have
-both been tested on DigitalOcean.
 
 </details>
 
@@ -141,14 +131,15 @@ been separately tested end to end.
 
 ## Performance
 
-Observed Ubuntu file-copy speed on small DigitalOcean Droplets' built-in SSDs
-is roughly **20 MB/s**. A **1 GiB ARM64 VM** copied and verified files at about
-**19 MB/s** during conversion. Native NVMe conversion throughput has not
-been benchmarked.
+| Environment | Observed transfer speed |
+|---|---|
+| Small DigitalOcean Droplet, built-in SSD | About **20 MB/s** copying Ubuntu files |
+| Local ARM64 VM, 1 GiB RAM | About **19 MB/s** copying and verifying files |
+| Native NVMe | Not benchmarked |
 
-At 20 MB/s, copying 20 GB alone takes about **17 minutes**. Allow additional time
-for package installation, verification, relocation, and reboots. Many small files,
-limited RAM, and backup network bandwidth can make the process slower.
+**Allow at least 17 minutes per 20 GB at 20 MB/s**, plus package installation,
+verification, relocation, and reboots. Small files, limited RAM, and backup
+network bandwidth can increase the total time.
 
 [Volume guide](docs/volumes.md) · [Cloud-init guide](docs/cloud-init.md) ·
 [Recovery guide](docs/recovery.md) · [Contributing](CONTRIBUTING.md)
