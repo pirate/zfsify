@@ -29,7 +29,7 @@ def launcher(directory, command, extra=()):
             f'import importlib.util,sys; s=importlib.util.spec_from_file_location("progress",{str(SOURCE)!r}); '
             'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
             f'm.STATE=m.Path({str(directory / "state.json")!r}); m.LOG=m.Path({str(directory / "progress.log")!r}); '
-            'sys.exit(m.main())', 'run', '--phase', '5', '--label', 'Copy files',
+            'sys.exit(m.main())', 'run', '--phase', '3', '--label', 'Copy files',
             '--devices', 'local filesystem', '--source', 'source/', '--target', 'target/', *extra,
             '--', *command]
 
@@ -96,13 +96,13 @@ print('SHA-256 verified: all 3 files match',flush=True)
 
 class ProgressTests(unittest.TestCase):
     def test_tiles_width_failure_and_unknown_totals(self):
-        state = dict(phase=5, label='Copy\x1b[2J data', status='running', elapsed=31,
+        state = dict(phase=3, label='Copy\x1b[2J data', status='running', elapsed=31,
                      devices='/dev/vda', total=100, done=25, speed=3, io={})
         for width in (8, 40, 80, 120):
             text = m.render(state, width=width)
             self.assertTrue(all(len(line) <= width for line in text.splitlines()))
             self.assertNotIn('\x1b', text)
-        self.assertIn('Overall', m.render(state)); self.assertIn('4/10 phases complete', m.render(state))
+        self.assertIn('[3. Convert ext4 to ZFS]', m.render(state)); self.assertIn('5. Snapshots', m.render(state))
         self.assertIn('Transfer total', m.render(state))
         self.assertIn('25.0%', m.render(state))
         state['status'] = 'failed'
@@ -148,7 +148,7 @@ class ProgressTests(unittest.TestCase):
                 self.assertIn('\x1b[?25l', out); self.assertIn('\x1b[?25h', out)
                 self.assertNotIn('\x1b[2J', out)
                 self.assertNotIn('\x1b[J', out)
-                self.assertGreater(out.count('PHASE'), 3)
+                self.assertIn('[3. Convert ext4 to ZFS]', out)
                 self.assertNotIn('\x1b', (d/'progress.log').read_text())
                 if mode == 'no-color': self.assertNotIn('\x1b[1;36m', out)
                 if mode == 'tee': self.assertNotIn('\x1b', (d/'tee.log').read_text())
@@ -172,7 +172,7 @@ class ProgressTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
             args = argparse.Namespace(command=[sys.executable, '-c', 'import time; time.sleep(1.2)'],
-                                      phase=8, label='Resilver', devices='/dev/test', source='old', target='new',
+                                      phase=4, label='Resilver', devices='/dev/test', source='old', target='new',
                                       total=0, resilver=True, pool='data_pool')
             with patch.object(m, 'STATE', d/'state.json'), patch.object(m, 'LOG', d/'progress.log'), \
                  patch.object(m.subprocess, 'check_output', return_value='512 / 1024 issued') as query, \
@@ -184,10 +184,45 @@ class ProgressTests(unittest.TestCase):
             state = json.loads((d/'state.json').read_text())
             self.assertTrue(state['approximate']); self.assertEqual(state['total'], 1024)
 
+    def test_watch_detects_dead_runner_and_preserves_partial_progress(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            state = dict(phase=3, label='Copy', status='running', elapsed=1,
+                         devices='/dev/test', total=100, done=25, speed=0, io={},
+                         runner_pid=999999999, runner_start='dead')
+            (d/'state.json').write_text(json.dumps(state))
+            rc, events = terminal(launcher(d, [])[:3] + ['watch', '--once'])
+            out = ''.join(e[2] for e in events)
+            self.assertEqual(rc, 1)
+            self.assertIn('FAILED', out)
+            self.assertIn('25.0%', out)
+            self.assertIn('stopped unexpectedly', out)
+
+    def test_completion_keeps_full_backup_instructions(self):
+        import io
+        from contextlib import redirect_stdout
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            state = dict(phase=5, label='Ready', status='complete', elapsed=1,
+                         devices='/dev/test', total=0, done=0, speed=0, io={})
+            (d/'state.json').write_text(json.dumps(state))
+            notes = d/'notes.txt'
+            notes.write_text('Backup retained at: remote:exact-folder\n' + 'instruction\n'*8 + 'Final cleanup instruction\n')
+            output = io.StringIO()
+            def path(*args):
+                return notes if args == ('/var/log/zfs-on-boot/backup-next-steps.txt',) else Path(*args)
+            with redirect_stdout(output), patch.object(m, 'STATE', d/'state.json'), patch.object(m, 'Path', side_effect=path):
+                display = m.Display(animate=False)
+                self.assertEqual(m.watch(argparse.Namespace(once=True), display), 0)
+                display.close()
+            self.assertIn('Backup retained at: remote:exact-folder', output.getvalue())
+            self.assertIn('Final cleanup instruction', output.getvalue())
+
     def test_watch_once_plain_and_dumb_terminal(self):
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
-            state = dict(phase=10, label='Ready: preview complete', status='complete', elapsed=1,
+            state = dict(phase=5, label='Ready: preview complete', status='complete', elapsed=1,
                          devices='preview', total=0, done=0, speed=0, io={})
             (d/'state.json').write_text(json.dumps(state))
             command = launcher(d, [])[:3] + ['watch', '--once']
@@ -198,15 +233,4 @@ class ProgressTests(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    if len(sys.argv) == 3 and sys.argv[1] == '--record':
-        dest = Path(sys.argv[2]); dest.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory() as tmp:
-            d = Path(tmp)
-            rc, events = terminal(launcher(d, copy_fixture(d, 5)), height=18)
-            assert rc == 0
-            header = dict(version=2, width=96, height=18,
-                          title='zfsify TUI preview — real local file copy, not a disk conversion')
-            dest.write_text('\n'.join(json.dumps(e, ensure_ascii=False) for e in [header, *events])+'\n')
-            print(dest)
-    else:
-        unittest.main(verbosity=2)
+    unittest.main(verbosity=2)

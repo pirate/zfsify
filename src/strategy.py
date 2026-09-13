@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Read-only strategy discovery and timed choices; never format or mount disks."""
+"""Read-only strategy discovery and deliberate choices; never format or mount disks."""
 import argparse
 import json
 import os
 from pathlib import Path
-import select
 import subprocess
 import sys
-import time
 
 MARGIN = 256 * 1024**2
 
@@ -55,58 +53,33 @@ def backup_candidates(disk, used):
                                                      -item['free'], item['path']))
 
 
-def choose(prompt, default, options, seconds=15):
-    """Read /dev/tty, never the curl pipe. Invalid/partial input never means consent."""
+def choose(prompt, default, options):
+    """Read the controlling terminal, never the curl pipe; no unattended consent."""
     print(prompt, file=sys.stderr, flush=True)
     try:
-        tty = open('/dev/tty', 'r')
+        with open('/dev/tty', 'r') as tty:
+            while True:
+                print(f'Enter = {default}; waiting for your selection (no timeout): ',
+                      end='', file=sys.stderr, flush=True)
+                line = tty.readline()
+                if not line:
+                    raise ValueError('Terminal closed; cancelled.')
+                answer = line.strip().lower() or default
+                if answer in options:
+                    return answer
+                print('Choose one of: ' + ', '.join(options), file=sys.stderr)
     except OSError:
-        tty = None
-    try:
-        if seconds is None:
-            if tty is None:
-                raise ValueError('Manual confirmation requires a terminal. Re-run in an interactive SSH session.')
-            print(f'Enter = {default}; waiting for your selection (no timeout): ',
-                  end='', file=sys.stderr, flush=True)
-            line = tty.readline()
-            if not line:
-                raise ValueError('Terminal closed; cancelled.')
-            answer = line.strip().lower() or default
-            if answer not in options:
-                raise ValueError('Unknown choice; cancelled.')
-            return answer
-        deadline = time.monotonic() + seconds
-        while True:
-            left = max(0, deadline - time.monotonic())
-            print(f'\rEnter = {default}; starting in {int(left + .999):2d}s (Ctrl-C cancels). ',
-                  end='', file=sys.stderr, flush=True)
-            if tty and select.select([tty], [], [], min(1, left))[0]:
-                answer = tty.readline().strip().lower()
-                print(file=sys.stderr)
-                if not answer:
-                    return default
-                if answer not in options:
-                    raise ValueError('Unknown choice; cancelled without starting conversion.')
-                return answer
-            if not tty:
-                time.sleep(min(1, left))
-            if time.monotonic() >= deadline:
-                # A partially typed answer must not be silently ignored at timeout.
-                if tty:
-                    import termios
-                    old = termios.tcgetattr(tty)
-                    new = old.copy(); new[3] &= ~termios.ICANON
-                    try:
-                        termios.tcsetattr(tty, termios.TCSANOW, new)
-                        if select.select([tty], [], [], 0)[0]:
-                            raise ValueError('Unfinished choice; cancelled without starting conversion.')
-                    finally:
-                        termios.tcsetattr(tty, termios.TCSANOW, old)
-                print(file=sys.stderr)
-                return default
-    finally:
-        if tty:
-            tty.close()
+        raise ValueError('Manual confirmation requires a terminal. Re-run in an interactive SSH session.') from None
+
+
+def heading(title, clear=False):
+    # Presentation stays in progress.py; discovery never writes migration state.
+    from progress import phase_header
+    color = sys.stderr.isatty() and 'NO_COLOR' not in os.environ
+    width = os.get_terminal_size(sys.stderr.fileno()).columns - 1 if sys.stderr.isatty() else 100
+    if clear and sys.stderr.isatty():
+        print('\033[2J\033[H', end='', file=sys.stderr)
+    print(('' if clear else '\n') + '\n'.join(phase_header(1, width, color=color)) + '\n\n' + title + '\n', file=sys.stderr)
 
 
 def main():
@@ -119,18 +92,18 @@ def main():
     menu.add_argument('--used', type=int, required=True)
     menu.add_argument('--preserve-capacity', type=int, required=True)
     menu.add_argument('--inplace-capacity', type=int, default=0)
+    menu.add_argument('--yes', action='store_true')
     menu.add_argument('--mode', choices=['auto', 'preserve', 'inplace', 'backup', 'erase'], default='auto')
     menu.add_argument('--backup', default='')
     menu.add_argument('--erase-only', action='store_true')
-    menu.add_argument('--explicit', action='store_true')
     confirm = sub.add_parser('confirm')
+    confirm.add_argument('--yes', action='store_true')
     confirm.add_argument('--label', required=True)
-    confirm.add_argument('--explicit', action='store_true')
     confirm.add_argument('--mode', choices=['preserve', 'inplace', 'backup', 'erase'], required=True)
     destination = sub.add_parser('destination')
     destination.add_argument('--disk', required=True)
     destination.add_argument('--used', type=int, required=True)
-    transport = sub.add_parser('transport')
+    sub.add_parser('transport')
     args = p.parse_args()
     if args.action == 'destination':
         candidates = backup_candidates(args.disk, args.used)
@@ -142,21 +115,23 @@ def main():
         options = {str(i): item['path'] for i, item in enumerate(candidates, 1)}
         options.update(p='path', r='', q='q')
         choice = choose('  p) Enter another directory  r) Refresh disks  q) Back',
-                        '1' if candidates else 'r', options, seconds=None)
+                        '1' if candidates else 'r', options)
         print(options[choice])
         return
     if args.action == 'confirm':
-        if args.explicit:
+        if args.yes:
+            print('Explicit non-interactive consent: proceeding with the selected plan.', file=sys.stderr)
             print('1')
             return
-        answer = choose(args.label + '\n  1) Proceed with this plan\n  2) Review all strategies\n  q) Cancel', '1', ['1', '2', 'q'], seconds=15 if args.mode in ('preserve', 'inplace') else None)
+        heading('⚠  Make a full offsite backup before proceeding. This software is experimental.')
+        answer = choose(args.label + '\n\n  1) Confirm backup precaution and start conversion\n  2) Review all methods\n  q) Cancel [default]', 'q', ['1', '2', 'q'])
         if answer == 'q':
             raise ValueError('Cancelled.')
         print(answer)
         return
     if args.action == 'transport':
         print(choose('Choose backup setup: 1) attached Volume  2) rclone config  3) existing remote  q) cancel',
-                     '1', ['1', '2', '3', 'q'], seconds=None))
+                     '1', ['1', '2', '3', 'q']))
         return
     backup = args.backup if args.backup not in ('', 'ask') else 'ask'
     default, preserve, inplace = recommended(args.size, args.used, args.preserve_capacity,
@@ -171,34 +146,33 @@ def main():
               'backup': 'External backup: verify an independent archive, then restore',
               'erase': 'ERASE: discard data; root gets limited settings restoration'}
     keys = {'1': 'preserve', '2': 'inplace', '3': 'backup', '4': 'erase'}
+    heading('Select a conversion method', clear=True)
+    print('Make a full offsite backup before proceeding. Conversion can destroy data.', file=sys.stderr)
     print(f'\nMigration options for {args.disk} ({args.used/1e9:.2f}/{args.size/1e9:.2f} GB used):', file=sys.stderr)
     for key, mode in keys.items():
         reason = '' if available[mode] else (' — rerun without --erase to assess preservation' if args.erase_only else ' — unavailable for data volumes' if mode == 'inplace' and args.kind != 'root'
                   else ' — unavailable: insufficient working space')
-        print(f'  {key}) {labels[mode]}{reason}' + (' [default]' if mode == default else ''), file=sys.stderr)
-    print('  q) Cancel\nExternal backup always requires manual destination selection and confirmation.', file=sys.stderr)
+        line = f'  {key}) {labels[mode]}{reason}' + (' ◀ RECOMMENDED' if mode == default and args.mode == 'auto' else ' ◀ SELECTED' if mode == default else '')
+        if mode == default and sys.stderr.isatty() and 'NO_COLOR' not in os.environ:
+            line = '\033[1;36m' + line + '\033[0m'
+        print(line + '\n', file=sys.stderr)
+    print('  q) Cancel\nExternal backup needs a destination you explicitly select. Review the plan before conversion.', file=sys.stderr)
     if not available[default]:
         raise ValueError(f'{default} does not fit this disk; use automatic selection or --backup.')
-    if args.explicit:
+    if args.yes and default == 'backup' and backup == 'ask':
+        raise ValueError('Non-interactive backup requires --backup=/mounted/directory or --backup=remote:path. No destination was selected.')
+    if args.yes or args.mode != 'auto':
         print(default)
         print(backup)
         return
     default_key = next(k for k, v in keys.items() if v == default)
-    choice = choose('Choose a strategy. Erase requires --erase or explicit confirmation.', default_key, [*keys, 'q'],
-                    seconds=15 if default in ('preserve', 'inplace') else None)
+    choice = choose('Choose a method. You will review its plan before confirming conversion.',
+                    default_key, [*keys, 'q'])
     if choice == 'q':
         raise ValueError('Cancelled.')
     mode = keys[choice]
     if not available[mode]:
         raise ValueError('That strategy is unavailable; cancelled without starting conversion.')
-    if mode == 'erase' and args.mode != 'erase':
-        try:
-            with open('/dev/tty', 'r') as tty:
-                print('Type y and press Enter to confirm data loss: ', end='', file=sys.stderr, flush=True)
-                if tty.readline().strip() != 'y':
-                    raise ValueError('Erase cancelled.')
-        except OSError:
-            raise ValueError('Erase needs explicit --erase or terminal confirmation.') from None
     print(mode)
     print(backup or 'ask')
 

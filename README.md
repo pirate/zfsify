@@ -12,10 +12,11 @@ preserving existing data through in-place filesystem conversion.
 </div>
 
 <p align="center">
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?demo=root"><img src="docs/assets/recordings/happy-path.gif" width="49%" alt="Ubuntu boot-drive conversion on DigitalOcean"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?demo=volume"><img src="docs/assets/recordings/volume.gif" width="49%" alt="Attached ext4 volume conversion on DigitalOcean"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?demo=rclone"><img src="docs/assets/recordings/rclone-root.gif" width="49%" alt="Backup and restore during conversion on DigitalOcean"></a>
-<a href="docs/assets/recordings/progress-preview.gif"><img src="docs/assets/recordings/progress-preview.gif" width="49%" alt="Live progress during a local file copy"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-1"><img src="docs/assets/recordings/phase-1.gif" width="49%" alt="1. Scan disk and choose a method"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-2"><img src="docs/assets/recordings/phase-2.gif" width="49%" alt="2. Prepare the disk"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-3"><img src="docs/assets/recordings/phase-3.gif" width="49%" alt="3. Convert ext4 to ZFS"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-4"><img src="docs/assets/recordings/phase-4.gif" width="49%" alt="4. Finish disk and boot setup"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-5"><img src="docs/assets/recordings/phase-5.gif" width="49%" alt="5. Enable snapshots, recovery and growth"></a>
 </p>
 
 Cloud providers usually ship Ubuntu with ext4. Getting ZFS means building a
@@ -55,9 +56,9 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/by-id/YOUR-DISK
 ```
 
-Review the selected disk and plan before the **15-second countdown** ends.
-Backup destination selection waits for confirmation; explicit command-line
-options skip selection prompts. Convert one disk per invocation.
+Review the highlighted method and disk, then explicitly confirm conversion.
+The interactive flow has no automatic start or timeout; method options preselect
+the method for review. Convert one disk per invocation.
 
 ## Requirements
 
@@ -72,6 +73,8 @@ options skip selection prompts. Convert one disk per invocation.
 <details>
 <summary><h3 id="disk-scan">1. Scans the disk and selects an algorithm</h3></summary>
 
+![Scan disk and choose a method](docs/assets/recordings/phase-1.gif)
+
 - **Enough room for two copies:** it selects the temporary-partition method, usually when less than 50% of the filesystem is used.
 - **Less free space on `/`:** it selects slice-by-slice conversion when the data fits alongside the recovery area and filesystem overhead.
 - **Insufficient working space:** it asks you to choose a separate backup destination. Attached volumes require room for two copies or a separate backup.
@@ -82,19 +85,29 @@ options skip selection prompts. Convert one disk per invocation.
 <details>
 <summary><h3 id="prepare-disk">2. Prepares the disk for conversion</h3></summary>
 
+![Prepare the disk](docs/assets/recordings/phase-2.gif)
+
 - **Boot drive:** it stages a temporary RAM boot environment and reboots into it, retaining SSH access. For slice-based conversion, it also prepares persistent rescue storage so interrupted copying can resume.
 - **Attached volume:** it unmounts the source filesystem before conversion; applications using that volume must be stopped first.
-- **Backup and restore:** it prompts you to select and confirm a destination, then creates a complete archive and reads it back to verify it before erasing the source. An explicit `--backup=/mnt/backup` or `--backup=remote:path` supplies the destination without prompts. [Backup setup](docs/backup.md).
+- **Backup and restore:** it prompts you to select and confirm a destination, then creates a complete archive and reads it back to verify it before erasing the source. An explicit `--backup=/mnt/backup` or `--backup=remote:path` selects the destination; final conversion confirmation is still required. [Backup setup](docs/backup.md).
 
 </details>
 
 <details>
 <summary><h3 id="convert-to-zfs">3. Converts ext4 to ZFS</h3></summary>
 
+![Convert ext4 to ZFS](docs/assets/recordings/phase-3.gif)
+
 - **Two-copy method:** it shrinks ext4, copies files to ZFS at the disk's end, and verifies them before replacing the original. It then moves ZFS to the front and expands it. Bootability is preserved where possible, but partition and bootloader replacement have interruption windows; disk failure can destroy both copies.
 - **Slice-based method:** it copies and verifies files in slices, then reuses their ext4 space for ZFS. **The original Ubuntu installation becomes unbootable when its data starts being reclaimed.** The temporary rescue entry can resume interrupted copying or relocation.
 - **Backup and restore:** it erases the source, creates ZFS, and restores the verified archive. The source remains unbootable until restoration and boot setup finish; keep the backup until the restored system works.
 - **Erase (`--erase`):** for `/`, it installs fresh Ubuntu of the same release, preserves accounts, SSH access, and `/etc`, then restores as much home/application data as the displayed budget allows. **Omitted data is lost; applications may need reinstalling. For an attached volume, it erases all files.**
+
+<p align="center">
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=attached-disk"><img src="docs/assets/recordings/attached-disk.gif" width="49%" alt="Attached disk"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=rclone"><img src="docs/assets/recordings/rclone.gif" width="49%" alt="rclone backup and restore"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=two-copy"><img src="docs/assets/recordings/two-copy.gif" width="49%" alt="50/50 conversion"></a>
+</p>
 
 ![Conversion with room for a second copy](docs/assets/disk-conversion.svg)
 
@@ -103,8 +116,10 @@ options skip selection prompts. Convert one disk per invocation.
 <details>
 <summary><h3 id="finish-setup">4. Finishes disk and boot setup</h3></summary>
 
+![Finish disk and boot setup](docs/assets/recordings/phase-4.gif)
+
 - **Files and mounts:** it preserves ownership, permissions, ACLs, and extended attributes. It removes the old ext4 entries from `/etc/fstab` and configures ZFS to mount the new datasets at their original paths.
-- **Boot drive:** it rebuilds Ubuntu's initramfs with ZFS support, preserves applicable kernel boot arguments, replaces GRUB with ZFSBootMenu, and reboots into Ubuntu. A small firmware/bootloader partition remains outside ZFS; Ubuntu packages continue to use APT.
+- **Boot drive:** it rebuilds Ubuntu's initramfs with ZFS support, preserves applicable kernel boot arguments, and replaces GRUB with ZFSBootMenu. A small firmware/bootloader partition remains outside ZFS; Ubuntu packages continue to use APT.
 - **Attached volume:** it mounts the new dataset at the original mount point and enables mounting at startup. You can then restart applications that use the volume.
 
 </details>
@@ -112,7 +127,9 @@ options skip selection prompts. Convert one disk per invocation.
 <details>
 <summary><h3 id="snapshots-and-growth">5. Enables snapshots, recovery, and disk growth</h3></summary>
 
-- **Boot-drive snapshots:** it schedules daily snapshots and snapshots before APT package changes. For recovery, you can open ZFSBootMenu in the provider's preboot console and boot a clone of a working snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
+![Enable snapshots, recovery and growth](docs/assets/recordings/phase-5.gif)
+
+- **Boot-drive snapshots:** it creates an initial recovery snapshot and schedules daily snapshots and snapshots before APT package changes, then reboots into Ubuntu. For recovery, you can open ZFSBootMenu in the provider's preboot console and boot a clone of a working snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
 - **Disk growth:** it expands the ZFS partition and pool on reboot after you enlarge the disk through your provider. No guest-side resize commands are needed; both boot-disk and attached-volume growth have been tested on DigitalOcean.
 
 ![Snapshot selection in DigitalOcean's recovery console](docs/assets/screenshots/digitalocean-snapshots.jpg)

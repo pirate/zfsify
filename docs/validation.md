@@ -7,10 +7,10 @@ ARM64 VMs with UEFI.
 
 | Workflow | Evidence |
 |---|---|
-| Preserve Ubuntu and boot from ZFS | [Root conversion recording](recordings.html?demo=root), [512 MiB acceptance](validation-zfsbootmenu.md) |
+| Preserve Ubuntu and boot from ZFS | [Root conversion recording](assets/recordings/happy-path.gif), [512 MiB acceptance](validation-zfsbootmenu.md) |
 | Reinstall with bounded priority restoration | [Erase-mode acceptance](validation-zfsbootmenu.md) |
-| Back up a full root drive with rclone, convert, and restore | [Interactive recording](recordings.html?demo=rclone), [backup acceptance](validation-zfsbootmenu.md) |
-| Convert an attached ext4 Volume without rebooting | [Volume recording](recordings.html?demo=volume), [capture and verification notes](assets/recordings/volume-provenance.md) |
+| Back up a full root drive with rclone, convert, and restore | [Interactive recording](assets/recordings/rclone-root.gif), [backup acceptance](validation-zfsbootmenu.md) |
+| Convert an attached ext4 Volume without rebooting | [Volume recording](assets/recordings/volume.gif), [capture and verification notes](assets/recordings/volume-provenance.md) |
 | Initialize an empty attached Volume | [Explicit erase-mode acceptance](validation-zfsbootmenu.md) |
 | Expand root and data pools after a provider disk resize | [Automatic expansion evidence](validation-zfsbootmenu.md) |
 | Boot a snapshot clone and take automatic snapshots | [Recovery and snapshot evidence](validation-zfsbootmenu.md) |
@@ -24,7 +24,7 @@ ARM64 VMs with UEFI.
 
 The recordings offer selected highlights and full terminal captures. Their notes
 identify the installer build, fixture, timing edits, and acceptance results.
-They contain real command output; preview headings are editorial.
+The [current phase captures](assets/recordings/phase-captures.md) contain terminal output only.
 
 The [cloud-init templates](cloud-init.md) invoke the same installer after first-boot
 configuration. Their first-boot scheduling has not been separately tested end to

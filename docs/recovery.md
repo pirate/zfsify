@@ -123,7 +123,7 @@ before using destructive recovery operations.
 
 These images were captured from DigitalOcean's actual Droplet administration page
 and Recovery Console on 2026-09-07. The machine was the Ubuntu 24.04, 1 GiB / 25 GiB
-Droplet used for the [rclone conversion recording](recordings.html?demo=rclone).
+Droplet used for the [rclone conversion recording](assets/recordings/rclone-root.gif).
 They are browser captures, not illustrations or a locally simulated console.
 
 ### Droplet settings and console entry
@@ -139,7 +139,7 @@ They are browser captures, not illustrations or a locally simulated console.
 ![Installation and pre-upgrade snapshots in the provider console](assets/screenshots/digitalocean-snapshots.jpg)
 
 The menu was held open with `zbm.timeout=-1` on this disposable machine for
-capture; the shipped installer uses a 15-second countdown. The `before-upgrade`
+capture; the installer requires explicit confirmation before conversion. The `before-upgrade`
 snapshot was created for the demonstration. Some captures are cropped to the
 relevant page or terminal region; their displayed content is unchanged.
 

@@ -32,6 +32,31 @@ def duration(seconds):
     return f'{seconds//3600}h {seconds%3600//60:02d}m' if seconds >= 3600 else f'{seconds//60:02d}:{seconds%60:02d}'
 
 
+PHASES = ('Scan disk + choose method', 'Prepare disk', 'Convert ext4 to ZFS',
+          'Finish disk + boot setup', 'Snapshots + recovery + growth')
+
+
+def phase_header(phase, width=88, color=False, complete=False):
+    """Wrap whole phase segments, keeping every stage visible on narrow terminals."""
+    lines = ['  zfsify  ⚡  Ubuntu → ZFS', '']
+    row = ''
+    for number, title in enumerate(PHASES, 1):
+        mark = '✓ ' if number < phase or complete else ''
+        segment = f'{mark}{number}. {title}'
+        if number == phase:
+            segment = '[' + segment + ']'
+        if row and len(row) + len(segment) + 3 > width - 2:
+            lines.append('  ' + row)
+            row = ''
+        row += (' | ' if row else '') + segment
+    lines.append('  ' + row)
+    lines = [line[:width] for line in lines]
+    if color:
+        lines = [re.sub(r'(\[[^]]+\])', r'\033[1;36m\1\033[0m', line) for line in lines]
+        lines[0] = '\033[1;36m' + lines[0] + '\033[0m'
+    return lines
+
+
 def render(s, width=88, frame=0, color=False, unicode=True):
     """Each tile represents a share of logical bytes, not a physical disk extent."""
     width = max(1, width)
@@ -45,19 +70,15 @@ def render(s, width=88, frame=0, color=False, unicode=True):
     spinner = pulses[frame % len(pulses)]
     badge = spinner if running else tick if status == 'complete' else '!'
     phase = s['phase']
-    headline = 'OPERATION DONE' if status == 'complete' and not s['label'].startswith('Ready') else status.upper()
-    # Several commands can share a phase. Only the next phase (or Ready)
-    # establishes completion; a command finishing must not reset overall progress.
-    finished = 10 if phase == 10 and s['label'].startswith('Ready') and status == 'complete' else phase - 1
-    rail = ' '.join(tick if i <= finished else
-                    ('●' if unicode else '*') if i == phase else dot for i in range(1, 11))
-    lines = [f'  zfsify  {dot}  {badge} {headline}  {dot}  PHASE {phase:02d}/10',
-             f'  Overall  {rail}  {finished}/10 phases complete', f"  {s['label']}", '']
+    ready = phase == 5 and s['label'].startswith('Ready') and status == 'complete'
+    lines = phase_header(phase, width, color=False, complete=ready)
+    lines += ['', f'  {badge} {status.upper()}  ·  STEP: {s["label"]}', '']
     if s.get('source') or s.get('target'):
         lines.append(f"  {s.get('source') or 'source'}  {arrow}  {s.get('target') or 'destination'}")
     else:
         lines.append(f"  Devices  {s['devices']}")
     cells = max(1, min(28, (width - 12) // 2))
+    bar_row = len(lines)
     if total:
         filled = int(fraction * cells)
         blocks = solid * filled + empty * (cells - filled)
@@ -72,26 +93,31 @@ def render(s, width=88, frame=0, color=False, unicode=True):
     speed = max(0, s.get('speed', 0))
     eta = duration((total - done) / speed) if total > done and speed > 0 and running else '--'
     rate = f'{amount(speed)}/s' if total else '--'
-    lines.append(f"  {rate}{' avg' if not running and total else ''}  {dot}  elapsed {duration(s['elapsed'])}  {dot}  ETA {eta}")
+    lines.append(f"  {rate}{' avg' if not running and total else ''}  {dot}  elapsed {duration(s.get('elapsed', 0))}  {dot}  ETA {eta}")
     if s.get('files_total'):
         lines.append(f"  Files  {s.get('files_done', 0):,} / {s['files_total']:,}")
     for device, values in s.get('io', {}).items():
         lines.append(f'  {device}  R {values[0]:.1f} MB/s  W {values[1]:.1f} MB/s  {values[2]:.0f} IOPS')
     if not s.get('io'):
         lines.append('  Device I/O  waiting for counters' if running else '  Device I/O  unavailable')
+    if s.get('messages'):
+        lines += ['', '  Recent output  ·  full log: /var/log/zfs-on-boot/progress.log']
+        lines += ['  ' + line for line in s['messages'][-5:]]
     lines = [clean(line)[:width] for line in lines]
     if color:
         accent = '31' if status == 'failed' else '32' if status == 'complete' else '36'
         lines[0] = f'\033[1;{accent}m{lines[0]}\033[0m'
-        lines[1] = f'\033[2m{lines[1]}\033[0m'
+        for row, line in enumerate(lines):
+            if '[' in line and ']' in line:
+                lines[row] = re.sub(r'(\[[^]]+\])', lambda m: '\033[1;36m' + m[0] + '\033[0m', line)
         tiles = re.compile('(' + '|'.join(re.escape(c)+'+' for c in (solid, empty, active)) + ')')
-        lines[5] = tiles.sub(lambda match: f'\033[{"90" if match[0][0] == empty else "1;"+accent}m'
-                             + match[0] + '\033[0m', lines[5])
+        lines[bar_row] = tiles.sub(lambda match: f'\033[{"90" if match[0][0] == empty else "1;"+accent}m'
+                             + match[0] + '\033[0m', lines[bar_row])
     return '\n'.join(lines)
 
 
 class Display:
-    """Redraw only our own rows; never erase the user's terminal scrollback."""
+    """A fixed dashboard in the terminal viewport; raw output stays in the log."""
     def __init__(self, animate=True):
         self.stream = sys.stdout
         self.owned = False
@@ -109,14 +135,9 @@ class Display:
         self.width = None
         self.height = None
         self.previous = []
+        self.messages = []
         if self.live:
             self.stream.write('\033[?25l')
-
-    def clear(self):
-        # Retain the completed dashboard in scrollback when printing command
-        # output. Erasing it first exposes blank frames to terminals/recorders.
-        self.rows = 0
-        self.previous = []
 
     def draw(self, state):
         if not self.live:
@@ -124,19 +145,20 @@ class Display:
             return
         size = os.get_terminal_size(self.stream.fileno())
         width = max(1, (size.columns or 80) - 1)
-        # After resize, old rows may have reflowed. Start below them instead of
-        # moving the cursor into unrelated terminal history.
+        # Repaint the viewport after resize; unchanged rows otherwise stay intact.
         if self.width != width or self.height != (size.lines or 24):
             self.rows = 0
             self.width = width
             self.height = size.lines or 24
             self.previous = []
+        state = {**state, 'messages': state.get('messages', self.messages)}
         lines = render(state, width, self.frame, self.color, self.unicode).splitlines()
-        lines = lines[:max(1, (size.lines or 24) - 1)]
+        height = max(1, (size.lines or 24) - 1)
+        lines = (lines + [''] * height)[:height]
         # Replace each row's text before erasing its old suffix. One write
         # keeps redraws together; no erase-screen/erase-region blank transition.
         rows = max(self.rows, len(lines))
-        update = f'\033[{self.rows}A' if self.rows else ''
+        update = '\033[H'
         visible = lines + [''] * (rows - len(lines))
         for row, line in enumerate(visible):
             if row < len(self.previous) and self.previous[row] == line:
@@ -150,8 +172,9 @@ class Display:
         self.frame += 1
 
     def message(self, text):
-        self.clear()
-        print(clean(text), file=self.stream, flush=True)
+        self.messages = (self.messages + [clean(text)])[-5:]
+        if not self.live:
+            print(clean(text), file=self.stream, flush=True)
 
     def close(self):
         if self.live:
@@ -199,12 +222,22 @@ class Counters:
         return True
 
 
+def process_start(pid):
+    """Linux process identity; PID alone can be reused after a crashed runner."""
+    try:
+        return Path(f'/proc/{pid}/stat').read_text().rpartition(') ')[2].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
 def watch(args, display):
     last_version = None
     while True:
         source = STATE if STATE.exists() else Path('/var/log/zfs-on-boot/last-progress.json')
         try:
             state = json.loads(source.read_text())
+            if state.get('runner_start') and state['status'] == 'running' and process_start(state['runner_pid']) != state['runner_start']:
+                state.update(status='failed', messages=['Progress process stopped unexpectedly. Inspect the installer log before recovery.'])
             ready = state['label'].startswith('Ready') and state['status'] == 'complete'
             version = json.dumps(state, sort_keys=True)
             if display.live or version != last_version or args.once:
@@ -213,13 +246,15 @@ def watch(args, display):
             if ready:
                 next_steps = Path('/var/log/zfs-on-boot/backup-next-steps.txt')
                 if next_steps.exists():
+                    # Completion instructions include the backup location; do
+                    # not truncate them to the live dashboard's recent lines.
                     for line in next_steps.read_text().splitlines():
-                        display.message(line)
+                        print(clean(line), file=display.stream, flush=True)
             if args.once or state['status'] == 'failed' or ready:
-                return 0
+                return 1 if state['status'] == 'failed' else 0
         except (OSError, ValueError):
             if last_version != 'waiting':
-                display.message('Waiting for installer status...')
+                display.draw(dict(phase=2, label='Waiting for the RAM installer to publish status', devices='detecting', elapsed=0))
                 last_version = 'waiting'
             if args.once:
                 return 1
@@ -235,7 +270,7 @@ def run(args, display):
     names = list(dict.fromkeys(args.devices.split(',')))
     prev = disks(names)
     state = dict(phase=args.phase, label=args.label, devices=','.join(names), total=args.total,
-                 source=args.source, target=args.target, done=0, speed=0, elapsed=0, status='running', io={})
+                 source=args.source, target=args.target, runner_pid=os.getpid(), runner_start=process_start(os.getpid()), done=0, speed=0, elapsed=0, status='running', io={})
     counters = Counters(state)
     last_done = last_print = last_frame = 0
     buffer = ''
@@ -249,6 +284,7 @@ def run(args, display):
                        for d, v in current.items() if d in prev and all(new >= old for new, old in zip(v, prev[d]))}
         state['speed'] = max(0, state['done']-counters.initial)/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
         state['elapsed'] = now-start
+        state['messages'] = display.messages
         prev, tick, last_done = current, now, state['done']
         tmp = STATE.with_suffix('.tmp')
         tmp.write_text(json.dumps(state))
@@ -333,10 +369,13 @@ def run(args, display):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest='action', required=True)
+    h = sub.add_parser('header')
+    h.add_argument('--phase', type=int, choices=range(1, 6), required=True)
+    h.add_argument('--label', required=True)
     f = sub.add_parser('watch')
     f.add_argument('--once', action='store_true')
     r = sub.add_parser('run')
-    r.add_argument('--phase', type=int, choices=range(1, 11), required=True)
+    r.add_argument('--phase', type=int, choices=range(1, 6), required=True)
     r.add_argument('--label', required=True)
     r.add_argument('--devices', required=True)
     r.add_argument('--source', default='')
@@ -346,6 +385,11 @@ def main():
     r.add_argument('--pool', default='rpool')
     r.add_argument('command', nargs=argparse.REMAINDER)
     args = p.parse_args()
+    if args.action == 'header':
+        width = os.get_terminal_size().columns - 1 if sys.stdout.isatty() else 100
+        print('\n'.join(phase_header(args.phase, width, color=sys.stdout.isatty() and 'NO_COLOR' not in os.environ)))
+        print('\n  ' + args.label + '\n', flush=True)
+        return 0
     def terminate(signum, _frame):
         raise SystemExit(128 + signum)
     previous = signal.signal(signal.SIGTERM, terminate)

@@ -50,14 +50,4 @@ The Droplet, Volume, and API SSH-key registration were deleted after capture;
 all three resource lookups returned HTTP 404. The temporary private/public key
 files were removed from the recording controller.
 
-To regenerate the edited cast and GIF from the full capture (Pillow required):
-
-```sh
-python3 scripts/recordings/volume-render.py docs/assets/recordings docs/assets/recordings
-
-```
-
-The recording command script is retained as
-[`scripts/recordings/volume-demo.sh`](../../../scripts/recordings/volume-demo.sh).
-It expects the disposable fixture and local HTTP server described above; it is
-not an installer entry point.
+The full terminal capture is retained alongside the historical preview.

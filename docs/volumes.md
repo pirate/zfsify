@@ -9,9 +9,9 @@ single partition. One invocation converts one disk.
 | ext4 volume with more than 50% free | `/mnt/data` | Preserve files and metadata, then mount ZFS at the same path |
 | ext4 volume without room for a second copy | `--backup=REMOTE:PATH /mnt/data` | Back up, read-back verify, format as ZFS, and restore |
 | Empty disk or data you intend to discard | `--erase /dev/disk/by-id/DEVICE` | Create an empty ZFS pool and dataset |
-| New VPS with a volume attached at creation | [cloud-init volume template](cloud-init.md#convert-an-attached-volume-at-first-boot) | Schedule the same installer after cloud-init finishes |
+| New VPS with a volume attached at creation | [cloud-init volume template](cloud-init.md) | Prepare an interactive installer launcher |
 
-[Watch a real volume conversion](recordings.html?demo=volume) or read its
+[Watch a real volume conversion](assets/recordings/volume.gif) or read its
 [fixture and verification details](assets/recordings/volume-provenance.md).
 The root-drive workflow is described in the [main guide](../README.md).
 
@@ -24,15 +24,13 @@ cd /
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /mnt/data
 ```
 
-The installer identifies the physical disk and prints its plan. The 50/50 path
-has a 15-second countdown. Interactive backup/erase choices wait for input;
-explicit flags skip choices. It then installs
+The installer identifies the physical disk and highlights the recommended method.
+Review the plan and explicitly confirm, even when using command-line flags. It installs
 needed tools and unmounts the source. It refuses to force
 an unmount or terminate applications. Close shells and processes holding the
 volume open before retrying a busy-filesystem error.
 
-When two copies fit with metadata headroom, 50/50 is the default. Enter or
-15 seconds accepts it. It shrinks ext4,
+When two copies fit with metadata headroom, 50/50 is the recommended method. It shrinks ext4,
 copies to temporary ZFS storage at the disk's end, and verifies every file and
 its metadata. A temporary mirror moves the verified copy to the front of the
 disk, then the final partition and pool expand to use the remaining capacity.

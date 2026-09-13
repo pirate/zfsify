@@ -49,7 +49,6 @@ mkdir -p /target/usr/local/{lib/zfs-on-boot,sbin}
 cp /usr/local/lib/zfs-on-boot/progress.py /target/usr/local/lib/zfs-on-boot/
 cp /usr/local/sbin/zfs-on-boot-{grow,status} /target/usr/local/sbin/
 cp /etc/systemd/system/zfs-on-boot-grow.service /target/etc/systemd/system/
-chroot /target systemctl enable zfs-on-boot-grow.service
 zpool set cachefile=/target/etc/zfs/zpool.cache rpool
 # Existing kernels must have ZFS modules too; install missing module packages in
 # staging, never download anything after the source disk is removed.
@@ -76,27 +75,6 @@ for kernel in /target/boot/vmlinuz-*; do
         chroot /target update-initramfs -c -k "$version"
     fi
 done
-cp /usr/local/sbin/zfsify-snapshot /target/usr/local/sbin/
-mkdir -p /target/etc/apt/apt.conf.d
-printf 'DPkg::Pre-Invoke { "/usr/local/sbin/zfsify-snapshot apt"; };\n' > /target/etc/apt/apt.conf.d/80-zfsify-snapshot
-cat > /target/etc/systemd/system/zfsify-snapshot.service <<'UNIT'
-[Unit]
-Description=Create a daily ZFS root recovery snapshot
-After=zfs-mount.service
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/zfsify-snapshot daily
-UNIT
-cat > /target/etc/systemd/system/zfsify-snapshot.timer <<'UNIT'
-[Unit]
-Description=Daily ZFS root recovery snapshot
-[Timer]
-OnCalendar=daily
-Persistent=true
-[Install]
-WantedBy=timers.target
-UNIT
-chroot /target systemctl enable zfsify-snapshot.timer
 umount /target/run /target/proc
 # UEFI package hooks may mount efivarfs beneath the chroot's sysfs.
 umount -R /target/sys

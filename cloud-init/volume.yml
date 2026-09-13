@@ -26,7 +26,7 @@ write_files:
         yes) args=(--erase "$TARGET");;
         *) echo 'ERASE must be yes or no.' >&2; exit 1;;
       esac
-      bash "$installer" "${args[@]}"
+      bash "$installer" --yes "${args[@]}"
   - path: /etc/systemd/system/zfsify-first-boot.service
     permissions: '0644'
     content: |

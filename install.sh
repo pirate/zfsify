@@ -1,11 +1,10 @@
 #!/bin/sh
 # zfsify: preserve by default; --erase retains configuration and users only.
 set -eu
-if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; exit 1; fi
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_03c22ed9a1cb8be6eb9ee866e714a4197957e174770cc0408e22b879c4c54105'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_a72e1dbe84478a25015739dded68766d1034c0ea169b13b8b8e82d683ba7d1d3'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -14,12 +13,14 @@ export DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?source directory required}
 shift
 MODE=auto
+ASSUME_YES=0
 TARGET=/
 BACKUP=
 MODE_COUNT=0
 TARGET_COUNT=0
 for arg in "$@"; do
     case "$arg" in
+        --yes) ASSUME_YES=1 ;;
         --auto) MODE=auto; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --preserve) MODE=preserve; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
@@ -28,15 +29,19 @@ for arg in "$@"; do
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
 Default: detect the disk and choose a data-preserving strategy.
-Automatic 50/50 and slice-by-slice accept Enter or 15 seconds idle.
-Backup fallback waits for input; explicit flags skip strategy prompts.
+Review the recommended method, then explicitly confirm before any conversion.
+Method flags select a method; only --yes skips selection and confirmation.
+  --yes                    Run completely non-interactively; accept the selected
+                           plan. Auto mode prefers preservation, never erasure.
+                           Backup requires an explicit --backup= destination and
+                           an existing rclone configuration or mounted ext4 disk.
   --preserve               Request the 50/50 copy-and-verify strategy.
   --auto                   Choose automatically (the default).
   --backup                 Guide me through a temporary Volume or rclone remote.
-  --backup=/mnt/backup     Use a mounted, separate ext4 disk without prompts.
+  --backup=/mnt/backup     Select a mounted, separate ext4 backup disk.
   --backup=myremote:path   Use an existing root-user rclone configuration.
   --erase                  Fresh Ubuntu with limited settings restore for /;
                            discard ALL files when targeting a data volume.
@@ -46,6 +51,12 @@ Backup fallback waits for input; explicit flags skip strategy prompts.
 The positional path is the disk to CONVERT; --backup= is where to KEEP its backup.
 Examples: --backup=/mnt/backup /          (convert the boot disk)
           --backup=/mnt/backup /mnt/data  (convert a data disk)
+Non-interactive examples (make a full offsite backup first):
+  curl -fsSL URL | sudo sh -s -- --yes
+  curl -fsSL URL | sudo sh -s -- --yes --erase
+  curl -fsSL URL | sudo sh -s -- --yes --backup=/mnt/backup
+  curl -fsSL URL | sudo sh -s -- --yes --backup=myremote:path
+
 Setup and cleanup: https://pirate.github.io/zfsify/docs/backup.html
 EOF
             exit 0 ;;
@@ -64,12 +75,13 @@ if [[ $TARGET != / ]]; then
     resolved=$(readlink -f "$TARGET")
     if [[ $resolved != "$running_root" && $resolved != "$running_disk" ]]; then
         [[ $MODE != inplace ]] || { echo '--inplace currently supports the boot drive only.' >&2; exit 2; }
-        exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP"
+        exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP" "$ASSUME_YES"
     fi
 fi
 export LC_ALL=C
 [[ -t 1 ]] && export ZFS_PROGRESS_TTY=1
 PROGRESS=$SOURCE/progress.py
+python3 "$PROGRESS" header --phase 1 --label "Scan Ubuntu, boot configuration and disk layout"
 phase() { local n=$1 label=$2; shift 2; python3 "$PROGRESS" run --phase "$n" --label "$label" --devices "$DISK,$ROOTDEV" -- "$@"; }
 WORK=/var/lib/zfs-on-boot
 ROOT=$WORK/root
@@ -171,10 +183,10 @@ echo "Preserved Ubuntu boot arguments: $(cat "$SOURCE/boot-preview/cmdline-ubunt
 echo 'CPU/PCI/I/O/display kernel arguments and existing sysctl/modprobe configuration are retained.'
 echo 'Active network links/addresses are captured for the RAM rescue; installed network configuration is preserved.'
 ip -brief address
-EXPLICIT=()
-[[ $MODE = auto ]] || EXPLICIT=(--explicit)
+CONSENT=()
+[[ $ASSUME_YES != 1 ]] || CONSENT=(--yes)
 while :; do
-python3 "$SOURCE/strategy.py" menu "${EXPLICIT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
+python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
     --preserve-capacity "$PRESERVE_CAPACITY" --inplace-capacity "$INPLACE_CAPACITY" \
     --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
 mapfile -t SELECTION < "$SOURCE/selection"
@@ -224,14 +236,14 @@ Complete optional files are retained in priority order within the RAM budget; om
 EOF
 fi
 cat <<'EOF'
-10 phases: preflight > prepare RAM > stage reboot > shrink/format > copy
-           > checksum verify > configure boot > relocate > expand > finish
+5 phases: scan and choose > prepare > convert > finish setup > recovery and growth
 Live status includes logical copy bytes, MB/s and block-device IOPS.
 SSH disconnects at reboot. Reconnect and run: zfs-on-boot-status
 Package/metadata phases have no meaningful byte total and show n/a.
 EOF
-REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${EXPLICIT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
 [[ $REVIEW != 1 ]] || break
+MODE=auto
 done
 # Ensure a preserving strategy has a validated partition plan.
 [[ $MODE = erase || -s $SOURCE/plan.env ]] || validate_layout
@@ -375,7 +387,7 @@ cp "$PROGRESS" "$ROOT/usr/local/lib/zfs-on-boot/progress.py"
 install -m 755 "$SOURCE/status.sh" "$ROOT/usr/local/sbin/zfs-on-boot-status"
 install -m 755 "$SOURCE/grow.sh" "$ROOT/usr/local/sbin/zfs-on-boot-grow"
 cp "$SOURCE/grow.service" "$ROOT/etc/systemd/system/zfs-on-boot-grow.service"
-cp "$SOURCE/target.sh" "$ROOT/etc/zfs-on-boot/target.sh"
+cp "$SOURCE/target.sh" "$SOURCE/recovery-setup.sh" "$ROOT/etc/zfs-on-boot/"
 install -m 755 "$SOURCE/snapshot.sh" "$ROOT/usr/local/sbin/zfsify-snapshot"
 cp "$SOURCE/backup.sh" "$ROOT/etc/zfs-on-boot/backup.sh"
 cp "$SOURCE/zbm-install.sh" "$ROOT/etc/zfs-on-boot/zbm-install.sh"
@@ -398,12 +410,12 @@ rm -f "$ROOT/usr/sbin/policy-rc.d"
 cleanup_mounts
 trap cleanup_swap EXIT
 # SquashFS stays compressed in RAM; only a small boot shim is unpacked.
-phase 3 'Compress rescue filesystem (one worker, bounded memory)' mksquashfs "$ROOT" "$WORK/rescue.squashfs" -noappend -comp xz -b 128K -processors 1 -mem 64M
+phase 2 'Compress rescue filesystem (one worker, bounded memory)' mksquashfs "$ROOT" "$WORK/rescue.squashfs" -noappend -comp xz -b 128K -processors 1 -mem 64M
 RAM_BYTES=$(awk '/MemTotal/ {printf "%.0f", $2*1024}' /proc/meminfo)
 RESCUE_BYTES=$(stat -c %s "$WORK/rescue.squashfs")
 (( RESCUE_BYTES + 230000000 < RAM_BYTES )) || die "Compressed rescue ($RESCUE_BYTES bytes) leaves insufficient working RAM; no boot entry changed."
-phase 3 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" "$WORK/shim" "$SOURCE" "$KVER" "$(blkid -s UUID -o value "$ROOTDEV")" "$DISK"
-phase 3 'Pack minimal RAM boot shim' bash -o pipefail -c 'cd "$1"; find . -xdev -print0 | cpio --null -o --format=newc | gzip -1 > "$2"' _ "$WORK/shim" "$WORK/installer.img"
+phase 2 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" "$WORK/shim" "$SOURCE" "$KVER" "$(blkid -s UUID -o value "$ROOTDEV")" "$DISK"
+phase 2 'Pack minimal RAM boot shim' bash -o pipefail -c 'cd "$1"; find . -xdev -print0 | cpio --null -o --format=newc | gzip -1 > "$2"' _ "$WORK/shim" "$WORK/installer.img"
 gzip -t "$WORK/installer.img"
 IMAGE_BYTES=$(stat -c %s "$WORK/installer.img")
 KERNEL_BYTES=$(stat -Lc %s "$KERNEL")
@@ -438,22 +450,20 @@ mv /etc/grub.d/09_zfs_on_boot /etc/grub.d/41_zfs_on_boot
 update-grub
 grub-reboot zfs-on-boot-install
 grub-editenv /boot/grub/grubenv list | grep -qx next_entry=zfs-on-boot-install
-echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM installer and then in Ubuntu.'
+phase 2 'Rebooting into RAM; reconnect and run zfs-on-boot-status' true
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_03c22ed9a1cb8be6eb9ee866e714a4197957e174770cc0408e22b879c4c54105
-cat > "$work/strategy.py" <<'ZFS_ON_BOOT_7bb341c54bd2bcf40a581404dac06822b1d4973f69b50f8ca4f298aa183d25ff'
+ZFS_ON_BOOT_a72e1dbe84478a25015739dded68766d1034c0ea169b13b8b8e82d683ba7d1d3
+cat > "$work/strategy.py" <<'ZFS_ON_BOOT_180b7ba1d2fe105878859d744658f86718536e73083364b93131ecd44a685d80'
 #!/usr/bin/env python3
-"""Read-only strategy discovery and timed choices; never format or mount disks."""
+"""Read-only strategy discovery and deliberate choices; never format or mount disks."""
 import argparse
 import json
 import os
 from pathlib import Path
-import select
 import subprocess
 import sys
-import time
 
 MARGIN = 256 * 1024**2
 
@@ -501,58 +511,33 @@ def backup_candidates(disk, used):
                                                      -item['free'], item['path']))
 
 
-def choose(prompt, default, options, seconds=15):
-    """Read /dev/tty, never the curl pipe. Invalid/partial input never means consent."""
+def choose(prompt, default, options):
+    """Read the controlling terminal, never the curl pipe; no unattended consent."""
     print(prompt, file=sys.stderr, flush=True)
     try:
-        tty = open('/dev/tty', 'r')
+        with open('/dev/tty', 'r') as tty:
+            while True:
+                print(f'Enter = {default}; waiting for your selection (no timeout): ',
+                      end='', file=sys.stderr, flush=True)
+                line = tty.readline()
+                if not line:
+                    raise ValueError('Terminal closed; cancelled.')
+                answer = line.strip().lower() or default
+                if answer in options:
+                    return answer
+                print('Choose one of: ' + ', '.join(options), file=sys.stderr)
     except OSError:
-        tty = None
-    try:
-        if seconds is None:
-            if tty is None:
-                raise ValueError('Manual confirmation requires a terminal. Re-run in an interactive SSH session.')
-            print(f'Enter = {default}; waiting for your selection (no timeout): ',
-                  end='', file=sys.stderr, flush=True)
-            line = tty.readline()
-            if not line:
-                raise ValueError('Terminal closed; cancelled.')
-            answer = line.strip().lower() or default
-            if answer not in options:
-                raise ValueError('Unknown choice; cancelled.')
-            return answer
-        deadline = time.monotonic() + seconds
-        while True:
-            left = max(0, deadline - time.monotonic())
-            print(f'\rEnter = {default}; starting in {int(left + .999):2d}s (Ctrl-C cancels). ',
-                  end='', file=sys.stderr, flush=True)
-            if tty and select.select([tty], [], [], min(1, left))[0]:
-                answer = tty.readline().strip().lower()
-                print(file=sys.stderr)
-                if not answer:
-                    return default
-                if answer not in options:
-                    raise ValueError('Unknown choice; cancelled without starting conversion.')
-                return answer
-            if not tty:
-                time.sleep(min(1, left))
-            if time.monotonic() >= deadline:
-                # A partially typed answer must not be silently ignored at timeout.
-                if tty:
-                    import termios
-                    old = termios.tcgetattr(tty)
-                    new = old.copy(); new[3] &= ~termios.ICANON
-                    try:
-                        termios.tcsetattr(tty, termios.TCSANOW, new)
-                        if select.select([tty], [], [], 0)[0]:
-                            raise ValueError('Unfinished choice; cancelled without starting conversion.')
-                    finally:
-                        termios.tcsetattr(tty, termios.TCSANOW, old)
-                print(file=sys.stderr)
-                return default
-    finally:
-        if tty:
-            tty.close()
+        raise ValueError('Manual confirmation requires a terminal. Re-run in an interactive SSH session.') from None
+
+
+def heading(title, clear=False):
+    # Presentation stays in progress.py; discovery never writes migration state.
+    from progress import phase_header
+    color = sys.stderr.isatty() and 'NO_COLOR' not in os.environ
+    width = os.get_terminal_size(sys.stderr.fileno()).columns - 1 if sys.stderr.isatty() else 100
+    if clear and sys.stderr.isatty():
+        print('\033[2J\033[H', end='', file=sys.stderr)
+    print(('' if clear else '\n') + '\n'.join(phase_header(1, width, color=color)) + '\n\n' + title + '\n', file=sys.stderr)
 
 
 def main():
@@ -565,18 +550,18 @@ def main():
     menu.add_argument('--used', type=int, required=True)
     menu.add_argument('--preserve-capacity', type=int, required=True)
     menu.add_argument('--inplace-capacity', type=int, default=0)
+    menu.add_argument('--yes', action='store_true')
     menu.add_argument('--mode', choices=['auto', 'preserve', 'inplace', 'backup', 'erase'], default='auto')
     menu.add_argument('--backup', default='')
     menu.add_argument('--erase-only', action='store_true')
-    menu.add_argument('--explicit', action='store_true')
     confirm = sub.add_parser('confirm')
+    confirm.add_argument('--yes', action='store_true')
     confirm.add_argument('--label', required=True)
-    confirm.add_argument('--explicit', action='store_true')
     confirm.add_argument('--mode', choices=['preserve', 'inplace', 'backup', 'erase'], required=True)
     destination = sub.add_parser('destination')
     destination.add_argument('--disk', required=True)
     destination.add_argument('--used', type=int, required=True)
-    transport = sub.add_parser('transport')
+    sub.add_parser('transport')
     args = p.parse_args()
     if args.action == 'destination':
         candidates = backup_candidates(args.disk, args.used)
@@ -588,21 +573,23 @@ def main():
         options = {str(i): item['path'] for i, item in enumerate(candidates, 1)}
         options.update(p='path', r='', q='q')
         choice = choose('  p) Enter another directory  r) Refresh disks  q) Back',
-                        '1' if candidates else 'r', options, seconds=None)
+                        '1' if candidates else 'r', options)
         print(options[choice])
         return
     if args.action == 'confirm':
-        if args.explicit:
+        if args.yes:
+            print('Explicit non-interactive consent: proceeding with the selected plan.', file=sys.stderr)
             print('1')
             return
-        answer = choose(args.label + '\n  1) Proceed with this plan\n  2) Review all strategies\n  q) Cancel', '1', ['1', '2', 'q'], seconds=15 if args.mode in ('preserve', 'inplace') else None)
+        heading('⚠  Make a full offsite backup before proceeding. This software is experimental.')
+        answer = choose(args.label + '\n\n  1) Confirm backup precaution and start conversion\n  2) Review all methods\n  q) Cancel [default]', 'q', ['1', '2', 'q'])
         if answer == 'q':
             raise ValueError('Cancelled.')
         print(answer)
         return
     if args.action == 'transport':
         print(choose('Choose backup setup: 1) attached Volume  2) rclone config  3) existing remote  q) cancel',
-                     '1', ['1', '2', '3', 'q'], seconds=None))
+                     '1', ['1', '2', '3', 'q']))
         return
     backup = args.backup if args.backup not in ('', 'ask') else 'ask'
     default, preserve, inplace = recommended(args.size, args.used, args.preserve_capacity,
@@ -617,34 +604,33 @@ def main():
               'backup': 'External backup: verify an independent archive, then restore',
               'erase': 'ERASE: discard data; root gets limited settings restoration'}
     keys = {'1': 'preserve', '2': 'inplace', '3': 'backup', '4': 'erase'}
+    heading('Select a conversion method', clear=True)
+    print('Make a full offsite backup before proceeding. Conversion can destroy data.', file=sys.stderr)
     print(f'\nMigration options for {args.disk} ({args.used/1e9:.2f}/{args.size/1e9:.2f} GB used):', file=sys.stderr)
     for key, mode in keys.items():
         reason = '' if available[mode] else (' — rerun without --erase to assess preservation' if args.erase_only else ' — unavailable for data volumes' if mode == 'inplace' and args.kind != 'root'
                   else ' — unavailable: insufficient working space')
-        print(f'  {key}) {labels[mode]}{reason}' + (' [default]' if mode == default else ''), file=sys.stderr)
-    print('  q) Cancel\nExternal backup always requires manual destination selection and confirmation.', file=sys.stderr)
+        line = f'  {key}) {labels[mode]}{reason}' + (' ◀ RECOMMENDED' if mode == default and args.mode == 'auto' else ' ◀ SELECTED' if mode == default else '')
+        if mode == default and sys.stderr.isatty() and 'NO_COLOR' not in os.environ:
+            line = '\033[1;36m' + line + '\033[0m'
+        print(line + '\n', file=sys.stderr)
+    print('  q) Cancel\nExternal backup needs a destination you explicitly select. Review the plan before conversion.', file=sys.stderr)
     if not available[default]:
         raise ValueError(f'{default} does not fit this disk; use automatic selection or --backup.')
-    if args.explicit:
+    if args.yes and default == 'backup' and backup == 'ask':
+        raise ValueError('Non-interactive backup requires --backup=/mounted/directory or --backup=remote:path. No destination was selected.')
+    if args.yes or args.mode != 'auto':
         print(default)
         print(backup)
         return
     default_key = next(k for k, v in keys.items() if v == default)
-    choice = choose('Choose a strategy. Erase requires --erase or explicit confirmation.', default_key, [*keys, 'q'],
-                    seconds=15 if default in ('preserve', 'inplace') else None)
+    choice = choose('Choose a method. You will review its plan before confirming conversion.',
+                    default_key, [*keys, 'q'])
     if choice == 'q':
         raise ValueError('Cancelled.')
     mode = keys[choice]
     if not available[mode]:
         raise ValueError('That strategy is unavailable; cancelled without starting conversion.')
-    if mode == 'erase' and args.mode != 'erase':
-        try:
-            with open('/dev/tty', 'r') as tty:
-                print('Type y and press Enter to confirm data loss: ', end='', file=sys.stderr, flush=True)
-                if tty.readline().strip() != 'y':
-                    raise ValueError('Erase cancelled.')
-        except OSError:
-            raise ValueError('Erase needs explicit --erase or terminal confirmation.') from None
     print(mode)
     print(backup or 'ask')
 
@@ -656,7 +642,7 @@ if __name__ == '__main__':
         print(f'\nzfsify: {error or "Cancelled."}', file=sys.stderr)
         sys.exit(2)
 
-ZFS_ON_BOOT_7bb341c54bd2bcf40a581404dac06822b1d4973f69b50f8ca4f298aa183d25ff
+ZFS_ON_BOOT_180b7ba1d2fe105878859d744658f86718536e73083364b93131ecd44a685d80
 cat > "$work/network.py" <<'ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec'
 #!/usr/bin/env python3
 """Capture hardware NIC addresses and main-table routes for the RAM installer."""
@@ -767,7 +753,7 @@ if __name__ == '__main__':
         (out / ('cmdline-' + name)).write_text(value + '\n')
 
 ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_7dad8f083911d88745ba0fbc5848010198194c395895a424e1ac1cb263b2554b'
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_4dea2cffed49b3b8d76b9118906f450a63c6555b92f05ac0b8d4416fe769eeb1'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -805,15 +791,17 @@ exec > >(tee -a /run/zfs-on-boot.log) 2>&1
 udevadm trigger --action=add
 udevadm settle
 modprobe zfs
-# ZFS 2.1 inode caches can outgrow a 512 MiB rescue OS during large file trees.
+# Large file trees can fill the rescue OS with inode caches even at 1 GiB.
 # Flush and evict clean caches under pressure; never use the source disk as swap.
-if [[ $(awk '/MemTotal/ {print $2}' /proc/meminfo) -lt 750000 ]]; then
+RAM_KIB=$(awk '/MemTotal/ {print $2}' /proc/meminfo)
+if [[ $RAM_KIB -lt 2000000 ]]; then
     echo 16777216 > /sys/module/zfs/parameters/zfs_arc_min
     echo 33554432 > /sys/module/zfs/parameters/zfs_arc_max
     echo 16777216 > /sys/module/zfs/parameters/zfs_dirty_data_max
+    CACHE_RESERVE=$((RAM_KIB/5))
     (
-        while sleep 2; do
-            if [[ $(awk '/MemAvailable/ {print $2}' /proc/meminfo) -lt 80000 ]]; then
+        while sleep 1; do
+            if [[ $(awk '/MemAvailable/ {print $2}' /proc/meminfo) -lt $CACHE_RESERVE ]]; then
                 sync
                 echo 3 > /proc/sys/vm/drop_caches
             fi
@@ -857,7 +845,7 @@ lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 create_root_pool() {
 # Ubuntu's root-pool defaults, with boot-image compatibility and disk growth.
 # Keep ext4's distinct Unicode filenames distinct rather than normalizing them.
-phase 4 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target rpool "$ZPART"
+phase 3 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target rpool "$ZPART"
 zfs create -o canmount=off -o mountpoint=none rpool/ROOT
 zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
 zfs mount rpool/ROOT/ubuntu
@@ -880,11 +868,11 @@ if [[ $MODE = preserve ]]; then
     rm -rf /old/var/lib/zfs-on-boot /old/boot/zfs-on-boot
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
-    phase 4 "Check offline ext4 $ROOTDEV" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    phase 3 "Check offline ext4 $ROOTDEV" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     # Leave an extra MiB between the shrunken filesystem and its partition end.
     SHRINK_KIB=$(( (SPLIT-ROOT_START)*512/1024-1024 ))
-    phase 4 "Shrink ext4 on $ROOTDEV" resize2fs -p "$ROOTDEV" "${SHRINK_KIB}K"
-    phase 4 "Shorten $ROOTDEV and create temporary ZFS partition" sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$((SPLIT-1))" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SPLIT:$ROOT_END" -t 32:BF01 "$DISK"
+    phase 3 "Shrink ext4 on $ROOTDEV" resize2fs -p "$ROOTDEV" "${SHRINK_KIB}K"
+    phase 3 "Shorten $ROOTDEV and create temporary ZFS partition" sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$((SPLIT-1))" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SPLIT:$ROOT_END" -t 32:BF01 "$DISK"
     partprobe "$DISK"
     udevadm settle
     TEMP=$(part 32)
@@ -898,18 +886,18 @@ elif [[ $MODE = backup ]]; then
         BOOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-boot-uuid)")
         mount -o ro "$BOOTDEV" /old/boot
     fi
-    phase 4 'Archive the offline installation with rclone and verify a full download' bash /etc/zfs-on-boot/backup.sh save
+    phase 2 'Archive the offline installation with rclone and verify a full download' bash /etc/zfs-on-boot/backup.sh save
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
 fi
 if [[ $MODE = erase ]]; then
     mount -o ro "$ROOTDEV" /old
-    phase 4 'Save the selected priority files from the offline source' tar --sparse --numeric-owner --acls --xattrs --no-recursion --null -cpf /run/priority.tar -C /old -T /etc/zfs-on-boot/priority-files
+    phase 3 'Save the selected priority files from the offline source' tar --sparse --numeric-owner --acls --xattrs --no-recursion --null -cpf /run/priority.tar -C /old -T /etc/zfs-on-boot/priority-files
     [[ $(stat -c %s /run/priority.tar) -le $(( $(cat /etc/zfs-on-boot/priority-budget) + 1048576 )) ]]
     umount /old
 fi
 if [[ $MODE != preserve ]]; then
-    phase 4 "Erase $DISK and create ZFSBootMenu + ZFS partitions" bash -e -c 'disk=$1; type=$2; shift 2; sgdisk --zap-all "$disk"; sgdisk -n 1:1MiB:+512MiB -t "1:$type" "$@" -n 2:0:0 -t 2:BF01 "$disk"' _ "$DISK" "$BOOT_TYPE" "${BOOT_ATTR[@]}"
+    phase 3 "Erase $DISK and create ZFSBootMenu + ZFS partitions" bash -e -c 'disk=$1; type=$2; shift 2; sgdisk --zap-all "$disk"; sgdisk -n 1:1MiB:+512MiB -t "1:$type" "$@" -n 2:0:0 -t 2:BF01 "$disk"' _ "$DISK" "$BOOT_TYPE" "${BOOT_ATTR[@]}"
     partprobe "$DISK"
     udevadm settle
     ZPART=$(part 2)
@@ -925,21 +913,21 @@ create_root_pool
 # A separate source /boot is deliberately included; unsupported mounts were refused.
 EXCLUDES=(--exclude=/proc/*** --exclude=/sys/*** --exclude=/dev/*** --exclude=/run/*** --exclude=/target/*** --exclude=/old/*** --exclude=/tmp/*** --exclude=/init --exclude=/rescue-media/*** --exclude=/etc/zfs-on-boot/*** --exclude=/var/lib/zfs-on-boot/*** --exclude=/boot/zfs-on-boot/*** --exclude=/boot/efi/*** --exclude=/var/log/zfs-on-boot/*** --exclude=/swapfile --exclude=/swap.img)
 if [[ $MODE = backup ]]; then
-    phase 5 'Restore and checksum-check the rclone archive' bash /etc/zfs-on-boot/backup.sh restore
-    phase 6 'Remote archive checksum and extraction verified' true
+    phase 3 'Restore and checksum-check the rclone archive' bash /etc/zfs-on-boot/backup.sh restore
+    phase 3 'Remote archive checksum and extraction verified' true
 else
 rsync -aHAXS --numeric-ids --dry-run --stats "${EXCLUDES[@]}" "$SOURCE" /target/ > /run/copy-size.txt
 TOTAL=$(awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2); print $2}' /run/copy-size.txt)
 # Real copy errors (including ENOSPC) stop before original data is deleted.
-python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 5 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --source "$SOURCE" --target "$ZPART" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
-phase 6 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
+python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 3 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --source "$SOURCE" --target "$ZPART" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
+phase 3 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
 fi  # Existing preservation/backup/erase backend.
 if [[ $MODE != inplace || $INPLACE_PHASE != configured ]]; then
-phase 7 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
+phase 4 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
 fi
-phase 7 'Flush the configured ZFS root to disk' zpool sync rpool
+phase 4 'Flush the configured ZFS root to disk' zpool sync rpool
 [[ $MODE != inplace ]] || inplace_checkpoint configured
 if [[ $MODE = preserve ]]; then
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
@@ -949,7 +937,7 @@ if [[ $MODE = preserve ]]; then
     mapfile -t PARTS < <(while read -r name; do cat "/sys/class/block/$name/partition" 2>/dev/null || true; done < <(lsblk -nr -o NAME "$DISK") | awk '$1!=32')
     ARGS=()
     for number in "${PARTS[@]}"; do ARGS+=(-d "$number"); done
-    phase 8 "Replace original ext4 with front mirror member on $DISK" sgdisk "${ARGS[@]}" -n 1:2048:1050623 -t "1:$BOOT_TYPE" "${BOOT_ATTR[@]}" -n "2:1050624:$((SPLIT-1))" -t 2:BF01 "$DISK"
+    phase 4 "Replace original ext4 with front mirror member on $DISK" sgdisk "${ARGS[@]}" -n 1:2048:1050623 -t "1:$BOOT_TYPE" "${BOOT_ATTR[@]}" -n "2:1050624:$((SPLIT-1))" -t 2:BF01 "$DISK"
     # Remove obsolete kernel partition mappings before installing the new ones.
     for number in "${PARTS[@]}"; do partx -d --nr "$number" "$DISK"; done
     partx -a --nr 1:2 "$DISK"
@@ -963,24 +951,24 @@ mount --rbind /dev /target/dev
 mount --make-rslave /target/dev
 mount -t proc proc /target/proc
 mount -t sysfs sysfs /target/sys
-phase 8 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
+phase 4 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
 umount /target/proc
 umount -R /target/sys
 umount -R /target/dev
 if [[ $MODE = preserve ]]; then
-    python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 8 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --source "$TEMP" --target "$FRONT" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
+    python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 4 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --source "$TEMP" --target "$FRONT" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
     [[ $(zpool list -H -o health rpool) = ONLINE ]]
     zpool status -p rpool
     zpool status rpool | grep -q 'errors: No known data errors'
     # A successful attach -w must leave a readable, fully resilvered front copy.
     [[ $(zpool status -P rpool | awk -v d="$FRONT" '$1==d {print $2}') = ONLINE ]]
-    phase 8 "Detach temporary $TEMP after successful resilver" zpool detach rpool "$TEMP"
+    phase 4 "Detach temporary $TEMP after successful resilver" zpool detach rpool "$TEMP"
     zpool labelclear -f "$TEMP"
-    phase 9 "Remove temporary partition $TEMP" sgdisk -d 32 "$DISK"
+    phase 4 "Remove temporary partition $TEMP" sgdisk -d 32 "$DISK"
     partx -d --nr 32 "$DISK"
     ZPART=$FRONT
 elif [[ $MODE = inplace ]]; then
-    phase 8 'Native remap complete: no mirror relocation required' true
+    phase 4 'Native remap complete: no mirror relocation required' true
     # The new loader and root are durable before releasing the rescue area.
     cp -a "$STATE/." /target/var/log/zfs-on-boot/inplace/
     sync
@@ -988,10 +976,10 @@ elif [[ $MODE = inplace ]]; then
     sgdisk -d 32 "$DISK"
     partx -d --nr 32 "$DISK"
 else
-    phase 8 'Fresh install: no relocation required' true
+    phase 4 'Fresh install: no relocation required' true
 fi
 DEVICES=$DISK,$ZPART
-phase 9 "Grow final ZFS partition $ZPART to fill $DISK" bash -e -c '
+phase 4 "Grow final ZFS partition $ZPART to fill $DISK" bash -e -c '
 set +e
 output=$(growpart "$1" 2 2>&1); rc=$?
 set -e
@@ -1005,21 +993,20 @@ touch /target/etc/machine-id
 mkdir -p /target/var/lib/dbus
 ln -sf /etc/machine-id /target/var/lib/dbus/machine-id
 printf 'Installed by zfsify (%s) at %s\n' "$MODE" "$(date -u +%FT%TZ)" > /target/etc/zfs-on-boot-installed
-phase 10 'Ready to reboot' true
+phase 5 'Ready: snapshots, recovery and automatic disk growth' bash /etc/zfs-on-boot/recovery-setup.sh
 mkdir -p /target/var/log/zfs-on-boot
 cp /run/zfs-on-boot.log /target/var/log/zfs-on-boot/install.log
 cp /var/log/zfs-on-boot/*.log /target/var/log/zfs-on-boot/
 cp /run/zfs-on-boot-progress.json /target/var/log/zfs-on-boot/last-progress.json
 sync
-zfs snapshot rpool/ROOT/ubuntu@zfsify-installed
 [[ -z ${CACHE_GUARD:-} ]] || kill "$CACHE_GUARD"
 zpool export rpool
 echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_7dad8f083911d88745ba0fbc5848010198194c395895a424e1ac1cb263b2554b
-cat > "$work/target.sh" <<'ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168'
+ZFS_ON_BOOT_4dea2cffed49b3b8d76b9118906f450a63c6555b92f05ac0b8d4416fe769eeb1
+cat > "$work/target.sh" <<'ZFS_ON_BOOT_647c033e829bb5def90a0c863f039fd77d97d654067637009f9dfd2c9983cf95'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
 set -Eeuo pipefail
@@ -1071,7 +1058,6 @@ mkdir -p /target/usr/local/{lib/zfs-on-boot,sbin}
 cp /usr/local/lib/zfs-on-boot/progress.py /target/usr/local/lib/zfs-on-boot/
 cp /usr/local/sbin/zfs-on-boot-{grow,status} /target/usr/local/sbin/
 cp /etc/systemd/system/zfs-on-boot-grow.service /target/etc/systemd/system/
-chroot /target systemctl enable zfs-on-boot-grow.service
 zpool set cachefile=/target/etc/zfs/zpool.cache rpool
 # Existing kernels must have ZFS modules too; install missing module packages in
 # staging, never download anything after the source disk is removed.
@@ -1098,6 +1084,15 @@ for kernel in /target/boot/vmlinuz-*; do
         chroot /target update-initramfs -c -k "$version"
     fi
 done
+umount /target/run /target/proc
+# UEFI package hooks may mount efivarfs beneath the chroot's sysfs.
+umount -R /target/sys
+umount -R /target/dev
+
+ZFS_ON_BOOT_647c033e829bb5def90a0c863f039fd77d97d654067637009f9dfd2c9983cf95
+cat > "$work/recovery-setup.sh" <<'ZFS_ON_BOOT_e2bdd204344cf9783056867eea633d2799df85bd98819f45b4a89fd80e1aebc2'
+#!/bin/bash
+set -Eeuo pipefail
 cp /usr/local/sbin/zfsify-snapshot /target/usr/local/sbin/
 mkdir -p /target/etc/apt/apt.conf.d
 printf 'DPkg::Pre-Invoke { "/usr/local/sbin/zfsify-snapshot apt"; };\n' > /target/etc/apt/apt.conf.d/80-zfsify-snapshot
@@ -1119,13 +1114,13 @@ Persistent=true
 WantedBy=timers.target
 UNIT
 chroot /target systemctl enable zfsify-snapshot.timer
-umount /target/run /target/proc
-# UEFI package hooks may mount efivarfs beneath the chroot's sysfs.
-umount -R /target/sys
-umount -R /target/dev
+chroot /target systemctl enable zfs-on-boot-grow.service
+zfs snapshot rpool/ROOT/ubuntu@zfsify-installed
+zpool get autoexpand rpool
+zfs list -t snapshot rpool/ROOT/ubuntu@zfsify-installed
 
-ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168
-cat > "$work/progress.py" <<'ZFS_ON_BOOT_63a657d181172b120be85572f021e0832b4d0c67dcbdba78b70107d6524ca8aa'
+ZFS_ON_BOOT_e2bdd204344cf9783056867eea633d2799df85bd98819f45b4a89fd80e1aebc2
+cat > "$work/progress.py" <<'ZFS_ON_BOOT_7cedae557d27358f2b46e5a97f417513ea8f3b3bc0a9afb47754702ac63ead45'
 #!/usr/bin/python3
 """Dependency-free migration dashboard, live Linux telemetry and durable plain logs."""
 import argparse
@@ -1160,6 +1155,31 @@ def duration(seconds):
     return f'{seconds//3600}h {seconds%3600//60:02d}m' if seconds >= 3600 else f'{seconds//60:02d}:{seconds%60:02d}'
 
 
+PHASES = ('Scan disk + choose method', 'Prepare disk', 'Convert ext4 to ZFS',
+          'Finish disk + boot setup', 'Snapshots + recovery + growth')
+
+
+def phase_header(phase, width=88, color=False, complete=False):
+    """Wrap whole phase segments, keeping every stage visible on narrow terminals."""
+    lines = ['  zfsify  ⚡  Ubuntu → ZFS', '']
+    row = ''
+    for number, title in enumerate(PHASES, 1):
+        mark = '✓ ' if number < phase or complete else ''
+        segment = f'{mark}{number}. {title}'
+        if number == phase:
+            segment = '[' + segment + ']'
+        if row and len(row) + len(segment) + 3 > width - 2:
+            lines.append('  ' + row)
+            row = ''
+        row += (' | ' if row else '') + segment
+    lines.append('  ' + row)
+    lines = [line[:width] for line in lines]
+    if color:
+        lines = [re.sub(r'(\[[^]]+\])', r'\033[1;36m\1\033[0m', line) for line in lines]
+        lines[0] = '\033[1;36m' + lines[0] + '\033[0m'
+    return lines
+
+
 def render(s, width=88, frame=0, color=False, unicode=True):
     """Each tile represents a share of logical bytes, not a physical disk extent."""
     width = max(1, width)
@@ -1173,19 +1193,15 @@ def render(s, width=88, frame=0, color=False, unicode=True):
     spinner = pulses[frame % len(pulses)]
     badge = spinner if running else tick if status == 'complete' else '!'
     phase = s['phase']
-    headline = 'OPERATION DONE' if status == 'complete' and not s['label'].startswith('Ready') else status.upper()
-    # Several commands can share a phase. Only the next phase (or Ready)
-    # establishes completion; a command finishing must not reset overall progress.
-    finished = 10 if phase == 10 and s['label'].startswith('Ready') and status == 'complete' else phase - 1
-    rail = ' '.join(tick if i <= finished else
-                    ('●' if unicode else '*') if i == phase else dot for i in range(1, 11))
-    lines = [f'  zfsify  {dot}  {badge} {headline}  {dot}  PHASE {phase:02d}/10',
-             f'  Overall  {rail}  {finished}/10 phases complete', f"  {s['label']}", '']
+    ready = phase == 5 and s['label'].startswith('Ready') and status == 'complete'
+    lines = phase_header(phase, width, color=False, complete=ready)
+    lines += ['', f'  {badge} {status.upper()}  ·  STEP: {s["label"]}', '']
     if s.get('source') or s.get('target'):
         lines.append(f"  {s.get('source') or 'source'}  {arrow}  {s.get('target') or 'destination'}")
     else:
         lines.append(f"  Devices  {s['devices']}")
     cells = max(1, min(28, (width - 12) // 2))
+    bar_row = len(lines)
     if total:
         filled = int(fraction * cells)
         blocks = solid * filled + empty * (cells - filled)
@@ -1200,26 +1216,31 @@ def render(s, width=88, frame=0, color=False, unicode=True):
     speed = max(0, s.get('speed', 0))
     eta = duration((total - done) / speed) if total > done and speed > 0 and running else '--'
     rate = f'{amount(speed)}/s' if total else '--'
-    lines.append(f"  {rate}{' avg' if not running and total else ''}  {dot}  elapsed {duration(s['elapsed'])}  {dot}  ETA {eta}")
+    lines.append(f"  {rate}{' avg' if not running and total else ''}  {dot}  elapsed {duration(s.get('elapsed', 0))}  {dot}  ETA {eta}")
     if s.get('files_total'):
         lines.append(f"  Files  {s.get('files_done', 0):,} / {s['files_total']:,}")
     for device, values in s.get('io', {}).items():
         lines.append(f'  {device}  R {values[0]:.1f} MB/s  W {values[1]:.1f} MB/s  {values[2]:.0f} IOPS')
     if not s.get('io'):
         lines.append('  Device I/O  waiting for counters' if running else '  Device I/O  unavailable')
+    if s.get('messages'):
+        lines += ['', '  Recent output  ·  full log: /var/log/zfs-on-boot/progress.log']
+        lines += ['  ' + line for line in s['messages'][-5:]]
     lines = [clean(line)[:width] for line in lines]
     if color:
         accent = '31' if status == 'failed' else '32' if status == 'complete' else '36'
         lines[0] = f'\033[1;{accent}m{lines[0]}\033[0m'
-        lines[1] = f'\033[2m{lines[1]}\033[0m'
+        for row, line in enumerate(lines):
+            if '[' in line and ']' in line:
+                lines[row] = re.sub(r'(\[[^]]+\])', lambda m: '\033[1;36m' + m[0] + '\033[0m', line)
         tiles = re.compile('(' + '|'.join(re.escape(c)+'+' for c in (solid, empty, active)) + ')')
-        lines[5] = tiles.sub(lambda match: f'\033[{"90" if match[0][0] == empty else "1;"+accent}m'
-                             + match[0] + '\033[0m', lines[5])
+        lines[bar_row] = tiles.sub(lambda match: f'\033[{"90" if match[0][0] == empty else "1;"+accent}m'
+                             + match[0] + '\033[0m', lines[bar_row])
     return '\n'.join(lines)
 
 
 class Display:
-    """Redraw only our own rows; never erase the user's terminal scrollback."""
+    """A fixed dashboard in the terminal viewport; raw output stays in the log."""
     def __init__(self, animate=True):
         self.stream = sys.stdout
         self.owned = False
@@ -1237,14 +1258,9 @@ class Display:
         self.width = None
         self.height = None
         self.previous = []
+        self.messages = []
         if self.live:
             self.stream.write('\033[?25l')
-
-    def clear(self):
-        # Retain the completed dashboard in scrollback when printing command
-        # output. Erasing it first exposes blank frames to terminals/recorders.
-        self.rows = 0
-        self.previous = []
 
     def draw(self, state):
         if not self.live:
@@ -1252,19 +1268,20 @@ class Display:
             return
         size = os.get_terminal_size(self.stream.fileno())
         width = max(1, (size.columns or 80) - 1)
-        # After resize, old rows may have reflowed. Start below them instead of
-        # moving the cursor into unrelated terminal history.
+        # Repaint the viewport after resize; unchanged rows otherwise stay intact.
         if self.width != width or self.height != (size.lines or 24):
             self.rows = 0
             self.width = width
             self.height = size.lines or 24
             self.previous = []
+        state = {**state, 'messages': state.get('messages', self.messages)}
         lines = render(state, width, self.frame, self.color, self.unicode).splitlines()
-        lines = lines[:max(1, (size.lines or 24) - 1)]
+        height = max(1, (size.lines or 24) - 1)
+        lines = (lines + [''] * height)[:height]
         # Replace each row's text before erasing its old suffix. One write
         # keeps redraws together; no erase-screen/erase-region blank transition.
         rows = max(self.rows, len(lines))
-        update = f'\033[{self.rows}A' if self.rows else ''
+        update = '\033[H'
         visible = lines + [''] * (rows - len(lines))
         for row, line in enumerate(visible):
             if row < len(self.previous) and self.previous[row] == line:
@@ -1278,8 +1295,9 @@ class Display:
         self.frame += 1
 
     def message(self, text):
-        self.clear()
-        print(clean(text), file=self.stream, flush=True)
+        self.messages = (self.messages + [clean(text)])[-5:]
+        if not self.live:
+            print(clean(text), file=self.stream, flush=True)
 
     def close(self):
         if self.live:
@@ -1327,12 +1345,22 @@ class Counters:
         return True
 
 
+def process_start(pid):
+    """Linux process identity; PID alone can be reused after a crashed runner."""
+    try:
+        return Path(f'/proc/{pid}/stat').read_text().rpartition(') ')[2].split()[19]
+    except (OSError, IndexError):
+        return None
+
+
 def watch(args, display):
     last_version = None
     while True:
         source = STATE if STATE.exists() else Path('/var/log/zfs-on-boot/last-progress.json')
         try:
             state = json.loads(source.read_text())
+            if state.get('runner_start') and state['status'] == 'running' and process_start(state['runner_pid']) != state['runner_start']:
+                state.update(status='failed', messages=['Progress process stopped unexpectedly. Inspect the installer log before recovery.'])
             ready = state['label'].startswith('Ready') and state['status'] == 'complete'
             version = json.dumps(state, sort_keys=True)
             if display.live or version != last_version or args.once:
@@ -1341,13 +1369,15 @@ def watch(args, display):
             if ready:
                 next_steps = Path('/var/log/zfs-on-boot/backup-next-steps.txt')
                 if next_steps.exists():
+                    # Completion instructions include the backup location; do
+                    # not truncate them to the live dashboard's recent lines.
                     for line in next_steps.read_text().splitlines():
-                        display.message(line)
+                        print(clean(line), file=display.stream, flush=True)
             if args.once or state['status'] == 'failed' or ready:
-                return 0
+                return 1 if state['status'] == 'failed' else 0
         except (OSError, ValueError):
             if last_version != 'waiting':
-                display.message('Waiting for installer status...')
+                display.draw(dict(phase=2, label='Waiting for the RAM installer to publish status', devices='detecting', elapsed=0))
                 last_version = 'waiting'
             if args.once:
                 return 1
@@ -1363,7 +1393,7 @@ def run(args, display):
     names = list(dict.fromkeys(args.devices.split(',')))
     prev = disks(names)
     state = dict(phase=args.phase, label=args.label, devices=','.join(names), total=args.total,
-                 source=args.source, target=args.target, done=0, speed=0, elapsed=0, status='running', io={})
+                 source=args.source, target=args.target, runner_pid=os.getpid(), runner_start=process_start(os.getpid()), done=0, speed=0, elapsed=0, status='running', io={})
     counters = Counters(state)
     last_done = last_print = last_frame = 0
     buffer = ''
@@ -1377,6 +1407,7 @@ def run(args, display):
                        for d, v in current.items() if d in prev and all(new >= old for new, old in zip(v, prev[d]))}
         state['speed'] = max(0, state['done']-counters.initial)/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
         state['elapsed'] = now-start
+        state['messages'] = display.messages
         prev, tick, last_done = current, now, state['done']
         tmp = STATE.with_suffix('.tmp')
         tmp.write_text(json.dumps(state))
@@ -1461,10 +1492,13 @@ def run(args, display):
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     sub = p.add_subparsers(dest='action', required=True)
+    h = sub.add_parser('header')
+    h.add_argument('--phase', type=int, choices=range(1, 6), required=True)
+    h.add_argument('--label', required=True)
     f = sub.add_parser('watch')
     f.add_argument('--once', action='store_true')
     r = sub.add_parser('run')
-    r.add_argument('--phase', type=int, choices=range(1, 11), required=True)
+    r.add_argument('--phase', type=int, choices=range(1, 6), required=True)
     r.add_argument('--label', required=True)
     r.add_argument('--devices', required=True)
     r.add_argument('--source', default='')
@@ -1474,6 +1508,11 @@ def main():
     r.add_argument('--pool', default='rpool')
     r.add_argument('command', nargs=argparse.REMAINDER)
     args = p.parse_args()
+    if args.action == 'header':
+        width = os.get_terminal_size().columns - 1 if sys.stdout.isatty() else 100
+        print('\n'.join(phase_header(args.phase, width, color=sys.stdout.isatty() and 'NO_COLOR' not in os.environ)))
+        print('\n  ' + args.label + '\n', flush=True)
+        return 0
     def terminate(signum, _frame):
         raise SystemExit(128 + signum)
     previous = signal.signal(signal.SIGTERM, terminate)
@@ -1490,7 +1529,7 @@ def main():
 if __name__ == '__main__':
     sys.exit(main())
 
-ZFS_ON_BOOT_63a657d181172b120be85572f021e0832b4d0c67dcbdba78b70107d6524ca8aa
+ZFS_ON_BOOT_7cedae557d27358f2b46e5a97f417513ea8f3b3bc0a9afb47754702ac63ead45
 cat > "$work/plan.py" <<'ZFS_ON_BOOT_fd829a283a69e4ef6b023f864bf2c9e95658d718af26f243cce82bf95c021242'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""
@@ -1959,12 +1998,13 @@ for ((i=0; i<${#OWNED[@]}-KEEP; i++)); do
 done
 
 ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717
-cat > "$work/volume.sh" <<'ZFS_ON_BOOT_5eaf49c4beff6959a8b4e183b8d51d5e663cd38065f1f93498f5cfdd31a0ffd9'
+cat > "$work/volume.sh" <<'ZFS_ON_BOOT_ac4fdd9c7b45b334abec4ee613248f364e0b4dfefccd9aeed04765153947b046'
 #!/bin/bash
 # Non-root ext4 conversion. The running OS stays on its own disk.
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
-SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask}
+SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask} ASSUME_YES=${5:-0}
+python3 "$SOURCE/progress.py" header --phase 1 --label "Scan the selected data disk and its mount settings"
 [[ ! -t 1 ]] || export ZFS_PROGRESS_TTY=1
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'
@@ -2062,10 +2102,10 @@ TAIL_CAPACITY=$(( (LAST-SPLIT+1)*512 ))
 (( PRESERVE_CAPACITY <= TAIL_CAPACITY )) || PRESERVE_CAPACITY=$TAIL_CAPACITY
 ERASE_ONLY=()
 [[ $MODE != erase ]] || ERASE_ONLY=(--erase-only)
-EXPLICIT=()
-[[ $MODE = auto ]] || EXPLICIT=(--explicit)
+CONSENT=()
+[[ $ASSUME_YES != 1 ]] || CONSENT=(--yes)
 while :; do
-python3 "$SOURCE/strategy.py" menu "${EXPLICIT[@]}" --kind volume --disk "$DISK" --size "$FS_BYTES" --used "$USED_BYTES" \
+python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind volume --disk "$DISK" --size "$FS_BYTES" --used "$USED_BYTES" \
     --preserve-capacity "$PRESERVE_CAPACITY" --mode "$MODE" --backup "$BACKUP" "${ERASE_ONLY[@]}" > "$WORK/selection"
 mapfile -t SELECTION < "$WORK/selection"
 MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
@@ -2078,8 +2118,9 @@ erase) echo '[ ext4: all data discarded ] -> [ empty full-disk ZFS ]';;
 esac
 [[ $MODE != erase ]] || echo 'ERASE: no files from this data volume will be retained.'
 echo "Work logs: $WORK; stop applications using $MOUNT before proceeding."
-REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${EXPLICIT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Stop applications using $MOUNT before proceeding.")
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Stop applications using $MOUNT before proceeding.")
 [[ $REVIEW != 1 ]] || break
+MODE=auto
 done
 exec > >(tee -a "$WORK/conversion.log") 2>&1
 phase() { local n=$1 label=$2; shift 2; python3 "$SOURCE/progress.py" run --phase "$n" --label "$label" --devices "$DISK,$DEV" -- "$@"; }
@@ -2098,28 +2139,28 @@ LOOP=
 trap 'echo "Conversion stopped. Do not wipe or detach devices. Inspect $WORK and zpool status; temporary device: ${LOOP:-none}."' ERR
 if [[ $MODE = backup ]]; then
     mount -o ro "$DEV" "$WORK/old"
-    phase 4 "Back up and read-back verify $DEV with rclone" bash "$SOURCE/backup.sh" save
+    phase 2 "Back up and read-back verify $DEV with rclone" bash "$SOURCE/backup.sh" save
     umount "$WORK/old"
 fi
 if [[ $MODE = preserve ]]; then
-    phase 4 "Check $DEV offline" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$DEV"
-    phase 4 "Shrink $DEV" resize2fs "$DEV" "$(((SPLIT-START)*512/1024-1024))K"
+    phase 3 "Check $DEV offline" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$DEV"
+    phase 3 "Shrink $DEV" resize2fs "$DEV" "$(((SPLIT-START)*512/1024-1024))K"
     LOOP=$(losetup --find --show --offset "$((SPLIT*512))" --sizelimit "$(((LAST-SPLIT+1)*512))" "$DISK")
-    phase 4 "Create temporary ZFS on $LOOP" zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$LOOP"
+    phase 3 "Create temporary ZFS on $LOOP" zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$LOOP"
     [[ $(zpool status -P "$POOL" | awk '$1 ~ /^\/dev\// {print $1}') = "$LOOP" ]] || die 'Unexpected temporary vdev layout; original filesystem has not been deleted.'
     zfs create -o mountpoint="$WORK/new" "$POOL/data"
     mount -o ro "$DEV" "$WORK/old"
     TOTAL=$(rsync -aHAXS --numeric-ids --dry-run --stats "$WORK/old/" "$WORK/new/" | awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2);print $2}')
-    python3 "$SOURCE/progress.py" run --phase 5 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --source "$DEV" --target "$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
-    phase 6 'Verify every copied file and its metadata' bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$1/" "$2/" > "$3"; cat "$3"; test ! -s "$3"' _ "$WORK/old" "$WORK/new" "$WORK/differences"
+    python3 "$SOURCE/progress.py" run --phase 3 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --source "$DEV" --target "$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
+    phase 3 'Verify every copied file and its metadata' bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$1/" "$2/" > "$3"; cat "$3"; test ! -s "$3"' _ "$WORK/old" "$WORK/new" "$WORK/differences"
     umount "$WORK/old"
     # The verified tail ends before the backup GPT; writing the new GPT cannot touch it.
-    phase 8 "Create the final GPT on $DISK" sgdisk --clear -n "1:2048:$((SPLIT-1))" -t 1:BF01 "$DISK"
+    phase 4 "Create the final GPT on $DISK" sgdisk --clear -n "1:2048:$((SPLIT-1))" -t 1:BF01 "$DISK"
     partprobe "$DISK"
     udevadm settle
     FRONT=$(part 1)
     [[ -b $FRONT && $(blockdev --getsize64 "$FRONT") -ge $(blockdev --getsize64 "$LOOP") ]]
-    python3 "$SOURCE/progress.py" run --phase 8 --label "Relocate verified data via mirror" \
+    python3 "$SOURCE/progress.py" run --phase 4 --label "Relocate verified data via mirror" \
         --devices "$DISK,$LOOP,$FRONT" --source "$LOOP" --target "$FRONT" --resilver --pool "$POOL" \
         -- zpool attach -f -w "$POOL" "$LOOP" "$FRONT"
     [[ $(zpool list -H -o health "$POOL") = ONLINE ]]
@@ -2127,19 +2168,30 @@ if [[ $MODE = preserve ]]; then
     zpool detach "$POOL" "$LOOP"
     zpool labelclear -f "$LOOP"
     losetup -d "$LOOP"; LOOP=
-    phase 9 'Expand the final data partition' growpart "$DISK" 1
+    phase 4 'Expand the final data partition' growpart "$DISK" 1
     partx -u --nr 1 "$DISK"
     zpool online -e "$POOL" "$FRONT"
 else
-    phase 4 "Erase data disk $DISK" sgdisk --clear -n 1:2048:0 -t 1:BF01 "$DISK"
+    phase 3 "Erase data disk $DISK" sgdisk --clear -n 1:2048:0 -t 1:BF01 "$DISK"
     partprobe "$DISK"; udevadm settle
     FRONT=$(part 1)
     zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$FRONT"
     zfs create -o mountpoint="$WORK/new" "$POOL/data"
 fi
 if [[ $MODE = backup ]]; then
-    phase 5 'Restore verified data-volume archive' bash "$SOURCE/backup.sh" restore
+    phase 3 'Restore verified data-volume archive' bash "$SOURCE/backup.sh" restore
 fi
+phase 4 'Update fstab and mount the new ZFS dataset' bash "$SOURCE/volume-finish.sh" "$DEV" "$ORIGINAL_UUID" "$DEFAULT_MOUNT" "$POOL" "$WORK" "$SOURCE"
+phase 5 "Enable automatic disk growth for $POOL" systemctl enable "zfsify-volume-grow@$POOL.service"
+phase 5 'Ready: data volume converted' zpool status "$POOL"
+echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
+[[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"
+
+ZFS_ON_BOOT_ac4fdd9c7b45b334abec4ee613248f364e0b4dfefccd9aeed04765153947b046
+cat > "$work/volume-finish.sh" <<'ZFS_ON_BOOT_5cf92df028744c7ddfffe4bde184a052ac9ca82fa4fc7ecb99c3d95deb7cb2cc'
+#!/bin/bash
+set -Eeuo pipefail
+DEV=$1 ORIGINAL_UUID=$2 DEFAULT_MOUNT=$3 POOL=$4 WORK=$5 SOURCE=$6
 cp /etc/fstab "$WORK/fstab.before"
 python3 - "$DEV" "$ORIGINAL_UUID" "$DEFAULT_MOUNT" <<'PY'
 from pathlib import Path
@@ -2170,12 +2222,8 @@ ExecStart=/usr/local/sbin/zfs-on-boot-grow %i
 WantedBy=multi-user.target
 SERVICE
 systemctl daemon-reload
-systemctl enable "zfsify-volume-grow@$POOL.service"
-phase 10 'Ready: data volume converted' zpool status "$POOL"
-echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
-[[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"
 
-ZFS_ON_BOOT_5eaf49c4beff6959a8b4e183b8d51d5e663cd38065f1f93498f5cfdd31a0ffd9
+ZFS_ON_BOOT_5cf92df028744c7ddfffe4bde184a052ac9ca82fa4fc7ecb99c3d95deb7cb2cc
 cat > "$work/backup.sh" <<'ZFS_ON_BOOT_e2bfc8707b78361fcdf3849cf43bc8fc2f04d09e6c01b597150899d2b353543a'
 #!/bin/bash
 # Whole-filesystem archive transport. rclone owns all remote configuration.
@@ -2459,7 +2507,7 @@ print('First selected files:\n'+'\n'.join(preview))
 print('Complete KEEP/OMIT preview:', output.with_suffix('.manifest'))
 
 ZFS_ON_BOOT_30f084bb342a56cb18894353d441529c4b70c40d8929df99548c01212793b161
-cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_4e14b8ec99133d4bf5a117bcc3cce3db31f4fea698b13f00f60e937dd7813320'
+cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_7c95985970d54d6ded8f04eeefcfa32f02999208641be71e12fb76103683f310'
 #!/bin/bash
 # Sourced by the RAM installer. Persistent state lives outside the source.
 . /etc/zfs-on-boot/plan.env
@@ -2518,8 +2566,8 @@ if [[ -z $SCRATCH ]]; then
     cp /old/var/lib/zfs-on-boot/stage.log /var/log/zfs-on-boot/stage.log
     rm -rf /old/var/lib/zfs-on-boot
     inplace_unmount_source
-    phase 4 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
-    phase 4 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
+    phase 2 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    phase 2 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
     sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$COPY_END" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SCRATCH_START:$ROOT_END" -t 32:8300 "$DISK"
     partprobe "$DISK"
     udevadm settle
@@ -2578,7 +2626,7 @@ if [[ $INPLACE_PHASE = prepare ]]; then
     inplace_mount_source
     rm -rf /old/var/lib/zfs-on-boot /old/boot/zfs-on-boot
     rm -f "$IMAGE" "$MANIFEST" "$MANIFEST-journal"
-    phase 4 'Record original file hashes and metadata in the journal' python3 "$MOVER" capture "$MANIFEST" /old
+    phase 3 'Record original file hashes and metadata in the journal' python3 "$MOVER" capture "$MANIFEST" /old
     truncate -s "$IMAGE_BYTES" "$IMAGE"
     inplace_map_image
     create_root_pool off
@@ -2588,7 +2636,7 @@ if [[ $INPLACE_PHASE = prepare ]]; then
     sync -f /old
     inplace_checkpoint copy
 elif [[ $INPLACE_PHASE = copy ]]; then
-    phase 4 'Recover the outer ext4 journal' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    phase 3 'Recover the outer ext4 journal' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     inplace_mount_source
     inplace_map_image
     zpool import -f -N -R /target -d "$ZPART" rpool
@@ -2596,8 +2644,8 @@ elif [[ $INPLACE_PHASE = copy ]]; then
 fi
 if [[ $INPLACE_PHASE = copy ]]; then
     DEVICES=$DISK,$ROOTDEV,$SCRATCH,$ZPART
-    phase 5 'Copy, checksum and release original data in 64 MiB batches' python3 "$MOVER" move "$MANIFEST" /old /target
-    phase 6 'Verify the complete manifest against the ZFS image' python3 "$MOVER" verify "$MANIFEST" /target
+    phase 3 'Copy, checksum and release original data in 64 MiB batches' python3 "$MOVER" move "$MANIFEST" /old /target
+    phase 3 'Verify the complete manifest against the ZFS image' python3 "$MOVER" verify "$MANIFEST" /target
     inplace_unmap_image
     inplace_checkpoint copied
 fi
@@ -2607,17 +2655,17 @@ if [[ $INPLACE_PHASE = remap && ! -d $JOB ]]; then
     inplace_checkpoint copied
 fi
 if [[ $INPLACE_PHASE = copied ]]; then
-    phase 6 'Check outer ext4 before physical block relocation' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    phase 3 'Check outer ext4 before physical block relocation' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     mount -o ro "$ROOTDEV" /old
     inplace_checkpoint remap
     # Exact secondary size disables automatic primary mmap allocation. Keep
     # scratch on partition 32 and bound RAM use even on 512 MiB machines.
-    phase 6 "Remap the image onto $ROOTDEV" fsremap --questions=no --mem-buffer=16M --exact-secondary-storage=32M --temp-dir="$STATE" -- "$ROOTDEV" "$IMAGE"
+    phase 3 "Remap the image onto $ROOTDEV" fsremap --questions=no --mem-buffer=16M --exact-secondary-storage=32M --temp-dir="$STATE" -- "$ROOTDEV" "$IMAGE"
     inplace_checkpoint native
 elif [[ $INPLACE_PHASE = remap ]]; then
     # Never mount ext4 or create a new job once physical relocation started.
     if [[ -f $JOB/storage.bin ]]; then
-        phase 6 'Resume physical block relocation from its journal' fsremap --questions=no --mem-buffer=16M --temp-dir="$STATE" --resume-job=1 -- "$ROOTDEV"
+        phase 3 'Resume physical block relocation from its journal' fsremap --questions=no --mem-buffer=16M --temp-dir="$STATE" --resume-job=1 -- "$ROOTDEV"
     else
         # fsremap removes storage.bin on success, before our next checkpoint.
         # A completed relocation is also recorded as zero outstanding blocks.
@@ -2630,7 +2678,7 @@ if [[ $INPLACE_PHASE = native ]]; then
     dmsetup create zfsify-native --table "0 $((IMAGE_BYTES/512-IMAGE_OFFSET)) linear $ROOTDEV $IMAGE_OFFSET"
     zpool import -f -N -R /target -d /dev/mapper/zfsify-native rpool
     zfs mount rpool/ROOT/ubuntu
-    phase 6 'Verify all files after physical remapping' python3 "$MOVER" verify "$MANIFEST" /target
+    phase 3 'Verify all files after physical remapping' python3 "$MOVER" verify "$MANIFEST" /target
     zpool set autotrim=on rpool
     zpool export rpool
     dmsetup remove zfsify-native
@@ -2653,7 +2701,7 @@ zfs mount rpool/ROOT/ubuntu
 mkdir -p -m 700 /target/var/log/zfs-on-boot/inplace
 DEVICES=$DISK,$ZPART,$SCRATCH
 
-ZFS_ON_BOOT_4e14b8ec99133d4bf5a117bcc3cce3db31f4fea698b13f00f60e937dd7813320
+ZFS_ON_BOOT_7c95985970d54d6ded8f04eeefcfa32f02999208641be71e12fb76103683f310
 cat > "$work/inplace-move.py" <<'ZFS_ON_BOOT_e48c067a76dd746fc2782b206265a3db15b24d6c8f6a4f2906cba152ccb2aca8'
 #!/usr/bin/python3
 """Experimental offline mover: verify and journal each batch before freeing ext4.

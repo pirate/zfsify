@@ -26,6 +26,6 @@ The GIF and edited cast accelerate the genuine 15-second countdown and select ac
 
 SSH reconnected successfully to the compressed RAM rescue with `UsePAM yes`. After installation, `/` and Ubuntu `/boot` mounted from `rpool/ROOT/ubuntu`, the pool was ONLINE, the initial recovery snapshot existed, and no systemd units were failed. The kernel command line showed ZFSBootMenu's ZFS root selection. This recording does not show interaction with DigitalOcean's browser Recovery Console.
 
-Rendered with `scripts/recordings/render-selection.py` using a bare terminal viewport. The full capture is unchanged.
+Rendered with the original bare-terminal renderer using a bare terminal viewport. The full capture is unchanged.
 
 The owned demo Droplet (`598403298`) and uploaded SSH key (`59168045`) were deleted after capture; subsequent uncached DigitalOcean API reads returned HTTP 404 for both. The local private key and its public-key file were removed. No other cloud resources were touched.

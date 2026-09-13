@@ -56,8 +56,8 @@ if [[ -z $SCRATCH ]]; then
     cp /old/var/lib/zfs-on-boot/stage.log /var/log/zfs-on-boot/stage.log
     rm -rf /old/var/lib/zfs-on-boot
     inplace_unmount_source
-    phase 4 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
-    phase 4 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
+    phase 2 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    phase 2 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
     sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$COPY_END" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SCRATCH_START:$ROOT_END" -t 32:8300 "$DISK"
     partprobe "$DISK"
     udevadm settle
@@ -116,7 +116,7 @@ if [[ $INPLACE_PHASE = prepare ]]; then
     inplace_mount_source
     rm -rf /old/var/lib/zfs-on-boot /old/boot/zfs-on-boot
     rm -f "$IMAGE" "$MANIFEST" "$MANIFEST-journal"
-    phase 4 'Record original file hashes and metadata in the journal' python3 "$MOVER" capture "$MANIFEST" /old
+    phase 3 'Record original file hashes and metadata in the journal' python3 "$MOVER" capture "$MANIFEST" /old
     truncate -s "$IMAGE_BYTES" "$IMAGE"
     inplace_map_image
     create_root_pool off
@@ -126,7 +126,7 @@ if [[ $INPLACE_PHASE = prepare ]]; then
     sync -f /old
     inplace_checkpoint copy
 elif [[ $INPLACE_PHASE = copy ]]; then
-    phase 4 'Recover the outer ext4 journal' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    phase 3 'Recover the outer ext4 journal' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     inplace_mount_source
     inplace_map_image
     zpool import -f -N -R /target -d "$ZPART" rpool
@@ -134,8 +134,8 @@ elif [[ $INPLACE_PHASE = copy ]]; then
 fi
 if [[ $INPLACE_PHASE = copy ]]; then
     DEVICES=$DISK,$ROOTDEV,$SCRATCH,$ZPART
-    phase 5 'Copy, checksum and release original data in 64 MiB batches' python3 "$MOVER" move "$MANIFEST" /old /target
-    phase 6 'Verify the complete manifest against the ZFS image' python3 "$MOVER" verify "$MANIFEST" /target
+    phase 3 'Copy, checksum and release original data in 64 MiB batches' python3 "$MOVER" move "$MANIFEST" /old /target
+    phase 3 'Verify the complete manifest against the ZFS image' python3 "$MOVER" verify "$MANIFEST" /target
     inplace_unmap_image
     inplace_checkpoint copied
 fi
@@ -145,17 +145,17 @@ if [[ $INPLACE_PHASE = remap && ! -d $JOB ]]; then
     inplace_checkpoint copied
 fi
 if [[ $INPLACE_PHASE = copied ]]; then
-    phase 6 'Check outer ext4 before physical block relocation' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    phase 3 'Check outer ext4 before physical block relocation' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     mount -o ro "$ROOTDEV" /old
     inplace_checkpoint remap
     # Exact secondary size disables automatic primary mmap allocation. Keep
     # scratch on partition 32 and bound RAM use even on 512 MiB machines.
-    phase 6 "Remap the image onto $ROOTDEV" fsremap --questions=no --mem-buffer=16M --exact-secondary-storage=32M --temp-dir="$STATE" -- "$ROOTDEV" "$IMAGE"
+    phase 3 "Remap the image onto $ROOTDEV" fsremap --questions=no --mem-buffer=16M --exact-secondary-storage=32M --temp-dir="$STATE" -- "$ROOTDEV" "$IMAGE"
     inplace_checkpoint native
 elif [[ $INPLACE_PHASE = remap ]]; then
     # Never mount ext4 or create a new job once physical relocation started.
     if [[ -f $JOB/storage.bin ]]; then
-        phase 6 'Resume physical block relocation from its journal' fsremap --questions=no --mem-buffer=16M --temp-dir="$STATE" --resume-job=1 -- "$ROOTDEV"
+        phase 3 'Resume physical block relocation from its journal' fsremap --questions=no --mem-buffer=16M --temp-dir="$STATE" --resume-job=1 -- "$ROOTDEV"
     else
         # fsremap removes storage.bin on success, before our next checkpoint.
         # A completed relocation is also recorded as zero outstanding blocks.
@@ -168,7 +168,7 @@ if [[ $INPLACE_PHASE = native ]]; then
     dmsetup create zfsify-native --table "0 $((IMAGE_BYTES/512-IMAGE_OFFSET)) linear $ROOTDEV $IMAGE_OFFSET"
     zpool import -f -N -R /target -d /dev/mapper/zfsify-native rpool
     zfs mount rpool/ROOT/ubuntu
-    phase 6 'Verify all files after physical remapping' python3 "$MOVER" verify "$MANIFEST" /target
+    phase 3 'Verify all files after physical remapping' python3 "$MOVER" verify "$MANIFEST" /target
     zpool set autotrim=on rpool
     zpool export rpool
     dmsetup remove zfsify-native

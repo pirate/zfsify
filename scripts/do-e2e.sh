@@ -54,7 +54,9 @@ fi
 "${SSH[@]}" "root@$IP" 'systemd-run --unit=zfs-on-boot-source --collect python3 -m http.server 8765 --bind 127.0.0.1 --directory /root/zfs-on-boot-source'
 # Wait for the test HTTP server. It runs on the DO Droplet, not the controller.
 "${SSH[@]}" "root@$IP" 'for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8765/install.sh && exit 0; sleep 1; done; exit 1'
-"${SSH[@]}" "root@$IP" "systemd-run --unit=zfs-on-boot-stage --collect /bin/bash -o pipefail -c 'curl -fsSL http://127.0.0.1:8765/install.sh | sh -s -- $INSTALL_ARGS'"
+python3 "$BASE/scripts/recordings/capture-terminal.py" --output "$STATE/stage.cast" \
+    --answer 'waiting for your selection (no timeout):=1' -- \
+    "${SSH[@]}" -tt "root@$IP" "TERM=xterm-256color bash /root/zfs-on-boot-source/install.sh $INSTALL_ARGS" || [[ $? = 255 ]]
 ready=0
 for attempt in {1..360}; do
     if "${SSH[@]}" "root@$IP" 'test -f /etc/zfs-on-boot-installed && test "$(findmnt -n -o FSTYPE /)" = zfs' 2>/dev/null; then ready=1; break; fi

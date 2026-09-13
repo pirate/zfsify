@@ -2,7 +2,8 @@
 # Non-root ext4 conversion. The running OS stays on its own disk.
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
-SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask}
+SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask} ASSUME_YES=${5:-0}
+python3 "$SOURCE/progress.py" header --phase 1 --label "Scan the selected data disk and its mount settings"
 [[ ! -t 1 ]] || export ZFS_PROGRESS_TTY=1
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'
@@ -100,10 +101,10 @@ TAIL_CAPACITY=$(( (LAST-SPLIT+1)*512 ))
 (( PRESERVE_CAPACITY <= TAIL_CAPACITY )) || PRESERVE_CAPACITY=$TAIL_CAPACITY
 ERASE_ONLY=()
 [[ $MODE != erase ]] || ERASE_ONLY=(--erase-only)
-EXPLICIT=()
-[[ $MODE = auto ]] || EXPLICIT=(--explicit)
+CONSENT=()
+[[ $ASSUME_YES != 1 ]] || CONSENT=(--yes)
 while :; do
-python3 "$SOURCE/strategy.py" menu "${EXPLICIT[@]}" --kind volume --disk "$DISK" --size "$FS_BYTES" --used "$USED_BYTES" \
+python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind volume --disk "$DISK" --size "$FS_BYTES" --used "$USED_BYTES" \
     --preserve-capacity "$PRESERVE_CAPACITY" --mode "$MODE" --backup "$BACKUP" "${ERASE_ONLY[@]}" > "$WORK/selection"
 mapfile -t SELECTION < "$WORK/selection"
 MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
@@ -116,8 +117,9 @@ erase) echo '[ ext4: all data discarded ] -> [ empty full-disk ZFS ]';;
 esac
 [[ $MODE != erase ]] || echo 'ERASE: no files from this data volume will be retained.'
 echo "Work logs: $WORK; stop applications using $MOUNT before proceeding."
-REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${EXPLICIT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Stop applications using $MOUNT before proceeding.")
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Stop applications using $MOUNT before proceeding.")
 [[ $REVIEW != 1 ]] || break
+MODE=auto
 done
 exec > >(tee -a "$WORK/conversion.log") 2>&1
 phase() { local n=$1 label=$2; shift 2; python3 "$SOURCE/progress.py" run --phase "$n" --label "$label" --devices "$DISK,$DEV" -- "$@"; }
@@ -136,28 +138,28 @@ LOOP=
 trap 'echo "Conversion stopped. Do not wipe or detach devices. Inspect $WORK and zpool status; temporary device: ${LOOP:-none}."' ERR
 if [[ $MODE = backup ]]; then
     mount -o ro "$DEV" "$WORK/old"
-    phase 4 "Back up and read-back verify $DEV with rclone" bash "$SOURCE/backup.sh" save
+    phase 2 "Back up and read-back verify $DEV with rclone" bash "$SOURCE/backup.sh" save
     umount "$WORK/old"
 fi
 if [[ $MODE = preserve ]]; then
-    phase 4 "Check $DEV offline" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$DEV"
-    phase 4 "Shrink $DEV" resize2fs "$DEV" "$(((SPLIT-START)*512/1024-1024))K"
+    phase 3 "Check $DEV offline" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$DEV"
+    phase 3 "Shrink $DEV" resize2fs "$DEV" "$(((SPLIT-START)*512/1024-1024))K"
     LOOP=$(losetup --find --show --offset "$((SPLIT*512))" --sizelimit "$(((LAST-SPLIT+1)*512))" "$DISK")
-    phase 4 "Create temporary ZFS on $LOOP" zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$LOOP"
+    phase 3 "Create temporary ZFS on $LOOP" zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$LOOP"
     [[ $(zpool status -P "$POOL" | awk '$1 ~ /^\/dev\// {print $1}') = "$LOOP" ]] || die 'Unexpected temporary vdev layout; original filesystem has not been deleted.'
     zfs create -o mountpoint="$WORK/new" "$POOL/data"
     mount -o ro "$DEV" "$WORK/old"
     TOTAL=$(rsync -aHAXS --numeric-ids --dry-run --stats "$WORK/old/" "$WORK/new/" | awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2);print $2}')
-    python3 "$SOURCE/progress.py" run --phase 5 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --source "$DEV" --target "$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
-    phase 6 'Verify every copied file and its metadata' bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$1/" "$2/" > "$3"; cat "$3"; test ! -s "$3"' _ "$WORK/old" "$WORK/new" "$WORK/differences"
+    python3 "$SOURCE/progress.py" run --phase 3 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --source "$DEV" --target "$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
+    phase 3 'Verify every copied file and its metadata' bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$1/" "$2/" > "$3"; cat "$3"; test ! -s "$3"' _ "$WORK/old" "$WORK/new" "$WORK/differences"
     umount "$WORK/old"
     # The verified tail ends before the backup GPT; writing the new GPT cannot touch it.
-    phase 8 "Create the final GPT on $DISK" sgdisk --clear -n "1:2048:$((SPLIT-1))" -t 1:BF01 "$DISK"
+    phase 4 "Create the final GPT on $DISK" sgdisk --clear -n "1:2048:$((SPLIT-1))" -t 1:BF01 "$DISK"
     partprobe "$DISK"
     udevadm settle
     FRONT=$(part 1)
     [[ -b $FRONT && $(blockdev --getsize64 "$FRONT") -ge $(blockdev --getsize64 "$LOOP") ]]
-    python3 "$SOURCE/progress.py" run --phase 8 --label "Relocate verified data via mirror" \
+    python3 "$SOURCE/progress.py" run --phase 4 --label "Relocate verified data via mirror" \
         --devices "$DISK,$LOOP,$FRONT" --source "$LOOP" --target "$FRONT" --resilver --pool "$POOL" \
         -- zpool attach -f -w "$POOL" "$LOOP" "$FRONT"
     [[ $(zpool list -H -o health "$POOL") = ONLINE ]]
@@ -165,50 +167,21 @@ if [[ $MODE = preserve ]]; then
     zpool detach "$POOL" "$LOOP"
     zpool labelclear -f "$LOOP"
     losetup -d "$LOOP"; LOOP=
-    phase 9 'Expand the final data partition' growpart "$DISK" 1
+    phase 4 'Expand the final data partition' growpart "$DISK" 1
     partx -u --nr 1 "$DISK"
     zpool online -e "$POOL" "$FRONT"
 else
-    phase 4 "Erase data disk $DISK" sgdisk --clear -n 1:2048:0 -t 1:BF01 "$DISK"
+    phase 3 "Erase data disk $DISK" sgdisk --clear -n 1:2048:0 -t 1:BF01 "$DISK"
     partprobe "$DISK"; udevadm settle
     FRONT=$(part 1)
     zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$FRONT"
     zfs create -o mountpoint="$WORK/new" "$POOL/data"
 fi
 if [[ $MODE = backup ]]; then
-    phase 5 'Restore verified data-volume archive' bash "$SOURCE/backup.sh" restore
+    phase 3 'Restore verified data-volume archive' bash "$SOURCE/backup.sh" restore
 fi
-cp /etc/fstab "$WORK/fstab.before"
-python3 - "$DEV" "$ORIGINAL_UUID" "$DEFAULT_MOUNT" <<'PY'
-from pathlib import Path
-import sys
-p=Path('/etc/fstab'); out=[]
-for line in p.read_text().splitlines():
-    fields=line.split()
-    if fields and not line.lstrip().startswith('#') and (fields[0] in (sys.argv[1], 'UUID='+sys.argv[2]) or len(fields)>1 and fields[1]==sys.argv[3]):
-        out.append('# zfsify replaced: '+line)
-    else: out.append(line)
-p.write_text('\n'.join(out)+'\n')
-PY
-zfs set mountpoint="$DEFAULT_MOUNT" "$POOL/data"
-zpool set cachefile=/etc/zfs/zpool.cache "$POOL"
-systemctl enable zfs-import-cache.service zfs-mount.service zfs.target
-# Enroll only this pool GUID; later imports of unrelated pools are never resized.
-install -m 755 "$SOURCE/grow.sh" /usr/local/sbin/zfs-on-boot-grow
-mkdir -p /etc/zfsify/volumes
-zpool get -H -o value guid "$POOL" > "/etc/zfsify/volumes/$POOL"
-cat > /etc/systemd/system/zfsify-volume-grow@.service <<'SERVICE'
-[Unit]
-Description=Expand an enrolled zfsify data pool after disk resize
-After=zfs-import.target zfs-mount.service local-fs.target
-[Service]
-Type=oneshot
-ExecStart=/usr/local/sbin/zfs-on-boot-grow %i
-[Install]
-WantedBy=multi-user.target
-SERVICE
-systemctl daemon-reload
-systemctl enable "zfsify-volume-grow@$POOL.service"
-phase 10 'Ready: data volume converted' zpool status "$POOL"
+phase 4 'Update fstab and mount the new ZFS dataset' bash "$SOURCE/volume-finish.sh" "$DEV" "$ORIGINAL_UUID" "$DEFAULT_MOUNT" "$POOL" "$WORK" "$SOURCE"
+phase 5 "Enable automatic disk growth for $POOL" systemctl enable "zfsify-volume-grow@$POOL.service"
+phase 5 'Ready: data volume converted' zpool status "$POOL"
 echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
 [[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"

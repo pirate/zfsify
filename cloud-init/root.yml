@@ -18,7 +18,7 @@ write_files:
       trap 'rm -f "$installer"' EXIT
       curl --fail --silent --show-error --location --retry 5 \
         https://pirate.github.io/zfsify/reformat.sh -o "$installer"
-      bash "$installer" /
+      bash "$installer" --yes /
   - path: /etc/systemd/system/zfsify-first-boot.service
     permissions: '0644'
     content: |

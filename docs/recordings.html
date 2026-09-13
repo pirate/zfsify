@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
-  <meta name="description" content="Watch real DigitalOcean recordings of zfsify converting Ubuntu and attached data volumes to ZFS.">
+  <meta name="description" content="Watch the five phases of an Ubuntu to ZFS conversion.">
   <title>zfsify recordings</title>
   <link rel="stylesheet" href="assets/asciinema-player/asciinema-player.css">
   <style>
@@ -37,41 +37,47 @@
   <a class="brand" href="../">⚡ zfsify</a>
   <h1 id="title">Watch a conversion</h1>
   <nav aria-label="Choose a demonstration">
-    <a href="?demo=root" data-demo="root">Ubuntu root drive</a>
-    <a href="?demo=volume" data-demo="volume">Attached volume</a>
-    <a href="?demo=rclone" data-demo="rclone">Over 50% used · rclone</a>
+    <a href="?clip=phase-1" data-clip="phase-1">1. Scan disk and choose a method</a>
+    <a href="?clip=phase-2" data-clip="phase-2">2. Prepare the disk</a>
+    <a href="?clip=phase-3" data-clip="phase-3">3. Convert ext4 to ZFS</a>
+    <a href="?clip=phase-4" data-clip="phase-4">4. Finish disk and boot setup</a>
+    <a href="?clip=phase-5" data-clip="phase-5">5. Snapshots, recovery and growth</a>
+    <a href="?clip=attached-disk" data-clip="attached-disk">Attached disk</a>
+    <a href="?clip=rclone" data-clip="rclone">rclone backup and restore</a>
+    <a href="?clip=two-copy" data-clip="two-copy">50/50 conversion</a>
   </nav>
   <div class="toolbar">
     <div class="links">
-      <a id="download" href="assets/recordings/happy-path.cast" download>Download .cast</a>
+      <a id="download" href="assets/recordings/phase-1.cast" download>Download .cast</a>
     </div>
   </div>
   <div id="player" aria-label="Terminal recording player"></div>
   <p id="error" role="alert" hidden>The player could not load. You can still download the recording above.</p>
-  <noscript><p>JavaScript is needed for replay. Download a recording to view it with asciinema:</p>
-    <p><a href="assets/recordings/happy-path.cast" download>Root drive</a> ·
-       <a href="assets/recordings/volume.cast" download>Attached volume</a> ·
-       <a href="assets/recordings/rclone-root.cast" download>rclone backup</a></p>
-  </noscript>
+  <noscript><p>Download the .cast file to watch it with asciinema.</p></noscript>
 </main>
 <script src="assets/asciinema-player/asciinema-player.min.js"></script>
 <script>
   (() => {
-    const demos = new Map([
-      ['root', {title: 'Ubuntu root drive → ZFS', file: 'happy-path'}],
-      ['volume', {title: 'Attached ext4 volume → ZFS', file: 'volume'}],
-      ['rclone', {title: 'Back up, convert, restore', file: 'rclone-root'}]
+    const clips = new Map([
+      ['phase-1', {title: '1. Scan disk and choose a method', file: 'phase-1'}],
+      ['phase-2', {title: '2. Prepare the disk', file: 'phase-2'}],
+      ['phase-3', {title: '3. Convert ext4 to ZFS', file: 'phase-3'}],
+      ['phase-4', {title: '4. Finish disk and boot setup', file: 'phase-4'}],
+      ['phase-5', {title: '5. Snapshots, recovery and growth', file: 'phase-5'}],
+      ['attached-disk', {title: 'Attached disk', file: 'attached-disk'}],
+      ['rclone', {title: 'rclone backup and restore', file: 'rclone'}],
+      ['two-copy', {title: '50/50 conversion', file: 'two-copy'}]
     ]);
     const query = new URLSearchParams(location.search);
-    const key = demos.has(query.get('demo')) ? query.get('demo') : 'root';
-    const demo = demos.get(key);
+    const key = clips.has(query.get('clip')) ? query.get('clip') : 'phase-1';
+    const demo = clips.get(key);
     const cast = 'assets/recordings/' + demo.file + '.cast';
     document.title = demo.title + ' · zfsify';
     document.getElementById('title').textContent = demo.title;
     document.getElementById('download').href = cast;
-    for (const link of document.querySelectorAll('[data-demo]')) {
-      link.href = '?demo=' + link.dataset.demo;
-      if (link.dataset.demo === key) link.setAttribute('aria-current', 'page');
+    for (const link of document.querySelectorAll('[data-clip]')) {
+      link.href = '?clip=' + link.dataset.clip;
+      if (link.dataset.clip === key) link.setAttribute('aria-current', 'page');
     }
     try {
       AsciinemaPlayer.create(cast, document.getElementById('player'), {

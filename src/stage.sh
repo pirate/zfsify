@@ -6,12 +6,14 @@ export DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?source directory required}
 shift
 MODE=auto
+ASSUME_YES=0
 TARGET=/
 BACKUP=
 MODE_COUNT=0
 TARGET_COUNT=0
 for arg in "$@"; do
     case "$arg" in
+        --yes) ASSUME_YES=1 ;;
         --auto) MODE=auto; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --preserve) MODE=preserve; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
@@ -20,15 +22,19 @@ for arg in "$@"; do
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
 Default: detect the disk and choose a data-preserving strategy.
-Automatic 50/50 and slice-by-slice accept Enter or 15 seconds idle.
-Backup fallback waits for input; explicit flags skip strategy prompts.
+Review the recommended method, then explicitly confirm before any conversion.
+Method flags select a method; only --yes skips selection and confirmation.
+  --yes                    Run completely non-interactively; accept the selected
+                           plan. Auto mode prefers preservation, never erasure.
+                           Backup requires an explicit --backup= destination and
+                           an existing rclone configuration or mounted ext4 disk.
   --preserve               Request the 50/50 copy-and-verify strategy.
   --auto                   Choose automatically (the default).
   --backup                 Guide me through a temporary Volume or rclone remote.
-  --backup=/mnt/backup     Use a mounted, separate ext4 disk without prompts.
+  --backup=/mnt/backup     Select a mounted, separate ext4 backup disk.
   --backup=myremote:path   Use an existing root-user rclone configuration.
   --erase                  Fresh Ubuntu with limited settings restore for /;
                            discard ALL files when targeting a data volume.
@@ -38,6 +44,12 @@ Backup fallback waits for input; explicit flags skip strategy prompts.
 The positional path is the disk to CONVERT; --backup= is where to KEEP its backup.
 Examples: --backup=/mnt/backup /          (convert the boot disk)
           --backup=/mnt/backup /mnt/data  (convert a data disk)
+Non-interactive examples (make a full offsite backup first):
+  curl -fsSL URL | sudo sh -s -- --yes
+  curl -fsSL URL | sudo sh -s -- --yes --erase
+  curl -fsSL URL | sudo sh -s -- --yes --backup=/mnt/backup
+  curl -fsSL URL | sudo sh -s -- --yes --backup=myremote:path
+
 Setup and cleanup: https://pirate.github.io/zfsify/docs/backup.html
 EOF
             exit 0 ;;
@@ -56,12 +68,13 @@ if [[ $TARGET != / ]]; then
     resolved=$(readlink -f "$TARGET")
     if [[ $resolved != "$running_root" && $resolved != "$running_disk" ]]; then
         [[ $MODE != inplace ]] || { echo '--inplace currently supports the boot drive only.' >&2; exit 2; }
-        exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP"
+        exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP" "$ASSUME_YES"
     fi
 fi
 export LC_ALL=C
 [[ -t 1 ]] && export ZFS_PROGRESS_TTY=1
 PROGRESS=$SOURCE/progress.py
+python3 "$PROGRESS" header --phase 1 --label "Scan Ubuntu, boot configuration and disk layout"
 phase() { local n=$1 label=$2; shift 2; python3 "$PROGRESS" run --phase "$n" --label "$label" --devices "$DISK,$ROOTDEV" -- "$@"; }
 WORK=/var/lib/zfs-on-boot
 ROOT=$WORK/root
@@ -163,10 +176,10 @@ echo "Preserved Ubuntu boot arguments: $(cat "$SOURCE/boot-preview/cmdline-ubunt
 echo 'CPU/PCI/I/O/display kernel arguments and existing sysctl/modprobe configuration are retained.'
 echo 'Active network links/addresses are captured for the RAM rescue; installed network configuration is preserved.'
 ip -brief address
-EXPLICIT=()
-[[ $MODE = auto ]] || EXPLICIT=(--explicit)
+CONSENT=()
+[[ $ASSUME_YES != 1 ]] || CONSENT=(--yes)
 while :; do
-python3 "$SOURCE/strategy.py" menu "${EXPLICIT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
+python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
     --preserve-capacity "$PRESERVE_CAPACITY" --inplace-capacity "$INPLACE_CAPACITY" \
     --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
 mapfile -t SELECTION < "$SOURCE/selection"
@@ -216,14 +229,14 @@ Complete optional files are retained in priority order within the RAM budget; om
 EOF
 fi
 cat <<'EOF'
-10 phases: preflight > prepare RAM > stage reboot > shrink/format > copy
-           > checksum verify > configure boot > relocate > expand > finish
+5 phases: scan and choose > prepare > convert > finish setup > recovery and growth
 Live status includes logical copy bytes, MB/s and block-device IOPS.
 SSH disconnects at reboot. Reconnect and run: zfs-on-boot-status
 Package/metadata phases have no meaningful byte total and show n/a.
 EOF
-REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${EXPLICIT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
 [[ $REVIEW != 1 ]] || break
+MODE=auto
 done
 # Ensure a preserving strategy has a validated partition plan.
 [[ $MODE = erase || -s $SOURCE/plan.env ]] || validate_layout
@@ -367,7 +380,7 @@ cp "$PROGRESS" "$ROOT/usr/local/lib/zfs-on-boot/progress.py"
 install -m 755 "$SOURCE/status.sh" "$ROOT/usr/local/sbin/zfs-on-boot-status"
 install -m 755 "$SOURCE/grow.sh" "$ROOT/usr/local/sbin/zfs-on-boot-grow"
 cp "$SOURCE/grow.service" "$ROOT/etc/systemd/system/zfs-on-boot-grow.service"
-cp "$SOURCE/target.sh" "$ROOT/etc/zfs-on-boot/target.sh"
+cp "$SOURCE/target.sh" "$SOURCE/recovery-setup.sh" "$ROOT/etc/zfs-on-boot/"
 install -m 755 "$SOURCE/snapshot.sh" "$ROOT/usr/local/sbin/zfsify-snapshot"
 cp "$SOURCE/backup.sh" "$ROOT/etc/zfs-on-boot/backup.sh"
 cp "$SOURCE/zbm-install.sh" "$ROOT/etc/zfs-on-boot/zbm-install.sh"
@@ -390,12 +403,12 @@ rm -f "$ROOT/usr/sbin/policy-rc.d"
 cleanup_mounts
 trap cleanup_swap EXIT
 # SquashFS stays compressed in RAM; only a small boot shim is unpacked.
-phase 3 'Compress rescue filesystem (one worker, bounded memory)' mksquashfs "$ROOT" "$WORK/rescue.squashfs" -noappend -comp xz -b 128K -processors 1 -mem 64M
+phase 2 'Compress rescue filesystem (one worker, bounded memory)' mksquashfs "$ROOT" "$WORK/rescue.squashfs" -noappend -comp xz -b 128K -processors 1 -mem 64M
 RAM_BYTES=$(awk '/MemTotal/ {printf "%.0f", $2*1024}' /proc/meminfo)
 RESCUE_BYTES=$(stat -c %s "$WORK/rescue.squashfs")
 (( RESCUE_BYTES + 230000000 < RAM_BYTES )) || die "Compressed rescue ($RESCUE_BYTES bytes) leaves insufficient working RAM; no boot entry changed."
-phase 3 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" "$WORK/shim" "$SOURCE" "$KVER" "$(blkid -s UUID -o value "$ROOTDEV")" "$DISK"
-phase 3 'Pack minimal RAM boot shim' bash -o pipefail -c 'cd "$1"; find . -xdev -print0 | cpio --null -o --format=newc | gzip -1 > "$2"' _ "$WORK/shim" "$WORK/installer.img"
+phase 2 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" "$WORK/shim" "$SOURCE" "$KVER" "$(blkid -s UUID -o value "$ROOTDEV")" "$DISK"
+phase 2 'Pack minimal RAM boot shim' bash -o pipefail -c 'cd "$1"; find . -xdev -print0 | cpio --null -o --format=newc | gzip -1 > "$2"' _ "$WORK/shim" "$WORK/installer.img"
 gzip -t "$WORK/installer.img"
 IMAGE_BYTES=$(stat -c %s "$WORK/installer.img")
 KERNEL_BYTES=$(stat -Lc %s "$KERNEL")
@@ -430,6 +443,6 @@ mv /etc/grub.d/09_zfs_on_boot /etc/grub.d/41_zfs_on_boot
 update-grub
 grub-reboot zfs-on-boot-install
 grub-editenv /boot/grub/grubenv list | grep -qx next_entry=zfs-on-boot-install
-echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM installer and then in Ubuntu.'
+phase 2 'Rebooting into RAM; reconnect and run zfs-on-boot-status' true
 sync
 shutdown -r +0 'zfs-on-boot installer staged'

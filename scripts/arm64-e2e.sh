@@ -73,7 +73,10 @@ for _ in {1..60}; do "${SSH[@]}" true 2>/dev/null && break; sleep 2; done
 python3 "$BASE/scripts/package.py"
 "${SCP[@]}" "$BASE/reformat.sh" "$BASE/scripts/"{setup-fixture.sh,setup-inplace-fill.py,verify.sh,verify-preserved.sh} root@127.0.0.1:/root/
 "${SSH[@]}" 'bash /root/setup-fixture.sh preserve && python3 /root/setup-inplace-fill.py' | tee "$STATE/input.txt"
-"${SSH[@]}" 'systemd-run --unit=zfsify-test bash -c "cat /root/reformat.sh | sh -s -- --inplace"'
+# The test explicitly confirms the disposable disk; production has no bypass.
+python3 "$BASE/scripts/recordings/capture-terminal.py" --output "$STATE/stage.cast" \
+    --answer 'waiting for your selection (no timeout):=1' -- \
+    "${SSH[@]}" -tt 'TERM=xterm-256color bash /root/reformat.sh --inplace' || [[ $? = 255 ]]
 ready=0
 for _ in {1..360}; do
     if "${SSH[@]}" 'test -f /etc/zfs-on-boot-installed && test "$(findmnt -no FSTYPE /)" = zfs' 2>/dev/null; then ready=1; break; fi

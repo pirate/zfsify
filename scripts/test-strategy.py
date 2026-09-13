@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1] / 'src/strategy.py'
+sys.path.insert(0, str(SOURCE.parent))
 spec = importlib.util.spec_from_file_location('strategy', SOURCE)
 strategy = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(strategy)
@@ -58,7 +59,7 @@ class StrategyTests(unittest.TestCase):
             # Exactly like curl | sh: stdin is not the controlling terminal.
             null = os.open('/dev/null', os.O_RDONLY); os.dup2(null, 0)
             os.execv(sys.executable, [sys.executable, '-c',
-                f'import importlib.util; s=importlib.util.spec_from_file_location("strategy",{str(SOURCE)!r}); '
+                f'import importlib.util,sys; sys.path.insert(0,{str(SOURCE.parent)!r}); s=importlib.util.spec_from_file_location("strategy",{str(SOURCE)!r}); '
                 'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '+body])
         output = b''; start = time.monotonic(); pending = list(inputs)
         try:
@@ -80,18 +81,22 @@ class StrategyTests(unittest.TestCase):
 
     def test_enter_and_explicit_choice(self):
         for answer, expected in [(b'\n', '1'), (b'2\n', '2')]:
-            rc, out, elapsed = self.terminal('print("RESULT",m.choose("test", "1", ["1","2"], seconds=2))', [(0.2, answer)])
+            rc, out, elapsed = self.terminal('print("RESULT",m.choose("test", "1", ["1","2"]))', [(0.2, answer)])
             self.assertEqual(rc, 0, out); self.assertIn('RESULT '+expected, out); self.assertLess(elapsed, 2)
 
-    def test_real_fifteen_second_default(self):
-        rc, out, elapsed = self.terminal('print("RESULT",m.choose("test", "1", ["1","q"]))')
-        self.assertEqual(rc, 0, out); self.assertIn('RESULT 1', out)
-        self.assertGreaterEqual(elapsed, 15); self.assertLess(elapsed, 18)
+    def test_idle_never_confirms_and_partial_input_waits(self):
+        body = 'import sys; sys.argv=["strategy","confirm","--mode","preserve","--label","plan"]; m.main()'
+        rc, out, elapsed = self.terminal(body, [(15.3, b'1'), (15.6, b'\n')])
+        self.assertEqual(rc, 0, out)
+        self.assertGreaterEqual(elapsed, 15.6)
+        self.assertIn('full offsite backup', out)
+        self.assertNotIn('starting in', out)
 
-    def test_partial_or_invalid_input_does_not_accept_default(self):
-        for answer in [b'2', b'invalid\n']:
-            rc, out, _ = self.terminal('print("RESULT",m.choose("test", "1", ["1","2"], seconds=.5))', [(0.2, answer)])
-            self.assertNotEqual(rc, 0, out); self.assertNotIn('RESULT 1', out)
+    def test_invalid_input_reprompts(self):
+        rc, out, _ = self.terminal('print("RESULT",m.choose("test", "1", ["1","2"]))',
+                                   [(0.2, b'invalid\n'), (.5, b'2\n')])
+        self.assertEqual(rc, 0, out)
+        self.assertIn('RESULT 2', out)
 
     def test_menu_override_cancel_and_erase(self):
         base = ('import sys; m.backup_candidates=lambda *a: []; '
@@ -103,9 +108,7 @@ class StrategyTests(unittest.TestCase):
             self.assertEqual(rc, 0, out); self.assertIn('\r\n'+expected+'\r\n', out)
         rc, out, _ = self.terminal(base+'m.main()', [(0.2, b'q\n')])
         self.assertNotEqual(rc, 0, out)
-        rc, out, _ = self.terminal(base+'m.main()', [(0.2, b'4\n'), (.5, b'\n')])
-        self.assertNotEqual(rc, 0, out)
-        rc, out, _ = self.terminal(base+'m.main()', [(0.2, b'4\n'), (.5, b'y\n')])
+        rc, out, _ = self.terminal(base+'m.main()', [(0.2, b'4\n')])
         self.assertEqual(rc, 0, out); self.assertIn('\r\nerase\r\n', out)
 
     def test_backup_default_overrides_and_volume_limit(self):
@@ -137,21 +140,44 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(rc, 0, out); self.assertIn('\r\nerase\r\n', out)
         self.assertNotIn('Type y', out)
 
-    def test_explicit_flags_do_not_prompt_without_terminal(self):
+    def test_flags_select_method_but_final_confirmation_requires_terminal(self):
         import subprocess
         for mode in ['preserve', 'inplace', 'backup', 'erase']:
             args = [sys.executable, str(SOURCE), 'menu', '--kind', 'root', '--disk', '/dev/test',
                     '--size', str(20*G), '--used', str(4*G), '--preserve-capacity', str(10*G),
-                    '--inplace-capacity', str(18*G), '--mode', mode, '--explicit',
+                    '--inplace-capacity', str(18*G), '--mode', mode,
                     '--backup', '/mnt/chosen disk']
             p = subprocess.run(args, capture_output=True, text=True, start_new_session=True, timeout=2)
             self.assertEqual(p.returncode, 0, p.stderr)
             self.assertEqual(p.stdout, mode+'\n/mnt/chosen disk\n')
             self.assertNotIn('starting in', p.stderr); self.assertNotIn('waiting for', p.stderr)
             p = subprocess.run([sys.executable, str(SOURCE), 'confirm', '--mode', mode,
-                                '--label', 'plan', '--explicit'], capture_output=True,
+                                '--label', 'plan'], capture_output=True,
                                text=True, start_new_session=True, timeout=2)
-            self.assertEqual(p.returncode, 0, p.stderr); self.assertEqual(p.stdout, '1\n')
+            self.assertNotEqual(p.returncode, 0, p.stderr)
+            self.assertIn('requires a terminal', p.stderr)
+
+    def test_yes_is_noninteractive_but_never_infers_backup_destination(self):
+        import subprocess
+        base = [sys.executable, str(SOURCE), 'menu', '--kind', 'root', '--disk', '/dev/test',
+                '--size', str(20*G), '--used', str(4*G), '--preserve-capacity', str(10*G),
+                '--inplace-capacity', str(18*G), '--yes']
+        for mode in ('auto', 'preserve', 'inplace', 'erase', 'backup'):
+            args = base + ['--mode', mode]
+            if mode == 'backup': args += ['--backup', '/mnt/explicit-backup']
+            result = subprocess.run(args, capture_output=True, text=True, start_new_session=True, timeout=2)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.splitlines()[0], 'preserve' if mode == 'auto' else mode)
+            selected = result.stdout.splitlines()[0]
+            result = subprocess.run([sys.executable, str(SOURCE), 'confirm', '--mode', selected,
+                                     '--label', 'plan', '--yes'], capture_output=True, text=True,
+                                    start_new_session=True, timeout=2)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, '1\n')
+        for args in (base + ['--mode', 'backup'], base + ['--used', str(19*G)]):
+            result = subprocess.run(args, capture_output=True, text=True, start_new_session=True, timeout=2)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('requires --backup=', result.stderr)
 
     def test_backup_configuration_explicit_and_interactive_consent(self):
         # Exercise the real configure flow with a fake rclone transport: no disks,
@@ -189,7 +215,7 @@ class StrategyTests(unittest.TestCase):
 
     def test_backup_waits_past_fifteen_seconds(self):
         body = ('import sys; sys.argv=["strategy","confirm","--mode","backup","--label","backup plan"]; m.main()')
-        rc, out, elapsed = self.terminal(body, [(15.3, b'\n')])
+        rc, out, elapsed = self.terminal(body, [(15.3, b'1\n')])
         self.assertEqual(rc, 0, out); self.assertGreaterEqual(elapsed, 15.3)
         self.assertIn('no timeout', out); self.assertNotIn('starting in', out)
 
@@ -205,15 +231,19 @@ class StrategyTests(unittest.TestCase):
 
     def test_no_controlling_terminal(self):
         import subprocess
-        body = (f'import importlib.util; s=importlib.util.spec_from_file_location("strategy",{str(SOURCE)!r}); '
+        body = (f'import importlib.util,sys; sys.path.insert(0,{str(SOURCE.parent)!r}); s=importlib.util.spec_from_file_location("strategy",{str(SOURCE)!r}); '
                 'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
-                'print(m.choose("test", "1", ["1","q"], seconds=.05))')
+                'print(m.choose("test", "1", ["1","q"]))')
         p = subprocess.run([sys.executable, '-c', body], input='', capture_output=True,
                            text=True, start_new_session=True, timeout=2)
-        self.assertEqual(p.returncode, 0, p.stderr); self.assertEqual(p.stdout, '1\n')
-        p = subprocess.run([sys.executable, '-c', body.replace('seconds=.05', 'seconds=None')],
-                           input='', capture_output=True, text=True, start_new_session=True, timeout=2)
-        self.assertNotEqual(p.returncode, 0); self.assertIn('requires a terminal', p.stderr)
+        self.assertNotEqual(p.returncode, 0)
+        self.assertIn('requires a terminal', p.stderr)
+
+    def test_final_confirmation_defaults_to_cancel_for_every_mode(self):
+        for mode in ('preserve', 'inplace', 'backup', 'erase'):
+            body = f'import sys; sys.argv=["strategy","confirm","--mode",{mode!r},"--label","plan"]; m.main()'
+            rc, out, _ = self.terminal(body, [(0.2, b'\n')])
+            self.assertNotEqual(rc, 0, out)
 
 
 if __name__ == '__main__':

@@ -19,6 +19,6 @@ This demonstrates the SFTP backend on DigitalOcean. It is not a test of S3 permi
 
 The same run completed without manual migration intervention. The 981.028 MiB archive was downloaded completely and checksum-verified before the disk was erased, then restored and checksum-checked again. Ubuntu rebooted through ZFSBootMenu with both `/` and `/boot` on `rpool/ROOT/ubuntu`; `zpool status -x` reported all pools healthy. Both original file hashes passed, the hard link count remained two, and `rpool/ROOT/ubuntu@zfsify-installed` was present.
 
-The full PTY timeline is 1102.8 seconds including interactive configuration and reconnect waits. The highlights are rendered with `scripts/recordings/render-selection.py` using a bare terminal viewport. The full capture is unchanged.
+The full PTY timeline is 1102.8 seconds including interactive configuration and reconnect waits. The highlights are rendered with the original bare-terminal renderer using a bare terminal viewport. The full capture is unchanged.
 
 The temporary backup Droplet was deleted after the successful restore (DigitalOcean returned HTTP 404 when read back). The converted source and its SSH key were handed to the primary task for the separately requested provider-console recording.
