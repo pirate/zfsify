@@ -5,16 +5,17 @@ Recorded on a real DigitalOcean Droplet on 2026-09-07 (UTC), using Ubuntu 24.04,
 Only the attached Volume was converted. The operating system kept running and
 no reboot was required.
 
-- [GIF preview](volume.gif): approximately 45 seconds, 1103 × 660, 226 KiB.
-- [Edited asciicast](volume.cast): the same selected output, with editorial headings.
+- [GIF preview](volume.gif).
+- [Edited asciicast](volume.cast): the same selected terminal output.
 - [Full asciicast](volume-full.cast): the complete 53-second scripted terminal recording.
 - [Selection manifest](volume-selection.json): exact selected text and source timestamps
   for progress blocks and countdown events.
 - [Additional acceptance output](volume-acceptance.txt).
 
 The preview shortens the countdown, omits package-manager chatter, and selects
-completed/live phase output. Headings and the fixed disclosure footer are editorial;
-command results, byte counts, rates, IOPS, and device names are captured output.
+completed/live phase output. Only captured terminal content is shown; recording
+annotations are omitted. Command results, byte counts, rates, IOPS, and device names
+are captured output.
 The recording is a scripted demonstration with printed commands immediately followed
 by execution, rather than a hand-typed shell session.
 
@@ -49,13 +50,11 @@ The Droplet, Volume, and API SSH-key registration were deleted after capture;
 all three resource lookups returned HTTP 404. The temporary private/public key
 files were removed from the recording controller.
 
-To regenerate the edited presentation from the full capture:
+To regenerate the edited cast and GIF from the full capture (Pillow required):
 
 ```sh
 python3 scripts/recordings/volume-render.py docs/assets/recordings docs/assets/recordings
-agg --theme github-dark --font-size 16 --line-height 1.25 --fps-cap 12 \
-    --last-frame-duration 1 --idle-time-limit 10 \
-    docs/assets/recordings/volume.cast docs/assets/recordings/volume.gif
+
 ```
 
 The recording command script is retained as

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Select verbatim output from the live Volume run for the README preview."""
-import argparse,json,re,shutil
+import argparse,importlib.util,json,re,shutil
 from pathlib import Path
 parser=argparse.ArgumentParser(description=__doc__)
 parser.add_argument('input_directory', type=Path, help='Directory containing volume-full.cast')
@@ -21,10 +21,11 @@ text='\n'.join(s for _,s in lines)
 frames=[]
 def frame(title,body,seconds=2,source=None):
     assert len(body.splitlines())<=23,(title,len(body.splitlines()))
-    frames.append(dict(title=title,body=body,duration=seconds,source_time=source))
+    body='\n'.join(line for line in body.splitlines() if not line.startswith(('PASS: hashes, hard links, ACLs, xattrs.', 'One command converts the volume.', 'Conversion complete. Same mount point;')))
+    frames.append(dict(body=body,duration=seconds,source_time=source))
 def excerpt(start,end):return text[text.index(start):text.index(end)].strip()
 frame('01  A normal attached ext4 volume',excerpt('$ lsblk','$ find'),4)
-frame('02  Existing application files',excerpt('$ find /mnt/data','One command converts'),2.5)
+frame('02  Existing application files',excerpt('$ find /mnt/data','$ curl'),2.5)
 frame('03  One command; review the plan',excerpt('$ curl','Work logs:'),4)
 for t,s in lines:
     if s.startswith('Starting in '):
@@ -49,17 +50,10 @@ for operation in operations:
 frame('04  Same mount point; all content verified',excerpt('$ findmnt','$ zpool list'),4)
 frame('05  Healthy pool; automatic expansion enabled',excerpt('$ zpool list','$ getfattr'),4)
 frame('06  Metadata preserved; no reboot needed',text[text.index('$ getfattr'):].strip(),4)
-h=dict(raw[0]);h.update(title='zfsify attached Volume — selected real DigitalOcean output',width=110,height=32)
-f=(O/'volume.cast').open('w');f.write(json.dumps(h)+'\n');time=0
-for item in frames:
-    body='\r\n'.join('  '+x for x in item['body'].splitlines())
-    content=('\x1b[?25l\x1b[2J\x1b[H\x1b[1;36m  zfsify  /  attached volume conversion\x1b[0m\r\n'
-      '\x1b[38;5;245m  Ubuntu 24.04  ·  1 GiB RAM  ·  DigitalOcean  ·  existing files preserved\x1b[0m\r\n'
-      '  '+'─'*104+'\r\n\r\n\x1b[1;37m  '+item['title']+'\x1b[0m\r\n\r\n'+body+
-      '\x1b[31;1H\x1b[38;5;245m  Actual output · waits shortened · development build · full recording linked below\x1b[0m')
-    f.write(json.dumps([round(time,3),'o',content],ensure_ascii=False)+'\n');time+=item['duration']
-f.write(json.dumps([round(time,3),'o','\r'])+'\n');f.close()
-(O/'volume-selection.json').write_text(json.dumps(dict(description='Editorial headings; selected verbatim terminal output. Countdown accelerated, waits and package-manager chatter omitted. source_time refers to volume-full.cast.',duration=time,frames=frames),indent=2)+'\n')
+time=sum(item['duration'] for item in frames)
+(O/'volume-selection.json').write_text(json.dumps(dict(description='Selected captured terminal output from volume-full.cast. Waits shortened; package output and recording annotations omitted. Source times refer to the unchanged full capture.',duration=round(time,3),frames=frames),indent=2)+'\n')
 if (D/'volume-full.cast').resolve() != (O/'volume-full.cast').resolve():
     shutil.copyfile(D/'volume-full.cast',O/'volume-full.cast')
-print('Duration',time,'frames',len(frames),'blocks',len(blocks))
+spec=importlib.util.spec_from_file_location('render_selection',Path(__file__).with_name('render-selection.py'))
+renderer=importlib.util.module_from_spec(spec);spec.loader.exec_module(renderer)
+renderer.render(O/'volume-selection.json',O/'volume')

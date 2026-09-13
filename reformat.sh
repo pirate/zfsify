@@ -1120,7 +1120,7 @@ umount -R /target/sys
 umount -R /target/dev
 
 ZFS_ON_BOOT_6a3110d389741d58aec4c4f7510299045f54cca22e8f8516370bd55ca3619168
-cat > "$work/progress.py" <<'ZFS_ON_BOOT_d18ef74b2e2f3466754064bdd47b3aedf0aac496f9e707a6f701857c44d7df75'
+cat > "$work/progress.py" <<'ZFS_ON_BOOT_63a657d181172b120be85572f021e0832b4d0c67dcbdba78b70107d6524ca8aa'
 #!/usr/bin/python3
 """Dependency-free migration dashboard, live Linux telemetry and durable plain logs."""
 import argparse
@@ -1168,10 +1168,14 @@ def render(s, width=88, frame=0, color=False, unicode=True):
     spinner = pulses[frame % len(pulses)]
     badge = spinner if running else tick if status == 'complete' else '!'
     phase = s['phase']
-    rail = ' '.join(tick if i < phase or (i == phase and status == 'complete') else
+    headline = 'OPERATION DONE' if status == 'complete' and not s['label'].startswith('Ready') else status.upper()
+    # Several commands can share a phase. Only the next phase (or Ready)
+    # establishes completion; a command finishing must not reset overall progress.
+    finished = 10 if phase == 10 and s['label'].startswith('Ready') and status == 'complete' else phase - 1
+    rail = ' '.join(tick if i <= finished else
                     ('●' if unicode else '*') if i == phase else dot for i in range(1, 11))
-    lines = [f'  zfsify  {dot}  {badge} {status.upper()}  {dot}  PHASE {phase:02d}/10',
-             f'  {rail}', f"  {s['label']}", '']
+    lines = [f'  zfsify  {dot}  {badge} {headline}  {dot}  PHASE {phase:02d}/10',
+             f'  Overall  {rail}  {finished}/10 phases complete', f"  {s['label']}", '']
     if s.get('source') or s.get('target'):
         lines.append(f"  {s.get('source') or 'source'}  {arrow}  {s.get('target') or 'destination'}")
     else:
@@ -1181,9 +1185,9 @@ def render(s, width=88, frame=0, color=False, unicode=True):
         filled = int(fraction * cells)
         blocks = solid * filled + empty * (cells - filled)
         if running and filled < cells:
-            blocks = blocks[:filled] + (active if frame % 4 < 2 else solid) + blocks[filled+1:]
+            blocks = blocks[:filled] + active + blocks[filled+1:]
         lines += [f'  {" ".join(blocks)}  {fraction*100:5.1f}%',
-                  f"  {'~' if s.get('approximate') else ''}{amount(done)} / {amount(total)}  {dot}  logical bytes"]
+                  f"  {'~' if s.get('approximate') else ''}Transfer total  {amount(done)} / {amount(total)}"]
     else:
         head = frame % (cells + 4)
         blocks = ''.join(active if 0 <= head-i < 4 and running else empty for i in range(cells))
@@ -1226,13 +1230,16 @@ class Display:
         self.rows = 0
         self.frame = 0
         self.width = None
+        self.height = None
+        self.previous = []
         if self.live:
             self.stream.write('\033[?25l')
 
     def clear(self):
-        if self.rows:
-            self.stream.write(f'\033[{self.rows}A\r\033[J')
-            self.rows = 0
+        # Retain the completed dashboard in scrollback when printing command
+        # output. Erasing it first exposes blank frames to terminals/recorders.
+        self.rows = 0
+        self.previous = []
 
     def draw(self, state):
         if not self.live:
@@ -1242,15 +1249,27 @@ class Display:
         width = max(1, (size.columns or 80) - 1)
         # After resize, old rows may have reflowed. Start below them instead of
         # moving the cursor into unrelated terminal history.
-        if self.width != width:
+        if self.width != width or self.height != (size.lines or 24):
             self.rows = 0
             self.width = width
-        self.clear()
+            self.height = size.lines or 24
+            self.previous = []
         lines = render(state, width, self.frame, self.color, self.unicode).splitlines()
         lines = lines[:max(1, (size.lines or 24) - 1)]
-        self.stream.write('\n'.join(lines) + '\n')
+        # Replace each row's text before erasing its old suffix. One write
+        # keeps redraws together; no erase-screen/erase-region blank transition.
+        rows = max(self.rows, len(lines))
+        update = f'\033[{self.rows}A' if self.rows else ''
+        visible = lines + [''] * (rows - len(lines))
+        for row, line in enumerate(visible):
+            if row < len(self.previous) and self.previous[row] == line:
+                update += '\033[1B'
+            else:
+                update += '\r' + line + '\033[K\n'
+        self.previous = visible
+        self.stream.write(update)
         self.stream.flush()
-        self.rows = len(lines)
+        self.rows = rows
         self.frame += 1
 
     def message(self, text):
@@ -1466,7 +1485,7 @@ def main():
 if __name__ == '__main__':
     sys.exit(main())
 
-ZFS_ON_BOOT_d18ef74b2e2f3466754064bdd47b3aedf0aac496f9e707a6f701857c44d7df75
+ZFS_ON_BOOT_63a657d181172b120be85572f021e0832b4d0c67dcbdba78b70107d6524ca8aa
 cat > "$work/plan.py" <<'ZFS_ON_BOOT_41be88f6c01738992b7ab4ff60d30d2075d0c3276563a104254ed48a510c340b'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""

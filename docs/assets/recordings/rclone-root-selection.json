@@ -1,291 +1,233 @@
 {
-  "description": "Editorial headings and selected exact captured output. Countdown accelerated; idle waits and package chatter omitted. source_time is seconds into rclone-root-full.cast. Text wraps only; no invented telemetry.",
-  "duration": 75.69999999999997,
+  "description": "Selected captured terminal output from rclone-root-full.cast. Waits shortened; package output and recording annotations omitted. Source times refer to the unchanged full capture.",
+  "duration": 71.7,
   "frames": [
     {
-      "title": "01  A normal Ubuntu root, already more than half full",
       "body": "df -h /; du -h /srv/demo/archive.bin\n\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/vda1        24G   15G  9.1G  62% /\n13G\t/srv/demo/archive.bin\nroot@zfsify:~# curl -fsSL http://127.0.0.1:8765/reformat.sh | sh\n\nRoot filesystem: /dev/vda1 on /dev/vda | used 60.99% (15177285632 / 24883167232 bytes)",
       "duration": 4,
       "source_time": null
     },
     {
-      "title": "02  Choose a full backup instead of discarding data",
       "body": "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n!! WARNING: ROOT IS AT LEAST 50% USED. PRESERVATION IS NOT ELIGIBLE.     !!\n!! A: rclone backup, verify, reformat, then restore the full system.    !!\n!! B: erase and install fresh Ubuntu with a limited priority restore.   !!\n!! Applications and data are deleted. /etc, users, SSH keys and        !!\n!! basic settings survive. There is no automatic fallback to erasure. !!\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\nChoose A for rclone backup/restore, or B (or y) for an ERASE install: A",
       "duration": 5,
       "source_time": null
     },
     {
-      "title": "03  Review the backup, verify, erase and restore plan",
       "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.",
       "duration": 4,
       "source_time": null
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 15s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 15s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 35.594
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 14s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 14s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 36.6
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 13s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 13s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 37.601
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 12s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 12s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 38.611
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 11s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 11s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 39.613
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 10s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in 10s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 40.612
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  9s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  9s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 41.614
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  8s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  8s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 42.619
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  7s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  7s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 43.619
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  6s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  6s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 44.62
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  5s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  5s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 45.623
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  4s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  4s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 46.625
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  3s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  3s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 47.628
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  2s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  2s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 48.629
     },
     {
-      "title": "15-second cancellation window \u00b7 accelerated playback",
-      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  1s. Press Ctrl-C to cancel. ",
+      "body": "BACKUP AND RESTORE: offline tar archive -> rclone remote -> full read-back verification -> erase /dev/vda -> ZFS -> restore archive.\nThe remote backup remains available after completion.\n\nStarting backup in  1s. Press Ctrl-C to cancel.",
       "duration": 0.1,
       "source_time": 49.631
     },
     {
-      "title": "02/10  Live installer output \u00b7 selected excerpts",
       "body": "[##----------------------] phase 2/10: Update Ubuntu package indexes [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 49.815
     },
     {
-      "title": "02/10  Live installer output \u00b7 selected excerpts",
       "body": "[##----------------------] phase 2/10: Download verified ZFSBootMenu 3.1.0 for bios [complete]\n  devices: /dev/vda,/dev/vda1 | elapsed 3s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 259.975
     },
     {
-      "title": "04  zfsify opens rclone\u2019s own configuration flow",
       "body": "No remotes found, make a new one?\nn) New remote\ns) Set configuration password\nq) Quit config\nn/s/q> n\nbackup\nsftp\n134.199.218.139\nbackup\n2022\ny\n\nEnter name for new remote.\nname>",
       "duration": 3,
       "source_time": null
     },
     {
-      "title": "05  rclone saves the SFTP destination",
       "body": "Configuration complete.\nOptions:\n- type: sftp\n- host: 134.199.218.139\n- user: backup\n- port: 2022\n- pass: *** ENCRYPTED ***\nKeep this \"backup\" remote?\ny) Yes this is OK (default)\ne) Edit this remote\nd) Delete this remote\ny/e/d> y",
       "duration": 4,
       "source_time": null
     },
     {
-      "title": "06  Select the configured remote and archive directory",
       "body": "Backup destination (configured-remote:path or mounted volume directory): backup:recordings\nBackup location: backup:recordings/zfsify-20260907T072035-e7857478-c854-4144-8609-5a8310cc42b5",
       "duration": 3,
       "source_time": null
     },
     {
-      "title": "03/10  Live installer output \u00b7 selected excerpts",
       "body": "[####--------------------] phase 3/10: Compress rescue filesystem (one worker, bounded memory) [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 393.244
     },
     {
-      "title": "03/10  Live installer output \u00b7 selected excerpts",
       "body": "[####--------------------] phase 3/10: Pack minimal RAM boot shim [complete]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.2 W 0.0 MB/s 13 IOPS | /dev/vda1: R 0.2 W 0.0 MB/s 13 IOPS",
       "duration": 1.4,
       "source_time": 554.713
     },
     {
-      "title": "Reconnect into the compressed RAM rescue system",
-      "body": "[Editorial transition: reboot wait removed]\n\nThe source filesystem is now offline.\nThe recording reconnects and follows /run/zfs-on-boot.log.",
-      "duration": 2,
-      "source_time": null
-    },
-    {
-      "title": "04/10  Live installer output \u00b7 selected excerpts",
       "body": "[#######-----------------] phase 4/10: Archive the offline installation with rclone and verify a full download [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 572.461
     },
     {
-      "title": "04/10  Live installer output \u00b7 selected excerpts",
       "body": "[#######-----------------] phase 4/10: Archive the offline installation with rclone and verify a full download [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 90s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 104.8 W 0.0 MB/s 800 IOPS | /dev/vda1: R 104.8 W 0.0 MB/s 800 IOPS",
       "duration": 1.4,
       "source_time": 659.906
     },
     {
-      "title": "04/10  Live installer output \u00b7 selected excerpts",
       "body": "[#######-----------------] phase 4/10: Archive the offline installation with rclone and verify a full download [complete]\n  devices: /dev/vda,/dev/vda1 | elapsed 172s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 742.277
     },
     {
-      "title": "rclone streams the archive to a separate DigitalOcean server",
       "body": "2026/09/07 07:23:39 NOTICE:    36.996 MiB / 36.996 MiB, 100%, 7.052 MiB/s, ETA 0s",
       "duration": 2,
       "source_time": 576.881
     },
     {
-      "title": "rclone streams the archive to a separate DigitalOcean server",
       "body": "2026/09/07 07:25:04 NOTICE:   819.996 MiB / 819.996 MiB, 100%, 6.629 MiB/s, ETA 0s",
       "duration": 2,
       "source_time": 661.884
     },
     {
-      "title": "The complete remote archive is read back before erasure",
       "body": "Complete offline backup downloaded and checksum-verified; original disk may now be reformatted.",
       "duration": 4,
       "source_time": 742.267
     },
     {
-      "title": "04/10  Live installer output \u00b7 selected excerpts",
       "body": "[#######-----------------] phase 4/10: Erase /dev/vda and create ZFSBootMenu + ZFS partitions [running]\n  devices: /dev/vda,/dev/vda1 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 743.002
     },
     {
-      "title": "04/10  Live installer output \u00b7 selected excerpts",
       "body": "[#######-----------------] phase 4/10: Erase /dev/vda and create ZFSBootMenu + ZFS partitions [complete]\n  devices: /dev/vda,/dev/vda1 | elapsed 2s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.6 W 0.0 MB/s 170 IOPS",
       "duration": 1.4,
       "source_time": 745.187
     },
     {
-      "title": "05/10  Live installer output \u00b7 selected excerpts",
       "body": "[#########---------------] phase 5/10: Restore and checksum-check the rclone archive [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda2 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 745.816
     },
     {
-      "title": "05/10  Live installer output \u00b7 selected excerpts",
       "body": "[#########---------------] phase 5/10: Restore and checksum-check the rclone archive [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda2 | elapsed 87s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 8.5 MB/s 588 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 8.5 MB/s 588 IOPS",
       "duration": 1.4,
       "source_time": 832.983
     },
     {
-      "title": "05/10  Live installer output \u00b7 selected excerpts",
       "body": "[#########---------------] phase 5/10: Restore and checksum-check the rclone archive [complete]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda2 | elapsed 173s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 5.0 W 36.1 MB/s 3013 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 5.0 W 36.1 MB/s 3013 IOPS",
       "duration": 1.4,
       "source_time": 918.622
     },
     {
-      "title": "rclone downloads the archive into the new ZFS root",
       "body": "2026/09/07 07:27:58 NOTICE:   605.996 MiB / 981.028 MiB, 62%, 11.706 MiB/s, ETA 32s",
       "duration": 2,
       "source_time": 835.984
     },
     {
-      "title": "All archived data is restored; the backup stays available",
       "body": "Restored remote archive. The remote backup is retained.",
       "duration": 3,
       "source_time": 918.622
     },
     {
-      "title": "07/10  Live installer output \u00b7 selected excerpts",
       "body": "[##############----------] phase 7/10: Configure ZFS root, initramfs and boot services [running]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda2 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 918.789
     },
     {
-      "title": "07/10  Live installer output \u00b7 selected excerpts",
       "body": "[##############----------] phase 7/10: Configure ZFS root, initramfs and boot services [complete]\n  devices: /dev/vda,/dev/vda1,/dev/vda16,/dev/vda2 | elapsed 29s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 17.8 W 73.0 MB/s 1090 IOPS | /dev/vda1: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 17.8 W 73.0 MB/s 1090 IOPS",
       "duration": 1.4,
       "source_time": 947.359
     },
     {
-      "title": "09/10  Live installer output \u00b7 selected excerpts",
       "body": "[###################-----] phase 9/10: Grow final ZFS partition /dev/vda2 to fill /dev/vda [running]\n  devices: /dev/vda,/dev/vda2 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 947.514
     },
     {
-      "title": "09/10  Live installer output \u00b7 selected excerpts",
       "body": "[###################-----] phase 9/10: Grow final ZFS partition /dev/vda2 to fill /dev/vda [complete]\n  devices: /dev/vda,/dev/vda2 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 13.7 W 16.2 MB/s 1932 IOPS | /dev/vda2: R 4.1 W 16.2 MB/s 1607 IOPS",
       "duration": 1.4,
       "source_time": 947.713
     },
     {
-      "title": "10/10  Live installer output \u00b7 selected excerpts",
       "body": "[#####################---] phase 10/10: Install ZFSBootMenu on /dev/vda1; Ubuntu /boot remains on ZFS [running]\n  devices: /dev/vda,/dev/vda2 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 947.804
     },
     {
-      "title": "10/10  Live installer output \u00b7 selected excerpts",
       "body": "[########################] phase 10/10: Ready to reboot [complete]\n  devices: /dev/vda,/dev/vda2 | elapsed 0s\n  data total: n/a (streaming or metadata operation)\n  /dev/vda: R 0.0 W 0.0 MB/s 0 IOPS | /dev/vda2: R 0.0 W 0.0 MB/s 0 IOPS",
       "duration": 1.4,
       "source_time": 949.231
     },
     {
-      "title": "Ubuntu reboots through ZFSBootMenu",
-      "body": "[Editorial transition: reboot wait removed]\n\nSSH returns after Ubuntu boots from its ZFS root.",
-      "duration": 2,
-      "source_time": null
-    },
-    {
-      "title": "The running root and /boot now live on ZFS",
       "body": "findmnt -n -o SOURCE,FSTYPE /; findmnt -n -o SOURCE,FSTYPE --target /boot; zpool status -x\n\nrpool/ROOT/ubuntu zfs\nrpool/ROOT/ubuntu zfs\nall pools are healthy\nroot@zfsify:~#",
       "duration": 4,
       "source_time": null
     },
     {
-      "title": "Original files and hard link survived \u00b7 recovery snapshot ready",
       "body": "sha256sum -c /root/demo.sha256\n\n/srv/demo/README.txt: OK\n/srv/demo/archive.bin: OK\nroot@zfsify:~# stat -c \"%h links: %n\" /srv/demo/README.txt\n\n2 links: /srv/demo/README.txt\nroot@zfsify:~# zfs list -H -o name -t snapshot\n\nrpool/ROOT/ubuntu@zfsify-installed\nroot@zfsify:~#",
       "duration": 5,
       "source_time": null

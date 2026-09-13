@@ -29,15 +29,15 @@ def launcher(directory, command, extra=()):
             f'import importlib.util,sys; s=importlib.util.spec_from_file_location("progress",{str(SOURCE)!r}); '
             'm=importlib.util.module_from_spec(s); s.loader.exec_module(m); '
             f'm.STATE=m.Path({str(directory / "state.json")!r}); m.LOG=m.Path({str(directory / "progress.log")!r}); '
-            'sys.exit(m.main())', 'run', '--phase', '5', '--label', 'Copy and verify local preview files',
-            '--devices', 'local filesystem', '--source', 'source.bin', '--target', 'copy.bin', *extra,
+            'sys.exit(m.main())', 'run', '--phase', '5', '--label', 'Copy files',
+            '--devices', 'local filesystem', '--source', 'source/', '--target', 'target/', *extra,
             '--', *command]
 
 
-def terminal(command, *, width=96, resize=False, interrupt=False, env=None):
+def terminal(command, *, width=96, height=24, resize=False, interrupt=False, env=None):
     pid, fd = pty.fork()
     if pid == 0:
-        fcntl.ioctl(1, termios.TIOCSWINSZ, struct.pack('HHHH', 24, width, 0, 0))
+        fcntl.ioctl(1, termios.TIOCSWINSZ, struct.pack('HHHH', height, width, 0, 0))
         os.environ.update(TERM='xterm-256color', PYTHONIOENCODING='utf-8')
         os.environ.pop('NO_COLOR', None)
         os.environ.update(env or {})
@@ -47,7 +47,7 @@ def terminal(command, *, width=96, resize=False, interrupt=False, env=None):
         while time.monotonic() - started < 15:
             elapsed = time.monotonic() - started
             if resize and elapsed > .3 and not resized:
-                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 16, 40, 0, 0)); resized = True
+                fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack('HHHH', 16, width if resize == 'height' else 40, 0, 0)); resized = True
             if interrupt and elapsed > .3 and not stopped:
                 if interrupt == 'term': os.kill(pid, signal.SIGTERM)
                 else: os.write(fd, b'\x03')
@@ -70,21 +70,28 @@ def terminal(command, *, width=96, resize=False, interrupt=False, env=None):
 
 
 def copy_fixture(directory, seconds=2):
-    data = directory / 'source.bin'
-    data.write_bytes(os.urandom(32*1024**2))
+    source, target = directory/'source', directory/'target'
+    source.mkdir(); target.mkdir()
+    for index, size in enumerate((8, 8, 16)):
+        (source/f'file-{index}.bin').write_bytes(os.urandom(size*1024**2))
     code = '''import hashlib,os,sys,time
-source,target=sys.argv[1:3]
-total=os.path.getsize(source); done=0
+from pathlib import Path
+source,target=map(Path,sys.argv[1:3])
+files=sorted(source.iterdir()); total=sum(p.stat().st_size for p in files); done=0
 print(f'ZFSIFY_START 0 {total}',flush=True)
-with open(source,'rb') as src,open(target,'wb') as dst:
- while chunk:=src.read(1024**2):
-  dst.write(chunk); dst.flush(); done+=len(chunk)
-  print(f'ZFSIFY_PROGRESS {done} {total}',flush=True)
-  time.sleep(float(sys.argv[3])/32)
-assert hashlib.sha256(open(source,'rb').read()).digest()==hashlib.sha256(open(target,'rb').read()).digest()
-print('SHA-256 verified: source.bin = copy.bin',flush=True)
+print(f'ZFSIFY_FILES 0 {len(files)}',flush=True)
+for index,path in enumerate(files,1):
+ with path.open('rb') as src,(target/path.name).open('wb') as dst:
+  while chunk:=src.read(1024**2):
+   dst.write(chunk); dst.flush(); done+=len(chunk)
+   print(f'ZFSIFY_PROGRESS {done} {total}',flush=True)
+   time.sleep(float(sys.argv[3])/32)
+ assert hashlib.sha256(path.read_bytes()).digest()==hashlib.sha256((target/path.name).read_bytes()).digest()
+ print(f'ZFSIFY_FILES {index} {len(files)}',flush=True)
+print('SHA-256 verified: all 3 files match',flush=True)
 '''
-    return [sys.executable, '-c', code, str(data), str(directory/'copy.bin'), str(seconds)]
+    return [sys.executable, '-c', code, str(source), str(target), str(seconds)]
+
 
 
 class ProgressTests(unittest.TestCase):
@@ -95,6 +102,8 @@ class ProgressTests(unittest.TestCase):
             text = m.render(state, width=width)
             self.assertTrue(all(len(line) <= width for line in text.splitlines()))
             self.assertNotIn('\x1b', text)
+        self.assertIn('Overall', m.render(state)); self.assertIn('4/10 phases complete', m.render(state))
+        self.assertIn('Transfer total', m.render(state))
         self.assertIn('25.0%', m.render(state))
         state['status'] = 'failed'
         self.assertIn('25.0%', m.render(state)); self.assertNotIn('100.0%', m.render(state))
@@ -122,21 +131,23 @@ class ProgressTests(unittest.TestCase):
             self.assertNotIn('\x1b', (d/'progress.log').read_text())
             state = json.loads((d/'state.json').read_text())
             self.assertEqual(state['done'], 32*1024**2); self.assertEqual(state['status'], 'complete')
+            self.assertEqual(state['files_done'], 3); self.assertEqual(state['files_total'], 3)
             self.assertIn('SHA-256 verified', p.stdout)
 
     def test_real_copy_tty_resize_no_color_and_tee(self):
-        for mode in ('normal', 'resize', 'no-color', 'tee'):
+        for mode in ('normal', 'resize', 'height', 'no-color', 'tee'):
             with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
                 d = Path(tmp); command = launcher(d, copy_fixture(d, 1))
                 if mode == 'tee':
                     import shlex
                     command = ['/bin/bash', '-c', 'set -o pipefail; '+shlex.join(command)+' | tee '+shlex.quote(str(d/'tee.log'))]
-                rc, events = terminal(command, resize=mode == 'resize',
+                rc, events = terminal(command, resize='height' if mode == 'height' else mode == 'resize',
                                       env={'NO_COLOR':'1'} if mode == 'no-color' else {'ZFS_PROGRESS_TTY':'1'} if mode == 'tee' else {})
                 out = ''.join(e[2] for e in events)
                 self.assertEqual(rc, 0, out); self.assertIn('100.0%', out)
                 self.assertIn('\x1b[?25l', out); self.assertIn('\x1b[?25h', out)
                 self.assertNotIn('\x1b[2J', out)
+                self.assertNotIn('\x1b[J', out)
                 self.assertGreater(out.count('PHASE'), 3)
                 self.assertNotIn('\x1b', (d/'progress.log').read_text())
                 if mode == 'no-color': self.assertNotIn('\x1b[1;36m', out)
@@ -191,9 +202,9 @@ if __name__ == '__main__':
         dest = Path(sys.argv[2]); dest.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp:
             d = Path(tmp)
-            rc, events = terminal(launcher(d, copy_fixture(d, 5)))
+            rc, events = terminal(launcher(d, copy_fixture(d, 5)), height=18)
             assert rc == 0
-            header = dict(version=2, width=96, height=24,
+            header = dict(version=2, width=96, height=18,
                           title='zfsify TUI preview — real local file copy, not a disk conversion')
             dest.write_text('\n'.join(json.dumps(e, ensure_ascii=False) for e in [header, *events])+'\n')
             print(dest)
