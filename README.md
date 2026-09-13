@@ -72,10 +72,10 @@ options skip selection prompts. Convert one disk per invocation.
 - **Internet:** access to Ubuntu package repositories.
 - **SSH:** for boot-drive conversion, your public key must be in `/root/.ssh/authorized_keys`; automatically copied to the rescue environment and fresh installs to preserve SSH access.
 
-## Process, data safety, and recovery
+## How it Works
 
 <details>
-<summary><strong>1. Inspect the selected disk and choose a method</strong></summary>
+<summary><h3 id="disk-scan">1. Disk scan and algorithm selection</h3></summary>
 
 - **Enough room for two copies:** use a temporary partition (usually below 50% used).
 - **Less free space on `/`:** rewrite in place, slice by slice.
@@ -85,7 +85,7 @@ options skip selection prompts. Convert one disk per invocation.
 </details>
 
 <details>
-<summary><strong>2. Prepare for conversion</strong></summary>
+<summary><h3 id="prepare-disk">2. Prepares the disk for conversion</h3></summary>
 
 - **Boot drive:** install a temporary RAM boot environment, then reboot into it; prepare persistent rescue storage for slice-based conversion.
 - **Attached volume:** unmount the source filesystem.
@@ -94,7 +94,7 @@ options skip selection prompts. Convert one disk per invocation.
 </details>
 
 <details>
-<summary><strong>3. Convert ext4 to ZFS</strong></summary>
+<summary><h3 id="convert-to-zfs">3. Converts ext4 to ZFS</h3></summary>
 
 - **Two-copy method:** shrink ext4, copy files to ZFS at the disk's end, and verify before replacing the original. Move ZFS to the front and expand it. Bootability is preserved where possible, but partition and bootloader replacement have interruption windows; disk failure can destroy both copies.
 - **Slice-based method:** copy and verify files in slices, then reuse their ext4 space. **The original Ubuntu installation becomes unbootable when its data starts being reclaimed.** The temporary rescue entry supports resuming interrupted copying or relocation.
@@ -106,7 +106,7 @@ options skip selection prompts. Convert one disk per invocation.
 </details>
 
 <details>
-<summary><strong>4. Finish disk and boot setup</strong></summary>
+<summary><h3 id="finish-setup">4. Finishes disk and boot setup</h3></summary>
 
 - Preserve file metadata and update mount settings for ZFS.
 - **Boot drive:** update Ubuntu boot settings, replace GRUB with ZFSBootMenu, and reboot into Ubuntu. Keep a small firmware/bootloader partition outside ZFS; continue managing Ubuntu packages with APT.
@@ -115,7 +115,7 @@ options skip selection prompts. Convert one disk per invocation.
 </details>
 
 <details>
-<summary><strong>5. Use and maintain ZFS</strong></summary>
+<summary><h3 id="snapshots-and-growth">5. Snapshots, recovery, and disk growth</h3></summary>
 
 - **Snapshots:** automatic daily snapshots and snapshots before package changes. To recover a boot drive, use ZFSBootMenu in the provider's preboot console to boot a clone of a working snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
 - **Disk growth:** enlarge the actual disk through the provider, then reboot; ZFS expands without guest-side resize commands. Tested for boot disks and attached Volumes on DigitalOcean.
