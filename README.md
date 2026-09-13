@@ -61,22 +61,16 @@ options skip selection prompts. Convert one disk per invocation.
 
 ## Requirements
 
-- Ubuntu **22.04, 24.04, or 26.04**; **x64 (amd64) or ARM64**.
-- Internet access to Ubuntu package repositories.
-- ext4 on a direct disk or partition with **512-byte logical sectors**; no LVM, RAID, encrypted sources, or 4K logical sectors.
-- Attached data disks: one source filesystem and enough space for a second copy, or a separate backup destination.
-
-### Minimum system requirements
-
-For boot-drive conversion:
-
-- **512 MiB RAM**
-- **10 GB disk**
-- **3.5 GB available on `/`** for staging; conversion may need additional working space.
-- **500 MB free in `/boot`** to stage the temporary boot image before reboot.
-- **GPT and GRUB**; a separate ext4 `/boot` is supported.
-- **BIOS or UEFI on x64; UEFI on ARM64**; Secure Boot disabled.
-- SSH public key in `/root/.ssh/authorized_keys` for rescue access.
+- **OS:** Ubuntu 22.04, 24.04, or 26.04.
+- **CPU architecture:** x64 (amd64) or ARM64.
+- **RAM:** 512 MiB minimum for boot-drive conversion.
+- **Disk:** 10 GB minimum for the boot drive.
+- **Free space:** 3.5 GB on `/` and 500 MB in `/boot` to stage boot-drive conversion; additional working space depends on the selected method.
+- **Filesystem:** ext4 on a direct disk or partition with 512-byte logical sectors. No LVM, RAID, encrypted sources, or 4K logical sectors.
+- **Boot:** GPT and GRUB; BIOS or UEFI on x64, UEFI on ARM64; Secure Boot disabled. A separate ext4 `/boot` is supported.
+- **Attached volumes:** one source filesystem per disk; room for a second copy or a separate backup destination.
+- **Internet:** access to Ubuntu package repositories.
+- **SSH:** for boot-drive conversion, your public key must be in `/root/.ssh/authorized_keys`; automatically copied to the rescue environment and fresh installs to preserve SSH access.
 
 ## Process, data safety, and recovery
 
