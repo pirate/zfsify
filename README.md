@@ -75,31 +75,31 @@ options skip selection prompts. Convert one disk per invocation.
 ## How it Works
 
 <details>
-<summary><h3 id="disk-scan">1. Disk scan and algorithm selection</h3></summary>
+<summary><h3 id="disk-scan">1. Scans the disk and selects an algorithm</h3></summary>
 
-- **Enough room for two copies:** use a temporary partition (usually below 50% used).
-- **Less free space on `/`:** rewrite in place, slice by slice.
-- **Insufficient working space:** ask for a separate backup destination. Attached volumes require room for two copies or a separate backup.
-- **On request:** use backup and restore (`--backup`) or erase (`--erase`). Erasure is never an automatic fallback.
+- **Enough room for two copies:** it selects the temporary-partition method, usually when less than 50% of the filesystem is used.
+- **Less free space on `/`:** it selects slice-by-slice conversion when the data fits alongside the recovery area and filesystem overhead.
+- **Insufficient working space:** it asks you to choose a separate backup destination. Attached volumes require room for two copies or a separate backup.
+- **Explicit options:** it uses your requested method (`--preserve`, `--inplace`, `--backup`, or `--erase`) when applicable. It never selects erasure as an automatic fallback.
 
 </details>
 
 <details>
 <summary><h3 id="prepare-disk">2. Prepares the disk for conversion</h3></summary>
 
-- **Boot drive:** install a temporary RAM boot environment, then reboot into it; prepare persistent rescue storage for slice-based conversion.
-- **Attached volume:** unmount the source filesystem.
-- **Backup and restore:** select and confirm a destination, then create a complete archive and read it back to verify it before erasing the source. An explicit `--backup=/mnt/backup` or `--backup=remote:path` skips destination prompts. [Backup setup](docs/backup.md).
+- **Boot drive:** it stages a temporary RAM boot environment and reboots into it, retaining SSH access. For slice-based conversion, it also prepares persistent rescue storage so interrupted copying can resume.
+- **Attached volume:** it unmounts the source filesystem before conversion; applications using that volume must be stopped first.
+- **Backup and restore:** it prompts you to select and confirm a destination, then creates a complete archive and reads it back to verify it before erasing the source. An explicit `--backup=/mnt/backup` or `--backup=remote:path` supplies the destination without prompts. [Backup setup](docs/backup.md).
 
 </details>
 
 <details>
 <summary><h3 id="convert-to-zfs">3. Converts ext4 to ZFS</h3></summary>
 
-- **Two-copy method:** shrink ext4, copy files to ZFS at the disk's end, and verify before replacing the original. Move ZFS to the front and expand it. Bootability is preserved where possible, but partition and bootloader replacement have interruption windows; disk failure can destroy both copies.
-- **Slice-based method:** copy and verify files in slices, then reuse their ext4 space. **The original Ubuntu installation becomes unbootable when its data starts being reclaimed.** The temporary rescue entry supports resuming interrupted copying or relocation.
-- **Backup and restore:** erase the source, create ZFS, and restore the archive. The source remains unbootable until restoration and boot setup finish; keep the backup until the restored system works.
-- **Erase (`--erase`):** for `/`, install fresh Ubuntu of the same release, preserve accounts, SSH access, and `/etc`, then restore as much home/application data as the displayed budget allows. **Omitted data is lost; applications may need reinstalling. For an attached volume, erase all files.**
+- **Two-copy method:** it shrinks ext4, copies files to ZFS at the disk's end, and verifies them before replacing the original. It then moves ZFS to the front and expands it. Bootability is preserved where possible, but partition and bootloader replacement have interruption windows; disk failure can destroy both copies.
+- **Slice-based method:** it copies and verifies files in slices, then reuses their ext4 space for ZFS. **The original Ubuntu installation becomes unbootable when its data starts being reclaimed.** The temporary rescue entry can resume interrupted copying or relocation.
+- **Backup and restore:** it erases the source, creates ZFS, and restores the verified archive. The source remains unbootable until restoration and boot setup finish; keep the backup until the restored system works.
+- **Erase (`--erase`):** for `/`, it installs fresh Ubuntu of the same release, preserves accounts, SSH access, and `/etc`, then restores as much home/application data as the displayed budget allows. **Omitted data is lost; applications may need reinstalling. For an attached volume, it erases all files.**
 
 ![Conversion with room for a second copy](docs/assets/disk-conversion.svg)
 
@@ -108,17 +108,17 @@ options skip selection prompts. Convert one disk per invocation.
 <details>
 <summary><h3 id="finish-setup">4. Finishes disk and boot setup</h3></summary>
 
-- Preserve file metadata and update mount settings for ZFS.
-- **Boot drive:** update Ubuntu boot settings, replace GRUB with ZFSBootMenu, and reboot into Ubuntu. Keep a small firmware/bootloader partition outside ZFS; continue managing Ubuntu packages with APT.
-- **Attached volume:** restore its mount point. You can then restart applications that use it.
+- **Files and mounts:** it preserves ownership, permissions, ACLs, and extended attributes. It removes the old ext4 entries from `/etc/fstab` and configures ZFS to mount the new datasets at their original paths.
+- **Boot drive:** it rebuilds Ubuntu's initramfs with ZFS support, preserves applicable kernel boot arguments, replaces GRUB with ZFSBootMenu, and reboots into Ubuntu. A small firmware/bootloader partition remains outside ZFS; Ubuntu packages continue to use APT.
+- **Attached volume:** it mounts the new dataset at the original mount point and enables mounting at startup. You can then restart applications that use the volume.
 
 </details>
 
 <details>
-<summary><h3 id="snapshots-and-growth">5. Snapshots, recovery, and disk growth</h3></summary>
+<summary><h3 id="snapshots-and-growth">5. Enables snapshots, recovery, and disk growth</h3></summary>
 
-- **Snapshots:** automatic daily snapshots and snapshots before package changes. To recover a boot drive, use ZFSBootMenu in the provider's preboot console to boot a clone of a working snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
-- **Disk growth:** enlarge the actual disk through the provider, then reboot; ZFS expands without guest-side resize commands. Tested for boot disks and attached Volumes on DigitalOcean.
+- **Boot-drive snapshots:** it schedules daily snapshots and snapshots before APT package changes. For recovery, you can open ZFSBootMenu in the provider's preboot console and boot a clone of a working snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
+- **Disk growth:** it expands the ZFS partition and pool on reboot after you enlarge the disk through your provider. No guest-side resize commands are needed; both boot-disk and attached-volume growth have been tested on DigitalOcean.
 
 ![Snapshot selection in DigitalOcean's recovery console](docs/assets/screenshots/digitalocean-snapshots.jpg)
 
