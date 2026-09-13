@@ -16,7 +16,15 @@ grep -qx 'retained config' /etc/zfsify-test.conf
 BOOT_FS=ext4
 [[ ! -d /sys/firmware/efi ]] || BOOT_FS=vfat
 [[ $(lsblk -nr -o FSTYPE /dev/vda | awk -v boot="$BOOT_FS" 'NF && $1!="zfs_member" && $1!=boot {n++} END {print n+0}') = 0 ]]
-[[ $(zpool list -Hp -o size rpool) -gt 8000000000 ]]
+[[ $(zpool get -Hp -o value expandsize rpool) = - ]]
+python3 - <<'PY'
+import json, subprocess
+table = json.loads(subprocess.check_output(['sfdisk', '--json', '/dev/vda']))['partitiontable']
+root = next(p for p in table['partitions'] if p['node'] == '/dev/vda2')
+# Allow the normal MiB alignment gap at the end of a partition.
+gap = table['lastlba'] - (root['start'] + root['size'] - 1)
+assert 0 <= gap < 1024**2 // table['sectorsize'], 'ZFS partition does not reach the disk end'
+PY
 systemctl is-enabled zfs-on-boot-grow.service
 systemctl show zfs-on-boot-grow -p Result
 printf 'PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.\n'

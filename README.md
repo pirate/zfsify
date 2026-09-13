@@ -61,16 +61,11 @@ options skip selection prompts. Convert one disk per invocation.
 
 ## Requirements
 
-- **OS:** Ubuntu 22.04, 24.04, or 26.04.
-- **CPU architecture:** x64 (amd64) or ARM64.
-- **RAM:** 512 MiB minimum for boot-drive conversion.
-- **Disk:** 10 GB minimum for the boot drive.
-- **Free space:** 3.5 GB on `/` and 500 MB in `/boot` to stage boot-drive conversion; additional working space depends on the selected method.
-- **Filesystem:** ext4 on a direct disk or partition with 512-byte logical sectors. No LVM, RAID, encrypted sources, or 4K logical sectors.
-- **Boot:** GPT and GRUB; BIOS or UEFI on x64, UEFI on ARM64; Secure Boot disabled. A separate ext4 `/boot` is supported.
-- **Attached volumes:** one source filesystem per disk; room for a second copy or a separate backup destination.
-- **Internet:** access to Ubuntu package repositories.
-- **SSH:** for boot-drive conversion, your public key must be in `/root/.ssh/authorized_keys`; automatically copied to the rescue environment and fresh installs to preserve SSH access.
+- **System:** Ubuntu 22.04, 24.04, or 26.04 on x64 or ARM64; internet access to Ubuntu package repositories and GitHub.
+- **Source disk:** ext4 on a direct disk or partition with 512-byte logical sectors; no LVM, RAID, or encrypted sources. Attached disks: one source filesystem, with room for a second copy or a separate backup.
+- **Boot-drive resources:** 512 MiB RAM; working space for package preparation and conversion, plus room in `/boot` for the temporary kernel and boot image.
+- **Boot-drive setup:** GPT and GRUB; BIOS or UEFI on x64, UEFI on ARM64; Secure Boot disabled. A separate ext4 `/boot` is supported.
+- **SSH:** for boot-drive conversion, a public key in `/root/.ssh/authorized_keys`; copied to rescue and fresh installs to preserve access.
 
 ## How it Works
 
@@ -139,7 +134,8 @@ bootloader replacement may require a provider rescue image.
 | KVM guest hosted on a DigitalOcean Droplet | 24.04, x64, UEFI | 1 GiB RAM / 20 GiB disk |
 
 Other providers have not been explicitly tested. Cloud-init scheduling has not
-been separately tested end to end.
+been separately tested end to end. **Lima/VZ has an unresolved boot failure; use
+QEMU/HVF for local VMs.**
 
 ## Performance
 

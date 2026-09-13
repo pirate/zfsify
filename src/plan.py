@@ -18,7 +18,9 @@ for part in parts:
 last = source['start'] + source['size'] - 1
 front_start = 1050624  # 1 MiB alignment + 512 MiB ZFSBootMenu partition
 split = ((last + 1 + front_start) // 2 // 2048 + 2) * 2048
-assert split > source['start'] + 3*1024**3//512, 'Insufficient front space'
+# The shrink operation leaves a 1 MiB gap. Strategy selection checks whether
+# the actual data fits; do not impose an unrelated minimum partition size.
+assert source['start'] + 2048 < split <= last, 'No room for separate source and scratch regions'
 assert split - front_start >= last - split + 1, 'Front mirror member must be at least as large as temporary member'
 number = re.search(r'(\d+)$', root)[1]
 # Names from the kernel are validated without evaluating arbitrary partition labels.

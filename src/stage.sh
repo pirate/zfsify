@@ -120,9 +120,6 @@ read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
 echo "Detected Ubuntu $VERSION_ID | $ARCH | $FIRMWARE boot"
 echo "Root filesystem: $ROOTDEV on $DISK | used $USED_PCT% ($USED_BYTES / $FS_BYTES bytes)"
-[[ $(df -Pk /boot | awk 'NR==2 {print $4}') -ge 500000 ]] || die 'At least 500 MB free in /boot is required.'
-[[ $(df -Pk / | awk 'NR==2 {print $4}') -ge 3500000 ]] || die 'At least 3.5 GB free disk space is required for staging, including erase mode.'
-[[ $(blockdev --getsize64 "$DISK") -ge 10000000000 ]] || die 'At least a 10 GB disk is required.'
 [[ $(blockdev --getss "$DISK") = 512 ]] || die 'Only 512-byte logical sectors are supported.'
 [[ -s /root/.ssh/authorized_keys ]] || die 'A root SSH authorized_keys file is required.'
 [[ ! -e $WORK ]] || die "$WORK already exists. Inspect it before retrying; use the documented cleanup procedure."
@@ -401,14 +398,22 @@ phase 3 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" 
 phase 3 'Pack minimal RAM boot shim' bash -o pipefail -c 'cd "$1"; find . -xdev -print0 | cpio --null -o --format=newc | gzip -1 > "$2"' _ "$WORK/shim" "$WORK/installer.img"
 gzip -t "$WORK/installer.img"
 IMAGE_BYTES=$(stat -c %s "$WORK/installer.img")
+KERNEL_BYTES=$(stat -Lc %s "$KERNEL")
 BOOT_FREE=$(df -B1 /boot | awk 'NR==2 {print $4}')
-(( IMAGE_BYTES + 50000000 < BOOT_FREE )) || die 'The complete installer does not fit in /boot; no boot entry was changed.'
+# Only the kernel and boot shim go in /boot; rescue.squashfs stays on /.
+# Leave room for filesystem metadata and regenerating GRUB's configuration.
+BOOT_REQUIRED=$((IMAGE_BYTES + KERNEL_BYTES + 16*1024*1024))
+echo "Boot staging: $BOOT_REQUIRED bytes required (kernel + image + 16 MiB reserve); $BOOT_FREE bytes available in /boot."
+(( BOOT_REQUIRED <= BOOT_FREE )) || die "Not enough space in /boot: need $(( (BOOT_REQUIRED-BOOT_FREE+1048575)/1048576 )) MiB more. No installer boot files or boot entry were written."
 mkdir -m 700 /boot/zfs-on-boot
 cp "$KERNEL" /boot/zfs-on-boot/vmlinuz
 cp "$WORK/installer.img" /boot/zfs-on-boot/installer.img
 sha256sum /boot/zfs-on-boot/vmlinuz /boot/zfs-on-boot/installer.img > "$WORK/SHA256SUMS"
 BOOT_UUID=$(findmnt -n -o UUID --target /boot)
 RESCUE_CMDLINE=$(cat "$ROOT/etc/zfs-on-boot/boot/cmdline-grub")
+# The next boot uses rescue.squashfs and the staged kernel/shim, not these
+# unpacked build trees. Release them before ext4 needs to shrink in rescue.
+rm -rf "$ROOT" "$WORK/shim"
 cat > /etc/grub.d/09_zfs_on_boot <<EOF
 #!/bin/sh
 cat <<'GRUB'

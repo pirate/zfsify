@@ -14,9 +14,11 @@ curl -fsSL https://raw.githubusercontent.com/pirate/zfsify/refs/heads/experiment
 ```
 
 The backend uses the supported GPT/ext4 root layout on BIOS or UEFI, with `/boot`
-either inside root or on a separate ext4 partition. The normal staging requirements
-still apply, including 3.5 GB free on `/` and 500 MB free on `/boot`. There is no
-50% gate for this mode, but enough space must remain for filesystem overhead and
+either inside root or on a separate ext4 partition. Package preparation needs
+working space on `/`; the amount depends on the installed packages and architecture.
+Available `/boot` space is checked against the temporary kernel and boot image
+size plus a 16 MiB reserve. There is no 50% gate for this mode, but enough space
+must remain for filesystem overhead and
 the final ZFS data. A universal minimum free-space percentage is not established.
 
 ## What happens

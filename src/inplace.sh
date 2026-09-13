@@ -48,6 +48,14 @@ if [[ -z $SCRATCH ]]; then
     IMAGE_BYTES=$(( (COPY_END-ROOT_START+1)/8*4096 ))
     ZFS_START=$((ROOT_START+IMAGE_OFFSET))
     ZFS_END=$((ROOT_START+IMAGE_BYTES/512-1))
+    # Rescue is already verified and running from RAM. Release its on-disk
+    # staging copy before shrinking ext4, just as the two-copy path does.
+    # Keep the boot files until they are copied to persistent rescue below.
+    inplace_mount_source
+    mkdir -p /var/log/zfs-on-boot
+    cp /old/var/lib/zfs-on-boot/stage.log /var/log/zfs-on-boot/stage.log
+    rm -rf /old/var/lib/zfs-on-boot
+    inplace_unmount_source
     phase 4 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     phase 4 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
     sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$COPY_END" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SCRATCH_START:$ROOT_END" -t 32:8300 "$DISK"
@@ -64,7 +72,7 @@ if [[ -z $SCRATCH ]]; then
     mkdir -p /scratch/var/lib/zfs-on-boot /scratch/boot/zfs-on-boot
     cp /rescue-media/rescue.squashfs /scratch/var/lib/zfs-on-boot/
     cp /old/boot/zfs-on-boot/{installer.img,vmlinuz} /scratch/boot/zfs-on-boot/
-    cp /old/var/lib/zfs-on-boot/stage.log "$STATE/stage.log"
+    cp /var/log/zfs-on-boot/stage.log "$STATE/stage.log"
     SCRATCH_UUID=$(blkid -s UUID -o value "$SCRATCH")
     mkdir -p /scratch/boot/grub
     cat > /scratch/boot/grub/grub.cfg <<EOF

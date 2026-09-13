@@ -23,8 +23,8 @@ The underlying conversion paths have DigitalOcean acceptance evidence;
 ## Convert the root drive at first boot
 
 1. Create a normal Ubuntu VPS with a supported image and disk layout. Follow the
-   [root requirements](../README.md#requirements), including at least 512 MiB RAM,
-   a 10 GB disk, and the staging-space checks. A fresh, mostly empty image is the
+   [root requirements](../README.md#requirements), including at least 512 MiB RAM
+   and working space for package preparation and conversion. A fresh, mostly empty image is the
    usual starting point.
 2. Select your SSH public key in the provider's creation form.
 3. Paste [`cloud-init/root.yml`](../cloud-init/root.yml) into the provider's

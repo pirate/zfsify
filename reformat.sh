@@ -5,7 +5,7 @@ if [ "$(id -u)" != 0 ]; then echo 'Run as root: curl -fsSL URL | sudo sh' >&2; e
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_c602468291242e53a62175bf071ce027ce088ab7252f2f455c2112cc25353f7c'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_03c22ed9a1cb8be6eb9ee866e714a4197957e174770cc0408e22b879c4c54105'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -128,9 +128,6 @@ read -r FS_BYTES USED_BYTES < <(df -B1 --output=size,used / | tail -1)
 USED_PCT=$(awk -v u="$USED_BYTES" -v s="$FS_BYTES" 'BEGIN {printf "%.2f",100*u/s}')
 echo "Detected Ubuntu $VERSION_ID | $ARCH | $FIRMWARE boot"
 echo "Root filesystem: $ROOTDEV on $DISK | used $USED_PCT% ($USED_BYTES / $FS_BYTES bytes)"
-[[ $(df -Pk /boot | awk 'NR==2 {print $4}') -ge 500000 ]] || die 'At least 500 MB free in /boot is required.'
-[[ $(df -Pk / | awk 'NR==2 {print $4}') -ge 3500000 ]] || die 'At least 3.5 GB free disk space is required for staging, including erase mode.'
-[[ $(blockdev --getsize64 "$DISK") -ge 10000000000 ]] || die 'At least a 10 GB disk is required.'
 [[ $(blockdev --getss "$DISK") = 512 ]] || die 'Only 512-byte logical sectors are supported.'
 [[ -s /root/.ssh/authorized_keys ]] || die 'A root SSH authorized_keys file is required.'
 [[ ! -e $WORK ]] || die "$WORK already exists. Inspect it before retrying; use the documented cleanup procedure."
@@ -409,14 +406,22 @@ phase 3 'Build minimal RAM boot shim' python3 "$SOURCE/build-rescue.py" "$ROOT" 
 phase 3 'Pack minimal RAM boot shim' bash -o pipefail -c 'cd "$1"; find . -xdev -print0 | cpio --null -o --format=newc | gzip -1 > "$2"' _ "$WORK/shim" "$WORK/installer.img"
 gzip -t "$WORK/installer.img"
 IMAGE_BYTES=$(stat -c %s "$WORK/installer.img")
+KERNEL_BYTES=$(stat -Lc %s "$KERNEL")
 BOOT_FREE=$(df -B1 /boot | awk 'NR==2 {print $4}')
-(( IMAGE_BYTES + 50000000 < BOOT_FREE )) || die 'The complete installer does not fit in /boot; no boot entry was changed.'
+# Only the kernel and boot shim go in /boot; rescue.squashfs stays on /.
+# Leave room for filesystem metadata and regenerating GRUB's configuration.
+BOOT_REQUIRED=$((IMAGE_BYTES + KERNEL_BYTES + 16*1024*1024))
+echo "Boot staging: $BOOT_REQUIRED bytes required (kernel + image + 16 MiB reserve); $BOOT_FREE bytes available in /boot."
+(( BOOT_REQUIRED <= BOOT_FREE )) || die "Not enough space in /boot: need $(( (BOOT_REQUIRED-BOOT_FREE+1048575)/1048576 )) MiB more. No installer boot files or boot entry were written."
 mkdir -m 700 /boot/zfs-on-boot
 cp "$KERNEL" /boot/zfs-on-boot/vmlinuz
 cp "$WORK/installer.img" /boot/zfs-on-boot/installer.img
 sha256sum /boot/zfs-on-boot/vmlinuz /boot/zfs-on-boot/installer.img > "$WORK/SHA256SUMS"
 BOOT_UUID=$(findmnt -n -o UUID --target /boot)
 RESCUE_CMDLINE=$(cat "$ROOT/etc/zfs-on-boot/boot/cmdline-grub")
+# The next boot uses rescue.squashfs and the staged kernel/shim, not these
+# unpacked build trees. Release them before ext4 needs to shrink in rescue.
+rm -rf "$ROOT" "$WORK/shim"
 cat > /etc/grub.d/09_zfs_on_boot <<EOF
 #!/bin/sh
 cat <<'GRUB'
@@ -437,7 +442,7 @@ echo 'Installer staged and checked. Rebooting now. SSH returns in the RAM instal
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_c602468291242e53a62175bf071ce027ce088ab7252f2f455c2112cc25353f7c
+ZFS_ON_BOOT_03c22ed9a1cb8be6eb9ee866e714a4197957e174770cc0408e22b879c4c54105
 cat > "$work/strategy.py" <<'ZFS_ON_BOOT_7bb341c54bd2bcf40a581404dac06822b1d4973f69b50f8ca4f298aa183d25ff'
 #!/usr/bin/env python3
 """Read-only strategy discovery and timed choices; never format or mount disks."""
@@ -1486,7 +1491,7 @@ if __name__ == '__main__':
     sys.exit(main())
 
 ZFS_ON_BOOT_63a657d181172b120be85572f021e0832b4d0c67dcbdba78b70107d6524ca8aa
-cat > "$work/plan.py" <<'ZFS_ON_BOOT_41be88f6c01738992b7ab4ff60d30d2075d0c3276563a104254ed48a510c340b'
+cat > "$work/plan.py" <<'ZFS_ON_BOOT_fd829a283a69e4ef6b023f864bf2c9e95658d718af26f243cce82bf95c021242'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""
 import json
@@ -1507,7 +1512,9 @@ for part in parts:
 last = source['start'] + source['size'] - 1
 front_start = 1050624  # 1 MiB alignment + 512 MiB ZFSBootMenu partition
 split = ((last + 1 + front_start) // 2 // 2048 + 2) * 2048
-assert split > source['start'] + 3*1024**3//512, 'Insufficient front space'
+# The shrink operation leaves a 1 MiB gap. Strategy selection checks whether
+# the actual data fits; do not impose an unrelated minimum partition size.
+assert source['start'] + 2048 < split <= last, 'No room for separate source and scratch regions'
 assert split - front_start >= last - split + 1, 'Front mirror member must be at least as large as temporary member'
 number = re.search(r'(\d+)$', root)[1]
 # Names from the kernel are validated without evaluating arbitrary partition labels.
@@ -1517,7 +1524,7 @@ for key, value in dict(ROOT_PART=number, ROOT_START=source['start'], ROOT_END=la
     assert all(c.isalnum() or c == '-' for c in str(value))
     print(f'{key}={value}')
 
-ZFS_ON_BOOT_41be88f6c01738992b7ab4ff60d30d2075d0c3276563a104254ed48a510c340b
+ZFS_ON_BOOT_fd829a283a69e4ef6b023f864bf2c9e95658d718af26f243cce82bf95c021242
 cat > "$work/grow.sh" <<'ZFS_ON_BOOT_ee907fb7b1fedd8e0650bceca7b998803de9c12430234391fb4647cc92890960'
 #!/bin/bash
 # Idempotent expansion of a single-partition pool explicitly enrolled by zfsify.
@@ -2452,7 +2459,7 @@ print('First selected files:\n'+'\n'.join(preview))
 print('Complete KEEP/OMIT preview:', output.with_suffix('.manifest'))
 
 ZFS_ON_BOOT_30f084bb342a56cb18894353d441529c4b70c40d8929df99548c01212793b161
-cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_68f27b4745026c11870c8494bc84365cb5a852bf8260c79eab890f96f7d79a1d'
+cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_4e14b8ec99133d4bf5a117bcc3cce3db31f4fea698b13f00f60e937dd7813320'
 #!/bin/bash
 # Sourced by the RAM installer. Persistent state lives outside the source.
 . /etc/zfs-on-boot/plan.env
@@ -2503,6 +2510,14 @@ if [[ -z $SCRATCH ]]; then
     IMAGE_BYTES=$(( (COPY_END-ROOT_START+1)/8*4096 ))
     ZFS_START=$((ROOT_START+IMAGE_OFFSET))
     ZFS_END=$((ROOT_START+IMAGE_BYTES/512-1))
+    # Rescue is already verified and running from RAM. Release its on-disk
+    # staging copy before shrinking ext4, just as the two-copy path does.
+    # Keep the boot files until they are copied to persistent rescue below.
+    inplace_mount_source
+    mkdir -p /var/log/zfs-on-boot
+    cp /old/var/lib/zfs-on-boot/stage.log /var/log/zfs-on-boot/stage.log
+    rm -rf /old/var/lib/zfs-on-boot
+    inplace_unmount_source
     phase 4 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     phase 4 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
     sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$COPY_END" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SCRATCH_START:$ROOT_END" -t 32:8300 "$DISK"
@@ -2519,7 +2534,7 @@ if [[ -z $SCRATCH ]]; then
     mkdir -p /scratch/var/lib/zfs-on-boot /scratch/boot/zfs-on-boot
     cp /rescue-media/rescue.squashfs /scratch/var/lib/zfs-on-boot/
     cp /old/boot/zfs-on-boot/{installer.img,vmlinuz} /scratch/boot/zfs-on-boot/
-    cp /old/var/lib/zfs-on-boot/stage.log "$STATE/stage.log"
+    cp /var/log/zfs-on-boot/stage.log "$STATE/stage.log"
     SCRATCH_UUID=$(blkid -s UUID -o value "$SCRATCH")
     mkdir -p /scratch/boot/grub
     cat > /scratch/boot/grub/grub.cfg <<EOF
@@ -2638,7 +2653,7 @@ zfs mount rpool/ROOT/ubuntu
 mkdir -p -m 700 /target/var/log/zfs-on-boot/inplace
 DEVICES=$DISK,$ZPART,$SCRATCH
 
-ZFS_ON_BOOT_68f27b4745026c11870c8494bc84365cb5a852bf8260c79eab890f96f7d79a1d
+ZFS_ON_BOOT_4e14b8ec99133d4bf5a117bcc3cce3db31f4fea698b13f00f60e937dd7813320
 cat > "$work/inplace-move.py" <<'ZFS_ON_BOOT_e48c067a76dd746fc2782b206265a3db15b24d6c8f6a4f2906cba152ccb2aca8'
 #!/usr/bin/python3
 """Experimental offline mover: verify and journal each batch before freeing ext4.
