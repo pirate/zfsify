@@ -59,63 +59,81 @@ Review the selected disk and plan before the **15-second countdown** ends.
 Backup destination selection waits for confirmation; explicit command-line
 options skip selection prompts. Convert one disk per invocation.
 
+## Requirements
+
+- Ubuntu **22.04, 24.04, or 26.04**; **x64 (amd64) or ARM64**.
+- Internet access to Ubuntu package repositories.
+- ext4 on a direct disk or partition with **512-byte logical sectors**; no LVM, RAID, encrypted sources, or 4K logical sectors.
+- Attached data disks: one source filesystem and enough space for a second copy, or a separate backup destination.
+
+### Minimum system requirements
+
+For boot-drive conversion:
+
+- **512 MiB RAM**
+- **10 GB disk**
+- **3.5 GB available on `/`** for staging; conversion may need additional working space.
+- **500 MB free in `/boot`** to stage the temporary boot image before reboot.
+- **GPT and GRUB**; a separate ext4 `/boot` is supported.
+- **BIOS or UEFI on x64; UEFI on ARM64**; Secure Boot disabled.
+- SSH public key in `/root/.ssh/authorized_keys` for rescue access.
+
+## Process, data safety, and recovery
+
 <details>
-<summary><strong>Process, data safety, and recovery</strong></summary>
+<summary><strong>1. Inspect the selected disk and choose a method</strong></summary>
 
-1. **Inspect the selected disk and choose a method.**
+- **Enough room for two copies:** use a temporary partition (usually below 50% used).
+- **Less free space on `/`:** rewrite in place, slice by slice.
+- **Insufficient working space:** ask for a separate backup destination. Attached volumes require room for two copies or a separate backup.
+- **On request:** use backup and restore (`--backup`) or erase (`--erase`). Erasure is never an automatic fallback.
 
-   - **Enough room for two copies:** use a temporary partition (usually below 50% used).
-   - **Less free space on `/`:** rewrite in place, slice by slice.
-   - **Insufficient working space:** ask for a separate backup destination. Attached volumes require room for two copies or a separate backup.
-   - **On request:** use backup and restore (`--backup`) or erase (`--erase`). Erasure is never an automatic fallback.
+</details>
 
-2. **Prepare for conversion.**
+<details>
+<summary><strong>2. Prepare for conversion</strong></summary>
 
-   - **Boot drive:** install a temporary RAM boot environment, then reboot into it; prepare persistent rescue storage for slice-based conversion.
-   - **Attached volume:** unmount the source filesystem.
-   - **Backup and restore:** select and confirm a destination, then create a complete archive and read it back to verify it before erasing the source. An explicit `--backup=/mnt/backup` or `--backup=remote:path` skips destination prompts. [Backup setup](docs/backup.md).
+- **Boot drive:** install a temporary RAM boot environment, then reboot into it; prepare persistent rescue storage for slice-based conversion.
+- **Attached volume:** unmount the source filesystem.
+- **Backup and restore:** select and confirm a destination, then create a complete archive and read it back to verify it before erasing the source. An explicit `--backup=/mnt/backup` or `--backup=remote:path` skips destination prompts. [Backup setup](docs/backup.md).
 
-3. **Convert ext4 to ZFS.**
+</details>
 
-   - **Two-copy method:** shrink ext4, copy files to ZFS at the disk's end, and verify before replacing the original. Move ZFS to the front and expand it. Bootability is preserved where possible, but partition and bootloader replacement have interruption windows; disk failure can destroy both copies.
-   - **Slice-based method:** copy and verify files in slices, then reuse their ext4 space. **The original Ubuntu installation becomes unbootable when its data starts being reclaimed.** The temporary rescue entry supports resuming interrupted copying or relocation.
-   - **Backup and restore:** erase the source, create ZFS, and restore the archive. The source remains unbootable until restoration and boot setup finish; keep the backup until the restored system works.
-   - **Erase (`--erase`):** for `/`, install fresh Ubuntu of the same release, preserve accounts, SSH access, and `/etc`, then restore as much home/application data as the displayed budget allows. **Omitted data is lost; applications may need reinstalling. For an attached volume, erase all files.**
+<details>
+<summary><strong>3. Convert ext4 to ZFS</strong></summary>
 
-   ![Conversion with room for a second copy](docs/assets/disk-conversion.svg)
+- **Two-copy method:** shrink ext4, copy files to ZFS at the disk's end, and verify before replacing the original. Move ZFS to the front and expand it. Bootability is preserved where possible, but partition and bootloader replacement have interruption windows; disk failure can destroy both copies.
+- **Slice-based method:** copy and verify files in slices, then reuse their ext4 space. **The original Ubuntu installation becomes unbootable when its data starts being reclaimed.** The temporary rescue entry supports resuming interrupted copying or relocation.
+- **Backup and restore:** erase the source, create ZFS, and restore the archive. The source remains unbootable until restoration and boot setup finish; keep the backup until the restored system works.
+- **Erase (`--erase`):** for `/`, install fresh Ubuntu of the same release, preserve accounts, SSH access, and `/etc`, then restore as much home/application data as the displayed budget allows. **Omitted data is lost; applications may need reinstalling. For an attached volume, erase all files.**
 
-4. **Finish disk and boot setup.**
+![Conversion with room for a second copy](docs/assets/disk-conversion.svg)
 
-   - Preserve file metadata and update mount settings for ZFS.
-   - **Boot drive:** update Ubuntu boot settings, replace GRUB with ZFSBootMenu, and reboot into Ubuntu. Keep a small firmware/bootloader partition outside ZFS; continue managing Ubuntu packages with APT.
-   - **Attached volume:** restore its mount point. You can then restart applications that use it.
+</details>
 
-5. **Use and maintain ZFS.**
+<details>
+<summary><strong>4. Finish disk and boot setup</strong></summary>
 
-   - **Snapshots:** automatic daily snapshots and snapshots before package changes. To recover a boot drive, use ZFSBootMenu in the provider's preboot console to boot a clone of a working snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
-   - **Disk growth:** enlarge the actual disk through the provider, then reboot; ZFS expands without guest-side resize commands. Tested for boot disks and attached Volumes on DigitalOcean.
+- Preserve file metadata and update mount settings for ZFS.
+- **Boot drive:** update Ubuntu boot settings, replace GRUB with ZFSBootMenu, and reboot into Ubuntu. Keep a small firmware/bootloader partition outside ZFS; continue managing Ubuntu packages with APT.
+- **Attached volume:** restore its mount point. You can then restart applications that use it.
 
-**If conversion stops:** reconnect and run `zfs-on-boot-status`. Do not blindly
-reboot or delete temporary partitions. Interruptions during final partition or
-bootloader replacement may require a provider rescue image.
-[Recovery guide](docs/recovery.md) · [Interrupted conversion](docs/inplace.md#limits)
+</details>
+
+<details>
+<summary><strong>5. Use and maintain ZFS</strong></summary>
+
+- **Snapshots:** automatic daily snapshots and snapshots before package changes. To recover a boot drive, use ZFSBootMenu in the provider's preboot console to boot a clone of a working snapshot. [Snapshot recovery](docs/recovery.md#open-the-preboot-console).
+- **Disk growth:** enlarge the actual disk through the provider, then reboot; ZFS expands without guest-side resize commands. Tested for boot disks and attached Volumes on DigitalOcean.
 
 ![Snapshot selection in DigitalOcean's recovery console](docs/assets/screenshots/digitalocean-snapshots.jpg)
 
 </details>
 
-## Requirements
-
-- **Ubuntu 22.04, 24.04, or 26.04**, on **x64 (amd64) or ARM64**.
-- **For `/`: 512 MiB RAM, a 10 GB disk, 3.5 GB free on `/`, and 500 MB free in `/boot`.**
-  Additional working space may be needed for the data being converted.
-- **ext4 on a direct disk or partition, with 512-byte logical sectors.** The boot
-  disk must use GPT and GRUB; a separate ext4 `/boot` is supported. Data disks must
-  contain only one source filesystem. LVM, RAID, encrypted sources, and 4K logical
-  sectors are not supported.
-- **BIOS or UEFI on x64; UEFI on ARM64. Secure Boot must be disabled.**
-- Internet access to Ubuntu package repositories. For boot-drive conversion,
-  put your SSH public key in `/root/.ssh/authorized_keys` for rescue access.
+**If conversion stops:** reconnect and run `zfs-on-boot-status`. Do not blindly
+reboot or delete temporary partitions. Interruptions during final partition or
+bootloader replacement may require a provider rescue image.
+[Recovery guide](docs/recovery.md) · [Interrupted conversion](docs/inplace.md#limits)
 
 ## Tested environments
 
