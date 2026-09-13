@@ -39,7 +39,7 @@ When 50/50 does not fit, the installer selects slice-by-slice if enough working
 space remains. Otherwise backup setup requires an interactive SSH session to select and
 confirm a destination, even if another disk is already mounted;
 erase is never an automatic fallback. See the
-[space and backup guide](../README.md#when-the-disk-is-more-than-half-full).
+[backup setup guide](backup.md).
 
 ### Ensure the recovery SSH key is available
 
