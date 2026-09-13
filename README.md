@@ -38,7 +38,7 @@ from snapshots, and all the other benefits of ZFS.
 
 **Experimental software: make a full offsite backup before proceeding.**
 Repartitioning or an interrupted conversion can destroy data or leave the disk
-unbootable. Snapshots on the same disk do not replace an offsite backup.
+unbootable.
 
 Before running the command:
 
