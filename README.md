@@ -2,8 +2,8 @@
 
 # ⚡ zfsify
 
-Convert an Ubuntu VPS or attached volume to ZFS with one command,
-using the disks and data you already have.
+Convert an Ubuntu VPS or attached volume from ext4 to ZFS with one command,
+preserving existing data through in-place filesystem conversion.
 
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#requirements)
 [![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#before-you-start)
@@ -41,8 +41,10 @@ proceeding.** Conversion repartitions the selected disk. A failure can leave it
 unbootable or destroy data; snapshots on that same disk are not an offsite backup.
 
 Converting `/` takes the server offline and reboots it twice. Have working access
-to the VM or provider's recovery console. For an attached volume, stop applications
-using it so it can be unmounted; the rest of the server stays online.
+to the VM or provider's recovery console.
+
+Converting an attached volume makes that volume unavailable during conversion.
+Stop any applications that use it so it can be unmounted.
 
 ## Quick start
 
