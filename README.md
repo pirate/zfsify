@@ -61,7 +61,7 @@ options skip selection prompts. Convert one disk per invocation.
 
 ## Requirements
 
-- **System:** Ubuntu 22.04, 24.04, or 26.04 on x64 or ARM64; internet access to Ubuntu package repositories and GitHub.
+- **System:** Ubuntu 22.04, 24.04, or 26.04 on x64 or ARM64; internet access to Ubuntu package repositories.
 - **Source disk:** ext4 on a direct disk or partition with 512-byte logical sectors; no LVM, RAID, or encrypted sources. Attached disks: one source filesystem, with room for a second copy or a separate backup.
 - **Boot-drive resources:** 512 MiB RAM; working space for package preparation and conversion, plus room in `/boot` for the temporary kernel and boot image.
 - **Boot-drive setup:** GPT and GRUB; BIOS or UEFI on x64, UEFI on ARM64; Secure Boot disabled. A separate ext4 `/boot` is supported.
