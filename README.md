@@ -2,8 +2,9 @@
 
 # ⚡ zfsify
 
-Convert an Ubuntu VPS or attached volume from ext4 to ZFS with one command,
-preserving existing data through in-place filesystem conversion.
+Convert a running Ubuntu VPS or attached volume from ext4 to ZFS in-place, preserving existing data through slice-by-slice filesystem conversion. 
+
+Reboots into a ramdisk, converts chunks slice-by-slice in O(N) time. The end result is existing OS + data running perfectly on a now-ZFS-formatted `/` disk (aka `rpool`, just like [Ubuntu Server's 24.04+'s native ZFS root]([https://openzfs.github.io/openzfs-docs/Getting%20Started/Ubuntu/Ubuntu%2022.04%20Root%20on%20ZFS.html](https://www.phoronix.com/news/OpenZFS-Ubuntu-24.04-LTS)). You also get a beautiful new [boot menu](https://zfsbootmenu.org) (in `bpool`) that lets you boot from previous snapshots, send/recv, and more.
 
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#requirements)
 [![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#before-you-start)
@@ -19,10 +20,9 @@ preserving existing data through in-place filesystem conversion.
 <a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-5"><img src="docs/assets/recordings/phase-5.gif" width="49%" alt="5. Enable snapshots, recovery and growth"></a>
 </p>
 
-Cloud providers usually ship Ubuntu with ext4. Getting ZFS means building a
-custom boot image or manually partitioning disks and migrating your files.
-zfsify automates that work for the boot drive, including / and /boot, and
-attached data volumes.
+Cloud providers usually ship Ubuntu with ext4. Getting ZFS on `/` means building a
+custom vm boot img or iso and uploading it. That's a pain though, and not all cloud
+providers support it. zfsify automates that work and lets you in-place convert any disk, `/` and any other `/dev/disk*` others too actually!
 
 Create a normal Ubuntu VPS or volume on DigitalOcean, Vultr, Hetzner, AWS, GCP,
 Azure, or another provider, then run zfsify inside Ubuntu. It transfers your
@@ -37,41 +37,36 @@ from snapshots, and all the other benefits of ZFS.
 
 ## Before you start
 
-**Experimental software: make a full offsite backup before proceeding.**
-Repartitioning or an interrupted conversion can destroy data or leave the disk
-unbootable.
+**⚠️ This is experimental software! make a full offsite backup before proceeding.**
 
-Before running the command:
+We try to keep the process bootable/recoverable 90% of the time if it gets interrupted, and we provide [recovery instructions](docs/recovery) for some possible failure modes. Despite our best efforts, there are several 10~60s parts of the process where recovery/bootability is impossible if it gets interrupted (when changing the parition table). 🤞 Make offsite backups and avoid power outages during those parts!
 
-- **Boot drive (`/`):** allow server downtime and two reboots; confirm access to the VM or provider's recovery console.
-- **Attached volume:** stop applications that use it; allow volume downtime until conversion finishes.
+If converting `/`: confirm that you can access your VM's display, VNC, or VPS cloud recovery console UI (only if you need to interact with ZFSBootMenu / boot from a snapshot). Expect 2 reboots and downtime/no apps runnable during the bulk of the process. After the first reboot you should be able to reconnect into the ramdisk and watch the transfer process over ssh, then reconnect after the last reboot into the new copied OS running in ZFS `rpool`.
 
-## Quick start
+If converting an attached disk other than `/`: make an offsite backup or snapshot in your cloud. Stop applications that use it, allow volume downtime until conversion finishes.
+
+## 🔢 Quickstart
 
 ```sh
-# Convert the Ubuntu boot drive.
+# Convert your Ubuntu ext4 grub install to Ubuntu ZFS rpool + ZFSBootMenu bpool
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 
-# Or convert an attached ext4 disk; replace the path with your disk's ID.
-curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/by-id/YOUR-DISK
+# Or convert any other attached disk, e.g.
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/by-id/abc-123
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/rdisk4
 ```
 
-Review the highlighted method and disk, then explicitly confirm conversion.
-The interactive flow has no automatic start or timeout; method options preselect
-the method for review. Convert one disk per invocation.
+## Minimum Requirements
 
-## Requirements
-
-- **System:** Ubuntu 22.04, 24.04, or 26.04 on x64 or ARM64; internet access to Ubuntu package repositories.
-- **Source disk:** ext4 on a direct disk or partition with 512-byte logical sectors; no LVM, RAID, or encrypted sources. Attached disks: one source filesystem, with room for a second copy or a separate backup.
-- **Boot-drive resources:** 512 MiB RAM; working space for package preparation and conversion, plus room in `/boot` for the temporary kernel and boot image.
-- **Boot-drive setup:** GPT and GRUB; BIOS or UEFI on x64, UEFI on ARM64; Secure Boot disabled. A separate ext4 `/boot` is supported.
-- **SSH:** for boot-drive conversion, a public key in `/root/.ssh/authorized_keys`; copied to rescue and fresh installs to preserve access.
+- **System:** 🍥 Ubuntu `>= 22.04` (tested on `24.04` and `26.04`), on 🛠️ `x64` or `arm64`, 📟 >512 MiB RAM, with 🌐 internet access (for Ubuntu package repositories)
+- **Source disk:** 💿 ext4 on a disk w/ 512-byte logical sectors. **❌ LVM, RAID, or encrypted ext4 sources are NOT supported.**
+- **Bootloaders:** BIOS or UEFI on `x64`, only UEFI on `arm64`. Secure Boot must be disabled. All get converted to ZFSBootMenu on `bpool`. 
+- **SSH:** you must have at least one public key in `/root/.ssh/authorized_keys`, it gets copied to the ramdisk to allow you to reconnect and watch the progress during the conversion.
 
 ## How it Works
 
 <details>
-<summary><h3 id="disk-scan">1. Scans the disk and selects an algorithm</h3></summary>
+<summary><h3 id="disk-scan">1. 💿 Scans the disk and selects an algorithm</h3></summary>
 
 ![Scan disk and choose a method](docs/assets/recordings/phase-1.gif)
 
@@ -83,7 +78,7 @@ the method for review. Convert one disk per invocation.
 </details>
 
 <details>
-<summary><h3 id="prepare-disk">2. Prepares the disk for conversion</h3></summary>
+<summary><h3 id="prepare-disk">2. 🚀 Prepares the disk for conversion</h3></summary>
 
 ![Prepare the disk](docs/assets/recordings/phase-2.gif)
 
@@ -94,7 +89,7 @@ the method for review. Convert one disk per invocation.
 </details>
 
 <details>
-<summary><h3 id="convert-to-zfs">3. Converts ext4 to ZFS</h3></summary>
+<summary><h3 id="convert-to-zfs">3. 🔃 Converts ext4 to ZFS</h3></summary>
 
 ![Convert ext4 to ZFS](docs/assets/recordings/phase-3.gif)
 
@@ -114,7 +109,7 @@ the method for review. Convert one disk per invocation.
 </details>
 
 <details>
-<summary><h3 id="finish-setup">4. Finishes disk and boot setup</h3></summary>
+<summary><h3 id="finish-setup">4. 💾 Finishes disk and boot setup</h3></summary>
 
 ![Finish disk and boot setup](docs/assets/recordings/phase-4.gif)
 
@@ -125,7 +120,7 @@ the method for review. Convert one disk per invocation.
 </details>
 
 <details>
-<summary><h3 id="snapshots-and-growth">5. Enables snapshots, recovery, and disk growth</h3></summary>
+<summary><h3 id="snapshots-and-growth">5. 📸 Enables snapshots, recovery, and auto-grow on resize</h3></summary>
 
 ![Enable snapshots, recovery and growth](docs/assets/recordings/phase-5.gif)
 
@@ -151,14 +146,13 @@ bootloader replacement may require a provider rescue image.
 | KVM guest hosted on a DigitalOcean Droplet | 24.04, x64, UEFI | 1 GiB RAM / 20 GiB disk |
 
 Other providers have not been explicitly tested. Cloud-init scheduling has not
-been separately tested end to end. **Lima/VZ has an unresolved boot failure; use
-QEMU/HVF for local VMs.**
+been separately tested end to end.
 
 ## Performance
 
 | Environment | Observed transfer speed |
 |---|---|
-| Small DigitalOcean Droplet, built-in SSD | About **20 MB/s** copying Ubuntu files |
+| Small DigitalOcean Droplet, built-in SSD | About **20~50 MB/s** copying Ubuntu files |
 | Local ARM64 VM, 1 GiB RAM | About **19 MB/s** copying and verifying files |
 | Native NVMe | Not benchmarked |
 
