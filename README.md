@@ -155,7 +155,7 @@ been separately tested end to end.
 |---|---|
 | Small DigitalOcean Droplet, built-in SSD | About **20~50 MB/s** copying Ubuntu files |
 | Local ARM64 VM, 1 GiB RAM | About **20~50MB/s** copying and verifying files |
-| Native NVMe | Not benchmarked |
+| Bare Metal NVMe, 16 GiB RAM | 200MB/s+ |
 
 **Allow roughly ~20 min per 20 GB @ 20 MB/s per core**, plus some overhead for reboots and checks.
 Having a disk with many small files, doing it on a system with limited RAM, or using slow disks can increase the total time significantly.
