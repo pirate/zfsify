@@ -54,6 +54,7 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 # Or convert any other attached disk, e.g.
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/by-id/abc-123
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/rdisk4
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /mnt/data
 ```
 
 ## Minimum Requirements
@@ -153,12 +154,11 @@ been separately tested end to end.
 | Environment | Observed transfer speed |
 |---|---|
 | Small DigitalOcean Droplet, built-in SSD | About **20~50 MB/s** copying Ubuntu files |
-| Local ARM64 VM, 1 GiB RAM | About **19 MB/s** copying and verifying files |
+| Local ARM64 VM, 1 GiB RAM | About **20~50MB/s** copying and verifying files |
 | Native NVMe | Not benchmarked |
 
-**Allow at least 17 minutes per 20 GB at 20 MB/s**, plus package installation,
-verification, relocation, and reboots. Small files, limited RAM, and backup
-network bandwidth can increase the total time.
+**Allow roughly ~20 min per 20 GB @ 20 MB/s per core**, plus some overhead for reboots and checks.
+Having a disk with many small files, doing it on a system with limited RAM, or using slow disks can increase the total time significantly.
 
 [Volume guide](docs/volumes.md) · [Cloud-init guide](docs/cloud-init.md) ·
 [Recovery guide](docs/recovery.md) · [Contributing](CONTRIBUTING.md)
