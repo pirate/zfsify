@@ -22,7 +22,7 @@ Reboots into a ramdisk, converts chunks slice-by-slice in O(N) time. The end res
 
 Cloud providers usually ship Ubuntu with ext4. Getting ZFS on `/` means building a
 custom vm boot img or iso and uploading it. That's a pain though, and not all cloud
-providers support it. zfsify automates that work and lets you in-place convert any disk, `/` and any other `/dev/disk*` others too actually!
+providers support it. zfsify automates that work and lets you in-place convert any disk, `/` and any other `/dev/disk*` others too!
 
 Create a normal Ubuntu VPS or volume on DigitalOcean, Vultr, Hetzner, AWS, GCP,
 Azure, or another provider, then run zfsify inside Ubuntu. It transfers your
