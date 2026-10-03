@@ -476,7 +476,7 @@ sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
 ZFS_ON_BOOT_3005a04786a122488ca934b9c2101fbde195e9660548d28e7f9269dff5998d9b
-cat > "$work/encryption.py" <<'ZFS_ON_BOOT_c5885cae12364880f406439e024875886d36c7bee4da38bd289316cdb0cdbf62'
+cat > "$work/encryption.py" <<'ZFS_ON_BOOT_f5f72a2f0a4f4ad14f7df7cb289fe9b16660062252a7d598fc239a4ef2f70dbe'
 #!/usr/bin/env python3
 """Optional root encryption. Secrets are acquired only in the RAM rescue OS."""
 import argparse
@@ -499,7 +499,11 @@ KEY = Path('/run/zfsify-encryption/rpool.key')
 
 
 def validate_url(url):
-    value = urllib.parse.urlsplit(url)
+    try:
+        value = urllib.parse.urlsplit(url)
+    except ValueError:
+        # urlsplit errors can include the supplied netloc, including credentials.
+        raise ValueError('Invalid HTTPS key URL.') from None
     if (value.scheme != 'https' or not value.hostname or value.username is not None
             or value.password is not None or value.query or value.fragment
             or any(c.isspace() for c in url)):
@@ -674,7 +678,7 @@ if __name__ == '__main__':
         print(f'zfsify: {error or "Passphrase input cancelled."}', file=sys.stderr)
         sys.exit(2)
 
-ZFS_ON_BOOT_c5885cae12364880f406439e024875886d36c7bee4da38bd289316cdb0cdbf62
+ZFS_ON_BOOT_f5f72a2f0a4f4ad14f7df7cb289fe9b16660062252a7d598fc239a4ef2f70dbe
 cat > "$work/encryption.sh" <<'ZFS_ON_BOOT_72f34cab1febc2aa688255c609be758f2d4186a56e91b240a2421623473cfc0f'
 #!/bin/bash
 # Sourced only by the RAM installer and target setup. No secrets in shell variables.

@@ -20,7 +20,11 @@ KEY = Path('/run/zfsify-encryption/rpool.key')
 
 
 def validate_url(url):
-    value = urllib.parse.urlsplit(url)
+    try:
+        value = urllib.parse.urlsplit(url)
+    except ValueError:
+        # urlsplit errors can include the supplied netloc, including credentials.
+        raise ValueError('Invalid HTTPS key URL.') from None
     if (value.scheme != 'https' or not value.hostname or value.username is not None
             or value.password is not None or value.query or value.fragment
             or any(c.isspace() for c in url)):

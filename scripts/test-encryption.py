@@ -55,7 +55,7 @@ class EncryptionTests(unittest.TestCase):
     def test_conflicting_options_and_unsafe_urls(self):
         for url in ('http://keys.example.org/key', 'https://user:secret@host/key',
                     'https://host/key?token=secret', 'https://host/key#secret', 'https://',
-                    'https://host/key\nsecret'):
+                    'https://host/key\nsecret', 'https://user:secret＠host/key'):
             result, config = self.configure('--yes', '--key-url', url)
             self.assertNotEqual(result.returncode, 0)
             self.assertIsNone(config)
