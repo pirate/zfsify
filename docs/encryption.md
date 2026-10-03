@@ -4,6 +4,8 @@
 inherits encryption. Ubuntu's `/boot` is inside the encrypted filesystem. The
 small firmware/ZFSBootMenu partition and pool metadata remain unencrypted.
 
+See [tested configurations and remaining validation](evidence/encryption-2026-10-03.md).
+
 ## Interactive setup
 
 Select encryption in the root-conversion menu, or pass `--encrypt`. Review and
@@ -17,7 +19,8 @@ zfsify-unlock
 
 Use `ssh -t root@SERVER zfsify-unlock` to run it directly. Input is hidden and read
 from the terminal, never from the `curl | sh` stream. Keep a separate copy of the
-passphrase: losing it means losing access to the encrypted data.
+passphrase: losing it means losing access to the encrypted data. Use characters
+available in your preboot console’s keyboard layout.
 
 ## Headless conversion
 
@@ -37,7 +40,8 @@ Restrict access at your key server, for example to the server's source address;
 anyone able to retrieve that response can unlock the pool. The key itself is
 fetched only in RAM after reboot and is never embedded in the rescue image.
 The key server must be reachable from that environment. Failed retrieval stops
-conversion before disk changes; wrong keys on resume stop further migration.
+conversion before repartitioning or releasing source data; wrong keys on resume
+stop further migration.
 Keep the same key available until conversion and recovery testing are complete.
 
 `--yes --encrypt` without a key URL is rejected rather than waiting unexpectedly.
