@@ -7,6 +7,8 @@ DISK=$(cat /etc/zfs-on-boot/disk)
 if [[ $MODE = erase ]]; then
     python3 /etc/zfs-on-boot/identity.py /target /etc/zfs-on-boot/identity.tar
     tar --numeric-owner --acls --xattrs -xpf /run/priority.tar -C /target
+    # The rescue-only helper has no role in the installed Ubuntu environment.
+    rm -f /target/usr/local/sbin/zfsify-unlock
 fi
 # Both modes retain the old /etc; replace only disk/boot-specific configuration.
 rm -f /target/etc/grub.d/41_zfs_on_boot

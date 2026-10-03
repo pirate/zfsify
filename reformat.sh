@@ -1292,7 +1292,7 @@ sync
 reboot -f
 
 ZFS_ON_BOOT_f6c7dbc535399d5994910b186b273c49115a827e1b3938d0bcfed32e4e45d362
-cat > "$work/target.sh" <<'ZFS_ON_BOOT_1d9b12da4505583a37b45d84c0696dabdd5c31f9e24fb640b21b461aeb20d535'
+cat > "$work/target.sh" <<'ZFS_ON_BOOT_86c82af44765228166e716da3bc96a6db4eb4d29a117a0aebcac4fbd12702c17'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
 set -Eeuo pipefail
@@ -1302,6 +1302,8 @@ DISK=$(cat /etc/zfs-on-boot/disk)
 if [[ $MODE = erase ]]; then
     python3 /etc/zfs-on-boot/identity.py /target /etc/zfs-on-boot/identity.tar
     tar --numeric-owner --acls --xattrs -xpf /run/priority.tar -C /target
+    # The rescue-only helper has no role in the installed Ubuntu environment.
+    rm -f /target/usr/local/sbin/zfsify-unlock
 fi
 # Both modes retain the old /etc; replace only disk/boot-specific configuration.
 rm -f /target/etc/grub.d/41_zfs_on_boot
@@ -1380,7 +1382,7 @@ umount /target/run /target/proc
 umount -R /target/sys
 umount -R /target/dev
 
-ZFS_ON_BOOT_1d9b12da4505583a37b45d84c0696dabdd5c31f9e24fb640b21b461aeb20d535
+ZFS_ON_BOOT_86c82af44765228166e716da3bc96a6db4eb4d29a117a0aebcac4fbd12702c17
 cat > "$work/recovery-setup.sh" <<'ZFS_ON_BOOT_e2bdd204344cf9783056867eea633d2799df85bd98819f45b4a89fd80e1aebc2'
 #!/bin/bash
 set -Eeuo pipefail
