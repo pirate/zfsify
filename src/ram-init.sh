@@ -14,6 +14,7 @@ mount -t tmpfs -o mode=755 tmpfs /run
 mount -t devpts devpts /dev/pts
 exec </dev/console >/dev/console 2>&1
 set -Eeuo pipefail
+ulimit -c 0
 MIGRATION_STARTED=0
 [[ " $(cat /proc/cmdline) " != *' zfsify.rescue='* ]] || MIGRATION_STARTED=1
 rescue() {
@@ -86,10 +87,17 @@ part() { local name; while read -r name; do [[ $(cat "/sys/class/block/${name##*
 [[ -z $(zpool list -H -o name 2>/dev/null) ]]
 echo "Independent RAM OS ready. Mode: $MODE. Devices: $DEVICES"
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
+# Ask/fetch only after the disk-independent RAM OS is live, before changing disks.
+source /etc/zfs-on-boot/encryption.sh
+touch /run/zfsify-encryption-ready
+if [[ $ENCRYPTION_ENABLED = 1 ]]; then
+    phase 2 'Encryption key required: console / zfsify-unlock / configured HTTPS server' true
+fi
+encryption_acquire
 create_root_pool() {
 # Ubuntu's root-pool defaults, with boot-image compatibility and disk growth.
 # Keep ext4's distinct Unicode filenames distinct rather than normalizing them.
-phase 3 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target rpool "$ZPART"
+phase 3 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target "${ENCRYPTION_ARGS[@]}" rpool "$ZPART"
 zfs create -o canmount=off -o mountpoint=none rpool/ROOT
 zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
 zfs mount rpool/ROOT/ubuntu
@@ -245,6 +253,10 @@ cp /run/zfs-on-boot-progress.json /target/var/log/zfs-on-boot/last-progress.json
 sync
 [[ -z ${CACHE_GUARD:-} ]] || kill "$CACHE_GUARD"
 zpool export rpool
+rm -f /run/zfsify-encryption/rpool.key
+if [[ $ENCRYPTION_ENABLED = 1 ]]; then
+    echo 'Encrypted root ready. Enter your passphrase in the ZFSBootMenu preboot console after reboot.'
+fi
 echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f

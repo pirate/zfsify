@@ -64,6 +64,8 @@ hostonly="no"
 hostonly_cmdline="no"
 EOF
 fi
+source /etc/zfs-on-boot/encryption.sh
+encryption_target
 for kernel in /target/boot/vmlinuz-*; do
     version=${kernel##*/vmlinuz-}
     chroot /target modinfo -k "$version" zfs >/dev/null
@@ -73,6 +75,9 @@ for kernel in /target/boot/vmlinuz-*; do
         chroot /target update-initramfs -u -k "$version"
     else
         chroot /target update-initramfs -c -k "$version"
+    fi
+    if (( ${#ENCRYPTION_ARGS[@]} )); then
+        chmod 600 "/target/boot/initrd.img-$version"
     fi
 done
 umount /target/run /target/proc

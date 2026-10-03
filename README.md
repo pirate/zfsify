@@ -60,6 +60,29 @@ Review the highlighted method and disk, then explicitly confirm conversion.
 The interactive flow has no automatic start or timeout; method options preselect
 the method for review. Convert one disk per invocation.
 
+### Optional root encryption
+
+Choose encryption in the interactive flow, or pass `--encrypt`:
+
+```sh
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --encrypt
+
+# Headless conversion: retrieve the passphrase from your HTTPS key server in RAM.
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- \
+  --yes --encrypt-key-url=https://keys.example.net/my-server
+```
+
+Encryption is off by default. Without a key URL, enter and confirm the passphrase
+after the rescue reboot using the console, or reconnect over SSH and run
+`zfsify-unlock`. **Every subsequent boot needs the passphrase in ZFSBootMenu's
+preboot console**, including the first boot after conversion. Normal SSH becomes
+available after unlocking. `--no-encrypt` skips the encryption question.
+
+Encryption works with each root conversion method, including `--erase`; attached
+data volumes do not support this option. It encrypts the new `/` and `/boot`,
+but does not securely erase old ext4 remnants or encrypt external backups.
+[Key-server setup and recovery](docs/encryption.md).
+
 ## Requirements
 
 - **System:** Ubuntu 22.04, 24.04, or 26.04 on x64 or ARM64; internet access to Ubuntu package repositories.

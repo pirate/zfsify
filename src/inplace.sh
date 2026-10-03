@@ -130,6 +130,7 @@ elif [[ $INPLACE_PHASE = copy ]]; then
     inplace_mount_source
     inplace_map_image
     zpool import -f -N -R /target -d "$ZPART" rpool
+    encryption_load
     zfs mount rpool/ROOT/ubuntu
 fi
 if [[ $INPLACE_PHASE = copy ]]; then
@@ -167,6 +168,7 @@ fi
 if [[ $INPLACE_PHASE = native ]]; then
     dmsetup create zfsify-native --table "0 $((IMAGE_BYTES/512-IMAGE_OFFSET)) linear $ROOTDEV $IMAGE_OFFSET"
     zpool import -f -N -R /target -d /dev/mapper/zfsify-native rpool
+    encryption_load
     zfs mount rpool/ROOT/ubuntu
     phase 3 'Verify all files after physical remapping' python3 "$MOVER" verify "$MANIFEST" /target
     zpool set autotrim=on rpool
@@ -187,6 +189,7 @@ fi
 [[ $INPLACE_PHASE = target || $INPLACE_PHASE = configured ]]
 ZPART=$(part 2)
 zpool import -f -N -R /target -d "$ZPART" rpool
+encryption_load
 zfs mount rpool/ROOT/ubuntu
 mkdir -p -m 700 /target/var/log/zfs-on-boot/inplace
 DEVICES=$DISK,$ZPART,$SCRATCH
