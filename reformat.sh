@@ -4,7 +4,7 @@ set -eu
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_3005a04786a122488ca934b9c2101fbde195e9660548d28e7f9269dff5998d9b'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_f2d371335fecd0925878d5732e15247ac93b03aecdde9b2caf94bf079227f29f'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -21,10 +21,14 @@ TARGET_COUNT=0
 ENCRYPT=auto
 ENCRYPT_COUNT=0
 ENCRYPT_KEY_URL=
+ENCRYPT_KEY_SET=${ZFSIFY_ENCRYPT_KEY+x}
+ENCRYPT_KEY=${ZFSIFY_ENCRYPT_KEY-}
+unset ZFSIFY_ENCRYPT_KEY
 for arg in "$@"; do
     case "$arg" in
         --yes) ASSUME_YES=1 ;;
         --encrypt) ENCRYPT=on; ENCRYPT_COUNT=$((ENCRYPT_COUNT+1)) ;;
+        --encrypt-key=*) ENCRYPT_KEY=${arg#*=}; ENCRYPT_KEY_SET=x ;;
         --no-encrypt) ENCRYPT=off; ENCRYPT_COUNT=$((ENCRYPT_COUNT+1)) ;;
         --encrypt-key-url=*) ENCRYPT_KEY_URL=${arg#*=}; [[ -n $ENCRYPT_KEY_URL ]] || { echo "Missing HTTPS key URL." >&2; exit 2; } ;;
         --auto) MODE=auto; MODE_COUNT=$((MODE_COUNT+1)) ;;
@@ -35,7 +39,7 @@ for arg in "$@"; do
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--encrypt | --no-encrypt | --encrypt-key-url=HTTPS] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--encrypt [--encrypt-key=KEY | --encrypt-key-url=HTTPS] | --no-encrypt] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
 Default: detect the disk and choose a data-preserving strategy.
 Review the recommended method, then explicitly confirm before any conversion.
@@ -47,7 +51,11 @@ Method flags select a method; only --yes skips selection and confirmation.
   --encrypt                Encrypt the new root pool; enter the passphrase in RAM
                            rescue via console or SSH (zfsify-unlock).
   --encrypt-key-url=HTTPS  Fetch the passphrase in RAM for headless conversion.
-                           Implies --encrypt. Each later boot needs console unlock.
+                           Requires --encrypt. Each later boot needs console unlock.
+  --encrypt-key=KEY        TEMPORARY: save your supplied key on the boot partition.
+                           Requires --encrypt; defeats disk encryption. Prefer
+                           ZFSIFY_ENCRYPT_KEY in the environment to a CLI secret.
+                           Random keys are offered only in the TUI: save + retype.
   --no-encrypt             Skip the encryption question (the default with --yes).
   --preserve               Request the 50/50 copy-and-verify strategy.
   --auto                   Choose automatically (the default).
@@ -86,7 +94,7 @@ if [[ $TARGET != / ]]; then
     resolved=$(readlink -f "$TARGET")
     if [[ $resolved != "$running_root" && $resolved != "$running_disk" ]]; then
         [[ $MODE != inplace ]] || { echo '--inplace currently supports the boot drive only.' >&2; exit 2; }
-        [[ $ENCRYPT != on && -z $ENCRYPT_KEY_URL ]] || { echo "Encryption currently supports the root drive only." >&2; exit 2; }
+        [[ $ENCRYPT != on && -z $ENCRYPT_KEY_URL && -z $ENCRYPT_KEY_SET ]] || { echo "Encryption currently supports the root drive only." >&2; exit 2; }
         exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP" "$ASSUME_YES"
     fi
 fi
@@ -203,7 +211,9 @@ python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --
     --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
 mapfile -t SELECTION < "$SOURCE/selection"
 MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
+[[ -z $ENCRYPT_KEY_SET ]] || export ZFSIFY_ENCRYPT_KEY=$ENCRYPT_KEY
 python3 "$SOURCE/encryption.py" configure "${CONSENT[@]}" --mode "$ENCRYPT" --key-url "$ENCRYPT_KEY_URL" --output "$SOURCE/encryption.json"
+unset ZFSIFY_ENCRYPT_KEY
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
 if [[ $MODE = preserve ]]; then
@@ -353,6 +363,7 @@ python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
 if [[ $ARCH = arm64 ]]; then
     mkdir -p "$ROOT/etc/zfs-on-boot/zbm"
     mv "$WORK/zfsbootmenu.EFI" "$ROOT/etc/zfs-on-boot/zbm/"
+    bash "$SOURCE/zbm-install.sh" kcl-tool "$ROOT"
 else
     phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
 fi
@@ -407,6 +418,7 @@ install -m 755 "$SOURCE/grow.sh" "$ROOT/usr/local/sbin/zfs-on-boot-grow"
 cp "$SOURCE/grow.service" "$ROOT/etc/systemd/system/zfs-on-boot-grow.service"
 cp "$SOURCE/target.sh" "$SOURCE/recovery-setup.sh" "$ROOT/etc/zfs-on-boot/"
 cp "$SOURCE/encryption.sh" "$SOURCE/encryption.py" "$SOURCE/encryption.json" "$ROOT/etc/zfs-on-boot/"
+[[ ! -f $SOURCE/bootstrap.key ]] || install -m 600 "$SOURCE/bootstrap.key" "$ROOT/etc/zfs-on-boot/bootstrap.key"
 printf '#!/bin/sh\nexec python3 /etc/zfs-on-boot/encryption.py prompt\n' > "$ROOT/usr/local/sbin/zfsify-unlock"
 chmod 755 "$ROOT/usr/local/sbin/zfsify-unlock"
 install -m 755 "$SOURCE/snapshot.sh" "$ROOT/usr/local/sbin/zfsify-snapshot"
@@ -475,17 +487,19 @@ phase 2 'Rebooting into RAM; reconnect and run zfs-on-boot-status' true
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_3005a04786a122488ca934b9c2101fbde195e9660548d28e7f9269dff5998d9b
-cat > "$work/encryption.py" <<'ZFS_ON_BOOT_f5f72a2f0a4f4ad14f7df7cb289fe9b16660062252a7d598fc239a4ef2f70dbe'
+ZFS_ON_BOOT_f2d371335fecd0925878d5732e15247ac93b03aecdde9b2caf94bf079227f29f
+cat > "$work/encryption.py" <<'ZFS_ON_BOOT_6a5a01f4fcd9da402e357a599587c58b454c82ebc0c9944e732539ad1f48f089'
 #!/usr/bin/env python3
-"""Optional root encryption. Secrets are acquired only in the RAM rescue OS."""
+"""Optional root encryption; plaintext bootstrap keys require explicit selection."""
 import argparse
 import getpass
 import json
 import os
 from pathlib import Path
 import resource
+import secrets
 import signal
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -524,40 +538,79 @@ def validate_key(data):
     return data
 
 
+def boot_key_warning():
+    print('\033[1;31m\n!!! PLAINTEXT BOOT KEY: THIS DEFEATS DISK ENCRYPTION !!!\n'
+          'Anyone with the boot disk or its snapshots can decrypt this server.\n'
+          'Temporary bootstrap only. Later remove this file and change the passphrase.\n'
+          'That is fast, but DOES NOT revoke old disk copies or an exposed data key.\n'
+          'For forensic protection, rewrite under a fresh encryption root and\n'
+          'retire old copies. Passphrase rotation alone cannot provide that.\n'
+          'Then use a person or remote key source at boot.\n'
+          'https://pirate.github.io/zfsify/docs/encryption#temporary-plaintext-boot-key\n'
+          '\033[0m', file=sys.stderr)
+
+
 def configure(mode, url, yes, output):
-    if url:
-        validate_url(url)
-        if mode == 'off':
-            raise ValueError('--no-encrypt conflicts with --encrypt-key-url.')
-        mode = 'on'
+    key = os.environ.get('ZFSIFY_ENCRYPT_KEY')
+    boot_key = key is not None
+    if url or boot_key:
+        if mode != 'on':
+            raise ValueError('Key sources require explicit --encrypt.')
+        if url and boot_key:
+            raise ValueError('Choose one key source: HTTPS or a supplied key.')
+        if url:
+            validate_url(url)
+        else:
+            key = validate_key(key.encode()).decode()
     if mode == 'auto':
         if yes:
             mode = 'off'
         else:
             from strategy import choose, heading
             heading('Encrypt the new ZFS root filesystem?')
-            mode = {'1': 'off', '2': 'on'}.get(choose(
+            mode = {'1': 'off', '2': 'on', '3': 'temporary'}.get(choose(
                 '  1) No encryption [default]\n'
                 '  2) Encrypt / and /boot; enter a passphrase in RAM rescue\n'
                 '     Each subsequent boot requires unlocking in the preboot console.\n'
-                '  q) Cancel', '1', ['1', '2', 'q']))
+                '  3) Encrypt with a TEMPORARY local key (automatic boot)\n'
+                '     Generate 16 characters; save and retype before proceeding.\n'
+                '  q) Cancel', '1', ['1', '2', '3', 'q']))
             if mode is None:
                 raise ValueError('Cancelled.')
+    generated = mode == 'temporary'
+    if generated:
+        mode, boot_key = 'on', True
+        boot_key_warning()
+        # Deliberately short and hand-transcribable; generated only in the TUI.
+        key = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789') for _ in range(16))
+        warnings.simplefilter('error', getpass.GetPassWarning)
+        with open('/dev/tty', 'w') as tty:
+            print('Temporary key: ' + key + '\nSave this key in your password manager or write it down.', file=tty, flush=True)
+            while getpass.getpass('Retype the saved key to continue (no timeout): ', stream=tty) != key:
+                print('Key does not match. Save and retype the displayed key.', file=tty, flush=True)
     if mode == 'on':
-        if yes and not url:
-            raise ValueError('--yes --encrypt requires --encrypt-key-url=https://host/path. '
-                             'Without --yes, enter the passphrase in RAM rescue.')
-        print('Encryption: AES-256-GCM for / and /boot. ZFSBootMenu requires a passphrase at every boot.\n'
+        if yes and not url and not boot_key:
+            raise ValueError('--yes --encrypt requires --encrypt-key-url=https://host/path or '
+                             'ZFSIFY_ENCRYPT_KEY / --encrypt-key=KEY. Without --yes, enter the passphrase in RAM rescue.')
+        print('Encryption: AES-256-GCM for / and /boot.\n'
               'The bootloader remains unencrypted. Old ext4 remnants and external backups are not erased/encrypted.',
               file=sys.stderr)
         if url:
             print('The RAM installer will fetch the passphrase over HTTPS. The URL is not a secret; '
                   'control access at your key server. Keep the same passphrase available for interrupted rescue.\n'
                   'This URL is used during conversion only, not for automatic unlocking on later boots.', file=sys.stderr)
-        else:
+        if boot_key:
+            if not generated:
+                boot_key_warning()
+            with open(output.parent/'bootstrap.key', 'w', opener=lambda p, f: os.open(p, f, 0o600)) as stream:
+                stream.write(key)
+            print('Temporary key saved for rescue and automatic boot. Replace it after bootstrap.', file=sys.stderr)
+        elif not url:
             print('After the rescue reboot, enter the passphrase in the console, or reconnect via SSH and run:\n'
                   '  zfsify-unlock\nNo passphrase is saved in the staged rescue image.', file=sys.stderr)
-    output.write_text(json.dumps({'enabled': mode == 'on', 'key_url': url}) + '\n')
+        if not boot_key:
+            print('ZFSBootMenu requires a passphrase at every boot.', file=sys.stderr)
+    output.write_text(json.dumps({'enabled': mode == 'on', 'key_url': url, 'boot_key': boot_key}) + '\n')
 
 
 def require_rescue():
@@ -619,6 +672,9 @@ def acquire():
     if KEY.exists():
         validate_key(KEY.read_bytes())
         return
+    if config.get('boot_key') and not config['key_url']:
+        save_key((CONFIG.parent/'bootstrap.key').read_bytes())
+        return
     if config['key_url']:
         validate_url(config['key_url'])
         # No inherited proxies or redirect downgrade; normal TLS certificate verification.
@@ -652,6 +708,25 @@ def acquire():
     validate_key(KEY.read_bytes())
 
 
+def install_boot_hook(output):
+    config = json.loads(CONFIG.read_text())
+    if not config.get('boot_key'):
+        return
+    require_rescue()
+    if not config['enabled']:
+        raise ValueError('A boot key requires encryption.')
+    key = validate_key(KEY.read_bytes()).decode('utf-8')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # A shell builtin feeds stdin: the secret is never a process argument.
+    hook = ('#!/bin/sh\nset +x\n'
+            '[ "${ZBM_ENCRYPTION_ROOT:-}" = rpool ] || exit 0\n'
+            "printf '%s' " + shlex.quote(key) +
+            ' | zfs load-key -L file:///dev/stdin rpool\n')
+    with open(output, 'w', opener=lambda p, f: os.open(p, f, 0o700)) as stream:
+        stream.write(hook)
+    boot_key_warning()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='action', required=True)
@@ -660,11 +735,15 @@ def main():
     config.add_argument('--key-url', default='')
     config.add_argument('--yes', action='store_true')
     config.add_argument('--output', type=Path, required=True)
+    hook = sub.add_parser('boot-hook')
+    hook.add_argument('--output', type=Path, required=True)
     sub.add_parser('acquire')
     sub.add_parser('prompt')
     args = parser.parse_args()
     if args.action == 'configure':
         configure(args.mode, args.key_url, args.yes, args.output)
+    elif args.action == 'boot-hook':
+        install_boot_hook(args.output)
     elif args.action == 'prompt':
         prompt()
     else:
@@ -678,8 +757,8 @@ if __name__ == '__main__':
         print(f'zfsify: {error or "Passphrase input cancelled."}', file=sys.stderr)
         sys.exit(2)
 
-ZFS_ON_BOOT_f5f72a2f0a4f4ad14f7df7cb289fe9b16660062252a7d598fc239a4ef2f70dbe
-cat > "$work/encryption.sh" <<'ZFS_ON_BOOT_72f34cab1febc2aa688255c609be758f2d4186a56e91b240a2421623473cfc0f'
+ZFS_ON_BOOT_6a5a01f4fcd9da402e357a599587c58b454c82ebc0c9944e732539ad1f48f089
+cat > "$work/encryption.sh" <<'ZFS_ON_BOOT_124465623ac538d5ac4109c617e345c0d8077e79860fccca3fe2f40e7b90f3a1'
 #!/bin/bash
 # Sourced only by the RAM installer and target setup. No secrets in shell variables.
 ENCRYPTION_ARGS=()
@@ -696,8 +775,8 @@ encryption_load() {
     while ! zfs load-key -L file:///run/zfsify-encryption/rpool.key rpool; do
         echo 'Unable to unlock rpool; no further copy, remap or partition changes will run.' >&2
         rm -f /run/zfsify-encryption/rpool.key
-        # A headless source returning the wrong key must stop, not spin forever.
-        if python3 -c 'import json; exit(not json.load(open("/etc/zfs-on-boot/encryption.json"))["key_url"])'; then
+        # An automatic source returning the wrong key must stop, not spin forever.
+        if python3 -c 'import json; c=json.load(open("/etc/zfs-on-boot/encryption.json")); exit(not (c["key_url"] or c.get("boot_key")))'; then
             return 1
         fi
         encryption_acquire
@@ -728,7 +807,7 @@ HOOK
     printf 'install_items+=" /etc/zfs/zfsify-rpool.key "\n' > /target/etc/dracut.conf.d/91-zfsify-encryption.conf
 }
 
-ZFS_ON_BOOT_72f34cab1febc2aa688255c609be758f2d4186a56e91b240a2421623473cfc0f
+ZFS_ON_BOOT_124465623ac538d5ac4109c617e345c0d8077e79860fccca3fe2f40e7b90f3a1
 cat > "$work/strategy.py" <<'ZFS_ON_BOOT_180b7ba1d2fe105878859d744658f86718536e73083364b93131ecd44a685d80'
 #!/usr/bin/env python3
 """Read-only strategy discovery and deliberate choices; never format or mount disks."""
@@ -1027,7 +1106,7 @@ if __name__ == '__main__':
         (out / ('cmdline-' + name)).write_text(value + '\n')
 
 ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_f6c7dbc535399d5994910b186b273c49115a827e1b3938d0bcfed32e4e45d362'
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_b0feac7e1abf4cdd9343c742ea2798d590ff4a7a57446f5ca0ea290c190e9855'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -1285,14 +1364,18 @@ sync
 zpool export rpool
 rm -f /run/zfsify-encryption/rpool.key
 if [[ $ENCRYPTION_ENABLED = 1 ]]; then
-    echo 'Encrypted root ready. Enter your passphrase in the ZFSBootMenu preboot console after reboot.'
+    if python3 -c 'import json; exit(not json.load(open("/etc/zfs-on-boot/encryption.json")).get("boot_key", False))'; then
+        echo 'WARNING: plaintext boot key installed; disk encryption provides no secrecy.'
+    else
+        echo 'Encrypted root ready. Enter your passphrase in the ZFSBootMenu preboot console after reboot.'
+    fi
 fi
 echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_f6c7dbc535399d5994910b186b273c49115a827e1b3938d0bcfed32e4e45d362
-cat > "$work/target.sh" <<'ZFS_ON_BOOT_86c82af44765228166e716da3bc96a6db4eb4d29a117a0aebcac4fbd12702c17'
+ZFS_ON_BOOT_b0feac7e1abf4cdd9343c742ea2798d590ff4a7a57446f5ca0ea290c190e9855
+cat > "$work/target.sh" <<'ZFS_ON_BOOT_ca19a13e200d49b60212a4bb217e89f4e6dbdf26023d6fd2089c44e88d9aa597'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
 set -Eeuo pipefail
@@ -1308,6 +1391,7 @@ fi
 # Both modes retain the old /etc; replace only disk/boot-specific configuration.
 rm -f /target/etc/grub.d/41_zfs_on_boot
 rm -rf /target/boot/zfs-on-boot /target/var/lib/zfs-on-boot
+rm -f /target/etc/zfs-on-boot/bootstrap.key
 mkdir -p /target/boot/grub /target/{proc,sys,dev,run,tmp} /target/etc/{default/grub.d,modprobe.d,cloud/cloud.cfg.d,zfs,initramfs-tools/conf.d}
 chmod 1777 /target/tmp
 mount --rbind /dev /target/dev
@@ -1382,7 +1466,7 @@ umount /target/run /target/proc
 umount -R /target/sys
 umount -R /target/dev
 
-ZFS_ON_BOOT_86c82af44765228166e716da3bc96a6db4eb4d29a117a0aebcac4fbd12702c17
+ZFS_ON_BOOT_ca19a13e200d49b60212a4bb217e89f4e6dbdf26023d6fd2089c44e88d9aa597
 cat > "$work/recovery-setup.sh" <<'ZFS_ON_BOOT_e2bdd204344cf9783056867eea633d2799df85bd98819f45b4a89fd80e1aebc2'
 #!/bin/bash
 set -Eeuo pipefail
@@ -2101,11 +2185,18 @@ with image.open('rb') as stream:
 (shim/'config').write_text(f'SOURCE_UUID={uuid}\nRESCUE_SHA={digest}\nMODULES="{" ".join(modules)}"\n')
 
 ZFS_ON_BOOT_6937b61de010540f98d6814303fa45e6671b21a2273402e37bcc911d198d235a
-cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_ed338db083ec398d1f5969db5185383810761cd6ddeb3b2b5a6c455eb7e9c0d4'
+cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_975e6e5041edac9dddfc33510e53f1679c8fb7d75f810431e00eb19e84967b62'
 #!/bin/bash
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ACTION=${1:?} ROOT=${2:?}
+if [[ $ACTION = kcl-tool ]]; then
+    DEST=$ROOT/etc/zfs-on-boot/zbm
+    mkdir -p "$DEST"
+    curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zbm-kcl -o "$DEST/zbm-kcl"
+    echo '16edae3eee5df9a0b133734bc4d8a8cb68ca73ac30f98cb21cea3212b051ff01  '"$DEST/zbm-kcl" | sha256sum -c -
+    exit 0
+fi
 FIRMWARE=$(cat "$ROOT/etc/zfs-on-boot/firmware" 2>/dev/null || cat /etc/zfs-on-boot/firmware)
 BOOT_CONFIG=$ROOT/etc/zfs-on-boot/boot
 [[ $ACTION = download ]] || BOOT_CONFIG=/etc/zfs-on-boot/boot
@@ -2116,8 +2207,7 @@ if [[ $ACTION = download ]]; then
     if [[ $FIRMWARE = uefi ]]; then
         curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zfsbootmenu-release-x86_64-v3.1.0-linux6.6.EFI -o "$DEST/zfsbootmenu.EFI"
         echo 'd4a67012f03659c91a1f227aa6739b4b41bd5c7d0bd64e89aa7358bf08826cfd  '"$DEST/zfsbootmenu.EFI" | sha256sum -c -
-        curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zbm-kcl -o "$DEST/zbm-kcl"
-        echo '16edae3eee5df9a0b133734bc4d8a8cb68ca73ac30f98cb21cea3212b051ff01  '"$DEST/zbm-kcl" | sha256sum -c -
+        bash "$0" kcl-tool "$ROOT"
         chroot "$ROOT" bash /etc/zfs-on-boot/zbm/zbm-kcl -d -a "$KCL" /etc/zfs-on-boot/zbm/zfsbootmenu.EFI
         exit 0
     fi
@@ -2131,6 +2221,15 @@ if [[ $ACTION = download ]]; then
 fi
 [[ $ACTION = install ]]
 DISK=${3:?} BOOTDEV=${4:?}
+install_boot_key() {
+    if python3 -c 'import json; exit(not json.load(open("/etc/zfs-on-boot/encryption.json")).get("boot_key", False))'; then
+        python3 /etc/zfs-on-boot/encryption.py boot-hook --output "$1/zfsify-hooks/load-key.d/zfsify-plaintext-key"
+        KCL+=" zbm.hookroot=UUID=$(blkid -s UUID -o value "$BOOTDEV")//zfsify-hooks"
+        if [[ $FIRMWARE = uefi ]]; then
+            bash /etc/zfs-on-boot/zbm/zbm-kcl -d -a "$KCL" /etc/zfs-on-boot/zbm/zfsbootmenu.EFI
+        fi
+    fi
+}
 # A resumed installation can format this partition again, changing its UUID.
 # Replace the boot mount entry rather than accumulating obsolete UUIDs.
 python3 - "$ROOT/etc/fstab" <<'PY'
@@ -2151,6 +2250,7 @@ if [[ $FIRMWARE = uefi ]]; then
     mkfs.vfat -F 32 -n ZFSBOOTMENU "$BOOTDEV"
     mkdir -p "$ROOT/boot/efi"
     mount "$BOOTDEV" "$ROOT/boot/efi"
+    install_boot_key "$ROOT/boot/efi"
     mkdir -p "$ROOT/boot/efi/EFI/BOOT" "$ROOT/boot/efi/EFI/ZFSBootMenu"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/$EFI_FALLBACK"
@@ -2165,6 +2265,7 @@ fi
 mkfs.ext4 -F -O '^64bit,^metadata_csum' -L ZFSBOOTMENU "$BOOTDEV"
 mkdir -p "$ROOT/boot/syslinux"
 mount "$BOOTDEV" "$ROOT/boot/syslinux"
+install_boot_key "$ROOT/boot/syslinux"
 cp /usr/lib/syslinux/modules/bios/ldlinux.c32 "$ROOT/boot/syslinux/"
 cp /etc/zfs-on-boot/zbm/{vmlinuz-bootmenu,initramfs-bootmenu.img} "$ROOT/boot/syslinux/"
 cat > "$ROOT/boot/syslinux/syslinux.cfg" <<CFG
@@ -2185,7 +2286,7 @@ umount "$ROOT/boot/syslinux"
 # Activate the BIOS loader only after its files are durable.
 dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc,fsync
 
-ZFS_ON_BOOT_ed338db083ec398d1f5969db5185383810761cd6ddeb3b2b5a6c455eb7e9c0d4
+ZFS_ON_BOOT_975e6e5041edac9dddfc33510e53f1679c8fb7d75f810431e00eb19e84967b62
 cat > "$work/zbm-build.sh" <<'ZFS_ON_BOOT_4c76357c973dd0cf134c763bf14137a2d5fafead0fd40a9e34313a98f32866a3'
 #!/bin/bash
 # Build upstream ARM64 ZFSBootMenu without changing the host's initramfs tooling.

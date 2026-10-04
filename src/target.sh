@@ -13,6 +13,7 @@ fi
 # Both modes retain the old /etc; replace only disk/boot-specific configuration.
 rm -f /target/etc/grub.d/41_zfs_on_boot
 rm -rf /target/boot/zfs-on-boot /target/var/lib/zfs-on-boot
+rm -f /target/etc/zfs-on-boot/bootstrap.key
 mkdir -p /target/boot/grub /target/{proc,sys,dev,run,tmp} /target/etc/{default/grub.d,modprobe.d,cloud/cloud.cfg.d,zfs,initramfs-tools/conf.d}
 chmod 1777 /target/tmp
 mount --rbind /dev /target/dev

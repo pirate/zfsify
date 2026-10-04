@@ -21,6 +21,7 @@ ARM64 VMs with UEFI.
 | ARM64 UEFI conversion, APT kernel maintenance, and recovery-clone boot with dracut | [Ubuntu 26.04, 1 GiB](evidence/arm64-resolute-acceptance.txt) |
 | Experimental root conversion above 50% usage, interruption recovery, and growth | [In-place validation](inplace.md#validation) |
 | amd64 boot regression | [Ubuntu 24.04 DigitalOcean acceptance](evidence/amd64-architecture-acceptance.txt) |
+| Temporary local key and passphrase rotation | [ARM64 automatic boot, saved-key TUI, and manual unlock](evidence/encryption-2026-10-04.md) |
 | Optional encrypted root | [ARM64 conversion, boot and recovery; DigitalOcean conversion and interruption recovery](evidence/encryption-2026-10-03.md) — DigitalOcean final console unlock remains unverified |
 
 The recordings offer selected highlights and full terminal captures. Their notes

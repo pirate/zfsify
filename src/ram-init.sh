@@ -255,7 +255,11 @@ sync
 zpool export rpool
 rm -f /run/zfsify-encryption/rpool.key
 if [[ $ENCRYPTION_ENABLED = 1 ]]; then
-    echo 'Encrypted root ready. Enter your passphrase in the ZFSBootMenu preboot console after reboot.'
+    if python3 -c 'import json; exit(not json.load(open("/etc/zfs-on-boot/encryption.json")).get("boot_key", False))'; then
+        echo 'WARNING: plaintext boot key installed; disk encryption provides no secrecy.'
+    else
+        echo 'Encrypted root ready. Enter your passphrase in the ZFSBootMenu preboot console after reboot.'
+    fi
 fi
 echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync

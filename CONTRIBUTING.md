@@ -88,7 +88,7 @@ When reporting a completed run, include the installer checksum, Ubuntu image,
 RAM/disk size, firmware, kernel and ZFS versions, and post-reboot results.
 
 For root encryption, run `python3 scripts/test-encryption.py`, then exercise
-`--encrypt` and `--yes --encrypt-key-url=HTTPS` in disposable guests. Run
+`--encrypt`, `--yes --encrypt --encrypt-key=KEY`, and `--yes --encrypt --encrypt-key-url=HTTPS` in disposable guests. Run
 `bash scripts/verify-encryption.sh` after conversion and after rebuilding the
 initramfs and rebooting. Also verify snapshot boot and an interrupted slice
 copy with a wrong key followed by the correct key. Keep test keys and key-server

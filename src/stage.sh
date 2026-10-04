@@ -14,10 +14,14 @@ TARGET_COUNT=0
 ENCRYPT=auto
 ENCRYPT_COUNT=0
 ENCRYPT_KEY_URL=
+ENCRYPT_KEY_SET=${ZFSIFY_ENCRYPT_KEY+x}
+ENCRYPT_KEY=${ZFSIFY_ENCRYPT_KEY-}
+unset ZFSIFY_ENCRYPT_KEY
 for arg in "$@"; do
     case "$arg" in
         --yes) ASSUME_YES=1 ;;
         --encrypt) ENCRYPT=on; ENCRYPT_COUNT=$((ENCRYPT_COUNT+1)) ;;
+        --encrypt-key=*) ENCRYPT_KEY=${arg#*=}; ENCRYPT_KEY_SET=x ;;
         --no-encrypt) ENCRYPT=off; ENCRYPT_COUNT=$((ENCRYPT_COUNT+1)) ;;
         --encrypt-key-url=*) ENCRYPT_KEY_URL=${arg#*=}; [[ -n $ENCRYPT_KEY_URL ]] || { echo "Missing HTTPS key URL." >&2; exit 2; } ;;
         --auto) MODE=auto; MODE_COUNT=$((MODE_COUNT+1)) ;;
@@ -28,7 +32,7 @@ for arg in "$@"; do
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--encrypt | --no-encrypt | --encrypt-key-url=HTTPS] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--encrypt [--encrypt-key=KEY | --encrypt-key-url=HTTPS] | --no-encrypt] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
 Default: detect the disk and choose a data-preserving strategy.
 Review the recommended method, then explicitly confirm before any conversion.
@@ -40,7 +44,11 @@ Method flags select a method; only --yes skips selection and confirmation.
   --encrypt                Encrypt the new root pool; enter the passphrase in RAM
                            rescue via console or SSH (zfsify-unlock).
   --encrypt-key-url=HTTPS  Fetch the passphrase in RAM for headless conversion.
-                           Implies --encrypt. Each later boot needs console unlock.
+                           Requires --encrypt. Each later boot needs console unlock.
+  --encrypt-key=KEY        TEMPORARY: save your supplied key on the boot partition.
+                           Requires --encrypt; defeats disk encryption. Prefer
+                           ZFSIFY_ENCRYPT_KEY in the environment to a CLI secret.
+                           Random keys are offered only in the TUI: save + retype.
   --no-encrypt             Skip the encryption question (the default with --yes).
   --preserve               Request the 50/50 copy-and-verify strategy.
   --auto                   Choose automatically (the default).
@@ -79,7 +87,7 @@ if [[ $TARGET != / ]]; then
     resolved=$(readlink -f "$TARGET")
     if [[ $resolved != "$running_root" && $resolved != "$running_disk" ]]; then
         [[ $MODE != inplace ]] || { echo '--inplace currently supports the boot drive only.' >&2; exit 2; }
-        [[ $ENCRYPT != on && -z $ENCRYPT_KEY_URL ]] || { echo "Encryption currently supports the root drive only." >&2; exit 2; }
+        [[ $ENCRYPT != on && -z $ENCRYPT_KEY_URL && -z $ENCRYPT_KEY_SET ]] || { echo "Encryption currently supports the root drive only." >&2; exit 2; }
         exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP" "$ASSUME_YES"
     fi
 fi
@@ -196,7 +204,9 @@ python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --
     --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
 mapfile -t SELECTION < "$SOURCE/selection"
 MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
+[[ -z $ENCRYPT_KEY_SET ]] || export ZFSIFY_ENCRYPT_KEY=$ENCRYPT_KEY
 python3 "$SOURCE/encryption.py" configure "${CONSENT[@]}" --mode "$ENCRYPT" --key-url "$ENCRYPT_KEY_URL" --output "$SOURCE/encryption.json"
+unset ZFSIFY_ENCRYPT_KEY
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
 PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
 if [[ $MODE = preserve ]]; then
@@ -346,6 +356,7 @@ python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
 if [[ $ARCH = arm64 ]]; then
     mkdir -p "$ROOT/etc/zfs-on-boot/zbm"
     mv "$WORK/zfsbootmenu.EFI" "$ROOT/etc/zfs-on-boot/zbm/"
+    bash "$SOURCE/zbm-install.sh" kcl-tool "$ROOT"
 else
     phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
 fi
@@ -400,6 +411,7 @@ install -m 755 "$SOURCE/grow.sh" "$ROOT/usr/local/sbin/zfs-on-boot-grow"
 cp "$SOURCE/grow.service" "$ROOT/etc/systemd/system/zfs-on-boot-grow.service"
 cp "$SOURCE/target.sh" "$SOURCE/recovery-setup.sh" "$ROOT/etc/zfs-on-boot/"
 cp "$SOURCE/encryption.sh" "$SOURCE/encryption.py" "$SOURCE/encryption.json" "$ROOT/etc/zfs-on-boot/"
+[[ ! -f $SOURCE/bootstrap.key ]] || install -m 600 "$SOURCE/bootstrap.key" "$ROOT/etc/zfs-on-boot/bootstrap.key"
 printf '#!/bin/sh\nexec python3 /etc/zfs-on-boot/encryption.py prompt\n' > "$ROOT/usr/local/sbin/zfsify-unlock"
 chmod 755 "$ROOT/usr/local/sbin/zfsify-unlock"
 install -m 755 "$SOURCE/snapshot.sh" "$ROOT/usr/local/sbin/zfsify-snapshot"

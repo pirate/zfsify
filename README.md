@@ -69,10 +69,10 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --encry
 
 # Headless conversion: retrieve the passphrase from your HTTPS key server in RAM.
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- \
-  --yes --encrypt-key-url=https://keys.example.net/my-server
+  --yes --encrypt --encrypt-key-url=https://keys.example.net/my-server
 ```
 
-Encryption is off by default. Without a key URL, enter and confirm the passphrase
+Encryption is off by default. With `--encrypt` and no key URL, enter and confirm the passphrase
 after the rescue reboot using the console, or reconnect over SSH and run
 `zfsify-unlock`. **Every subsequent boot needs the passphrase in ZFSBootMenu's
 preboot console**, including the first boot after conversion. Normal SSH becomes
@@ -81,7 +81,12 @@ available after unlocking. `--no-encrypt` skips the encryption question.
 Encryption works with each root conversion method, including `--erase`; attached
 data volumes do not support this option. It encrypts the new `/` and `/boot`,
 but does not securely erase old ext4 remnants or encrypt external backups.
-[Key-server setup and recovery](docs/encryption.md).
+For temporary automatic boot without a key server, choose the TUI's plaintext
+key option (save and retype its 16-character key), or supply `ZFSIFY_ENCRYPT_KEY`
+with `--yes --encrypt`. `--encrypt-key=KEY` is also supported. **This defeats disk encryption
+until the key is replaced and removed; old disk copies remain a forensic risk.**
+[Switch to a custom passphrase without rewriting data](docs/encryption.md#switch-to-a-custom-passphrase-later).
+[Key-server setup and recovery](docs/encryption.md) · [Phone notification and remote unlock](docs/remote-unlock.md).
 
 ## Requirements
 

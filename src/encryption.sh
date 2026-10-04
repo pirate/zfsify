@@ -14,8 +14,8 @@ encryption_load() {
     while ! zfs load-key -L file:///run/zfsify-encryption/rpool.key rpool; do
         echo 'Unable to unlock rpool; no further copy, remap or partition changes will run.' >&2
         rm -f /run/zfsify-encryption/rpool.key
-        # A headless source returning the wrong key must stop, not spin forever.
-        if python3 -c 'import json; exit(not json.load(open("/etc/zfs-on-boot/encryption.json"))["key_url"])'; then
+        # An automatic source returning the wrong key must stop, not spin forever.
+        if python3 -c 'import json; c=json.load(open("/etc/zfs-on-boot/encryption.json")); exit(not (c["key_url"] or c.get("boot_key")))'; then
             return 1
         fi
         encryption_acquire

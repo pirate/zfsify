@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Optional root encryption. Secrets are acquired only in the RAM rescue OS."""
+"""Optional root encryption; plaintext bootstrap keys require explicit selection."""
 import argparse
 import getpass
 import json
 import os
 from pathlib import Path
 import resource
+import secrets
 import signal
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -45,40 +47,79 @@ def validate_key(data):
     return data
 
 
+def boot_key_warning():
+    print('\033[1;31m\n!!! PLAINTEXT BOOT KEY: THIS DEFEATS DISK ENCRYPTION !!!\n'
+          'Anyone with the boot disk or its snapshots can decrypt this server.\n'
+          'Temporary bootstrap only. Later remove this file and change the passphrase.\n'
+          'That is fast, but DOES NOT revoke old disk copies or an exposed data key.\n'
+          'For forensic protection, rewrite under a fresh encryption root and\n'
+          'retire old copies. Passphrase rotation alone cannot provide that.\n'
+          'Then use a person or remote key source at boot.\n'
+          'https://pirate.github.io/zfsify/docs/encryption#temporary-plaintext-boot-key\n'
+          '\033[0m', file=sys.stderr)
+
+
 def configure(mode, url, yes, output):
-    if url:
-        validate_url(url)
-        if mode == 'off':
-            raise ValueError('--no-encrypt conflicts with --encrypt-key-url.')
-        mode = 'on'
+    key = os.environ.get('ZFSIFY_ENCRYPT_KEY')
+    boot_key = key is not None
+    if url or boot_key:
+        if mode != 'on':
+            raise ValueError('Key sources require explicit --encrypt.')
+        if url and boot_key:
+            raise ValueError('Choose one key source: HTTPS or a supplied key.')
+        if url:
+            validate_url(url)
+        else:
+            key = validate_key(key.encode()).decode()
     if mode == 'auto':
         if yes:
             mode = 'off'
         else:
             from strategy import choose, heading
             heading('Encrypt the new ZFS root filesystem?')
-            mode = {'1': 'off', '2': 'on'}.get(choose(
+            mode = {'1': 'off', '2': 'on', '3': 'temporary'}.get(choose(
                 '  1) No encryption [default]\n'
                 '  2) Encrypt / and /boot; enter a passphrase in RAM rescue\n'
                 '     Each subsequent boot requires unlocking in the preboot console.\n'
-                '  q) Cancel', '1', ['1', '2', 'q']))
+                '  3) Encrypt with a TEMPORARY local key (automatic boot)\n'
+                '     Generate 16 characters; save and retype before proceeding.\n'
+                '  q) Cancel', '1', ['1', '2', '3', 'q']))
             if mode is None:
                 raise ValueError('Cancelled.')
+    generated = mode == 'temporary'
+    if generated:
+        mode, boot_key = 'on', True
+        boot_key_warning()
+        # Deliberately short and hand-transcribable; generated only in the TUI.
+        key = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789') for _ in range(16))
+        warnings.simplefilter('error', getpass.GetPassWarning)
+        with open('/dev/tty', 'w') as tty:
+            print('Temporary key: ' + key + '\nSave this key in your password manager or write it down.', file=tty, flush=True)
+            while getpass.getpass('Retype the saved key to continue (no timeout): ', stream=tty) != key:
+                print('Key does not match. Save and retype the displayed key.', file=tty, flush=True)
     if mode == 'on':
-        if yes and not url:
-            raise ValueError('--yes --encrypt requires --encrypt-key-url=https://host/path. '
-                             'Without --yes, enter the passphrase in RAM rescue.')
-        print('Encryption: AES-256-GCM for / and /boot. ZFSBootMenu requires a passphrase at every boot.\n'
+        if yes and not url and not boot_key:
+            raise ValueError('--yes --encrypt requires --encrypt-key-url=https://host/path or '
+                             'ZFSIFY_ENCRYPT_KEY / --encrypt-key=KEY. Without --yes, enter the passphrase in RAM rescue.')
+        print('Encryption: AES-256-GCM for / and /boot.\n'
               'The bootloader remains unencrypted. Old ext4 remnants and external backups are not erased/encrypted.',
               file=sys.stderr)
         if url:
             print('The RAM installer will fetch the passphrase over HTTPS. The URL is not a secret; '
                   'control access at your key server. Keep the same passphrase available for interrupted rescue.\n'
                   'This URL is used during conversion only, not for automatic unlocking on later boots.', file=sys.stderr)
-        else:
+        if boot_key:
+            if not generated:
+                boot_key_warning()
+            with open(output.parent/'bootstrap.key', 'w', opener=lambda p, f: os.open(p, f, 0o600)) as stream:
+                stream.write(key)
+            print('Temporary key saved for rescue and automatic boot. Replace it after bootstrap.', file=sys.stderr)
+        elif not url:
             print('After the rescue reboot, enter the passphrase in the console, or reconnect via SSH and run:\n'
                   '  zfsify-unlock\nNo passphrase is saved in the staged rescue image.', file=sys.stderr)
-    output.write_text(json.dumps({'enabled': mode == 'on', 'key_url': url}) + '\n')
+        if not boot_key:
+            print('ZFSBootMenu requires a passphrase at every boot.', file=sys.stderr)
+    output.write_text(json.dumps({'enabled': mode == 'on', 'key_url': url, 'boot_key': boot_key}) + '\n')
 
 
 def require_rescue():
@@ -140,6 +181,9 @@ def acquire():
     if KEY.exists():
         validate_key(KEY.read_bytes())
         return
+    if config.get('boot_key') and not config['key_url']:
+        save_key((CONFIG.parent/'bootstrap.key').read_bytes())
+        return
     if config['key_url']:
         validate_url(config['key_url'])
         # No inherited proxies or redirect downgrade; normal TLS certificate verification.
@@ -173,6 +217,25 @@ def acquire():
     validate_key(KEY.read_bytes())
 
 
+def install_boot_hook(output):
+    config = json.loads(CONFIG.read_text())
+    if not config.get('boot_key'):
+        return
+    require_rescue()
+    if not config['enabled']:
+        raise ValueError('A boot key requires encryption.')
+    key = validate_key(KEY.read_bytes()).decode('utf-8')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # A shell builtin feeds stdin: the secret is never a process argument.
+    hook = ('#!/bin/sh\nset +x\n'
+            '[ "${ZBM_ENCRYPTION_ROOT:-}" = rpool ] || exit 0\n'
+            "printf '%s' " + shlex.quote(key) +
+            ' | zfs load-key -L file:///dev/stdin rpool\n')
+    with open(output, 'w', opener=lambda p, f: os.open(p, f, 0o700)) as stream:
+        stream.write(hook)
+    boot_key_warning()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='action', required=True)
@@ -181,11 +244,15 @@ def main():
     config.add_argument('--key-url', default='')
     config.add_argument('--yes', action='store_true')
     config.add_argument('--output', type=Path, required=True)
+    hook = sub.add_parser('boot-hook')
+    hook.add_argument('--output', type=Path, required=True)
     sub.add_parser('acquire')
     sub.add_parser('prompt')
     args = parser.parse_args()
     if args.action == 'configure':
         configure(args.mode, args.key_url, args.yes, args.output)
+    elif args.action == 'boot-hook':
+        install_boot_hook(args.output)
     elif args.action == 'prompt':
         prompt()
     else:
