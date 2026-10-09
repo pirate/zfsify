@@ -1,6 +1,8 @@
 #!/bin/bash
 # All runtime checks run on a disposable DigitalOcean Droplet.
 # Requires DIGITALOCEAN_TOKEN, Python 3, curl, and OpenSSH on the controller.
+# Remote shell expressions must expand in the guest, not on the controller.
+# shellcheck disable=SC2016
 set -Eeuo pipefail
 BASE=$(cd "$(dirname "$0")/.." && pwd)
 STATE=$(mktemp -d "${TMPDIR:-/tmp}/zfs-on-boot-e2e.XXXXXXXX")
@@ -40,7 +42,7 @@ trap cleanup EXIT
 ssh-keygen -q -t ed25519 -N '' -C zfs-on-boot-e2e -f "$STATE/key"
 python3 "$BASE/scripts/package.py"
 python3 "$BASE/scripts/do-test.py" create --state "$STATE/resources.json" --key-file "$STATE/key.pub" --size "${DO_TEST_SIZE:-s-1vcpu-1gb}" --image "${DO_TEST_IMAGE:-ubuntu-24-04-x64}"
-for attempt in {1..60}; do
+for _ in {1..60}; do
     python3 "$BASE/scripts/do-test.py" status --state "$STATE/resources.json" > "$STATE/status.json"
     IP=$(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(next((n["ip_address"] for n in d["networks"]["v4"] if n["type"]=="public"),""))' "$STATE/status.json")
     if [[ -n $IP ]] && "${SSH[@]}" "root@$IP" true 2>/dev/null; then break; fi
@@ -75,7 +77,7 @@ python3 "$BASE/scripts/recordings/capture-terminal.py" --output "$STATE/stage.ca
     --answer 'waiting for your selection (no timeout):=1' -- \
     "${SSH[@]}" -tt "root@$IP" "$INSTALL_COMMAND" || [[ $? = 255 ]]
 ready=0
-for attempt in {1..360}; do
+for _ in {1..360}; do
     if "${SSH[@]}" "root@$IP" 'test -f /etc/zfs-on-boot-installed && test "$(findmnt -n -o FSTYPE /)" = zfs' 2>/dev/null; then ready=1; break; fi
     sleep 10
 done
@@ -89,7 +91,7 @@ done
 OLD_BOOT=$("${SSH[@]}" "root@$IP" 'cat /proc/sys/kernel/random/boot_id')
 "${SSH[@]}" "root@$IP" 'systemctl reboot' || true
 ready=0
-for attempt in {1..60}; do
+for _ in {1..60}; do
     NEW_BOOT=$("${SSH[@]}" "root@$IP" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null || true)
     if [[ -n $NEW_BOOT && $NEW_BOOT != "$OLD_BOOT" ]]; then ready=1; break; fi
     sleep 5
@@ -104,7 +106,7 @@ if [[ $ENCRYPTION = temporary ]]; then
     OLD_BOOT=$NEW_BOOT
     "${SSH[@]}" "root@$IP" 'systemctl reboot' || true
     ready=0
-    for attempt in {1..60}; do
+    for _ in {1..60}; do
         NEW_BOOT=$("${SSH[@]}" "root@$IP" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null || true)
         if [[ -n $NEW_BOOT && $NEW_BOOT != "$OLD_BOOT" ]]; then ready=1; break; fi
         sleep 5
