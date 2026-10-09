@@ -22,6 +22,7 @@ ARM64 VMs with UEFI.
 | Experimental root conversion above 50% usage, interruption recovery, and growth | [In-place validation](inplace.md#validation) |
 | amd64 boot regression | [Ubuntu 24.04 DigitalOcean acceptance](evidence/amd64-architecture-acceptance.txt) |
 | Temporary local key and passphrase rotation | [ARM64 automatic boot, saved-key TUI, and manual unlock](evidence/encryption-2026-10-04.md) |
+| DigitalOcean encrypted preservation and automatic boot | [Ubuntu 24.04 BIOS, 1 GiB; preservation, scrub and initramfs rebuild/reboot](evidence/do-encryption-2026-10-09.md) |
 | Optional encrypted root | [ARM64 conversion, boot and recovery; DigitalOcean conversion and interruption recovery](evidence/encryption-2026-10-03.md) — DigitalOcean final console unlock remains unverified |
 
 The recordings offer selected highlights and full terminal captures. Their notes
