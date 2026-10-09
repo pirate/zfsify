@@ -50,6 +50,7 @@ assert config.commandlines(serial, ['ttyAMA0', 'hvc0'], display=True)['rescue'] 
 assert config.commandlines('console="tty1" console=ttyS0', ['tty1', 'ttyS0'], display=True)['rescue'].endswith('console="tty1"')
 
 # Verify GRUB accepts the command containing quoted kernel values.
-script = ('menuentry test {\n linux /vmlinuz ' + result['grub'] + ' rdinit=/init panic=0\n}\n')
-subprocess.run(['grub-script-check'], input=script, text=True, check=True)
-print('PASS: inherited console/hardware options; old root/resume/init removed; GRUB syntax and quoted values')
+for options in (result, visible):
+    script = ('menuentry test {\n linux /vmlinuz ' + options['grub'] + ' rdinit=/init panic=0\n}\n')
+    subprocess.run(['grub-script-check'], input=script, text=True, check=True)
+print('PASS: inherited hardware options; display-console preference and serial fallback; old root/resume/init removed; GRUB syntax and quoted values')
