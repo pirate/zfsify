@@ -31,6 +31,8 @@ rescue() {
     while true; do /bin/bash </dev/console >/dev/console 2>&1 || true; sleep 2; done
 }
 trap 'rescue "$LINENO"' ERR
+# Render directly to the rescue console while keeping the durable log plain.
+export ZFS_PROGRESS_CONSOLE=1 TERM=${TERM:-linux}
 exec > >(tee -a /run/zfs-on-boot.log) 2>&1
 /usr/lib/systemd/systemd-udevd --daemon
 udevadm trigger --action=add
@@ -58,6 +60,7 @@ mkdir -p /run/sshd
 bash /etc/zfs-on-boot/network.sh
 DISK=$(cat /etc/zfs-on-boot/disk)
 MODE=$(cat /etc/zfs-on-boot/mode)
+export ZFSIFY_UI_CONTEXT=/etc/zfs-on-boot/ui-context.json
 BOOT_TYPE=8300
 BOOT_ATTR=(-A 1:set:2)
 if [[ $(cat /etc/zfs-on-boot/firmware) = uefi ]]; then
@@ -75,7 +78,7 @@ if [[ -f /etc/zfs-on-boot/backup/volume-uuid ]]; then
     BACKUPDEV=$(blkid -U "$(cat /etc/zfs-on-boot/backup/volume-uuid)")
 fi
 DEVICES=$DISK,$ROOTDEV${BACKUPDEV:+,$BACKUPDEV}
-phase() { local n=$1 label=$2; shift 2; python3 /usr/local/lib/zfs-on-boot/progress.py run --phase "$n" --label "$label" --devices "$DEVICES" -- "$@"; }
+phase() { local n=$1 label=$2; shift 2; python3 /usr/local/lib/zfs-on-boot/progress.py run --phase "$n" --label "$label" --operation "${ZFSIFY_OPERATION:-prepare}" --devices "$DEVICES" -- "$@"; }
 part() { local name; while read -r name; do [[ $(cat "/sys/class/block/${name##*/}/partition" 2>/dev/null || true) != "$1" ]] || printf '%s\n' "$name"; done < <(lsblk -nrpo NAME "$DISK"); }
 [[ -b $DISK && -b $ROOTDEV ]]
 [[ $ROOTDEV = "$(cat /etc/zfs-on-boot/old-root-device)" ]]
@@ -97,7 +100,7 @@ encryption_acquire
 create_root_pool() {
 # Ubuntu's root-pool defaults, with boot-image compatibility and disk growth.
 # Keep ext4's distinct Unicode filenames distinct rather than normalizing them.
-phase 3 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target "${ENCRYPTION_ARGS[@]}" rpool "$ZPART"
+ZFSIFY_OPERATION=create phase 3 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target "${ENCRYPTION_ARGS[@]}" rpool "$ZPART"
 zfs create -o canmount=off -o mountpoint=none rpool/ROOT
 zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
 zfs mount rpool/ROOT/ubuntu
@@ -120,11 +123,11 @@ if [[ $MODE = preserve ]]; then
     rm -rf /old/var/lib/zfs-on-boot /old/boot/zfs-on-boot
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
-    phase 3 "Check offline ext4 $ROOTDEV" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    ZFSIFY_OPERATION=shrink phase 3 "Check offline ext4 $ROOTDEV" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     # Leave an extra MiB between the shrunken filesystem and its partition end.
     SHRINK_KIB=$(( (SPLIT-ROOT_START)*512/1024-1024 ))
-    phase 3 "Shrink ext4 on $ROOTDEV" resize2fs -p "$ROOTDEV" "${SHRINK_KIB}K"
-    phase 3 "Shorten $ROOTDEV and create temporary ZFS partition" sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$((SPLIT-1))" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SPLIT:$ROOT_END" -t 32:BF01 "$DISK"
+    ZFSIFY_OPERATION=shrink phase 3 "Shrink ext4 on $ROOTDEV" resize2fs -p "$ROOTDEV" "${SHRINK_KIB}K"
+    ZFSIFY_OPERATION=shrink phase 3 "Shorten $ROOTDEV and create temporary ZFS partition" sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$((SPLIT-1))" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SPLIT:$ROOT_END" -t 32:BF01 "$DISK"
     partprobe "$DISK"
     udevadm settle
     TEMP=$(part 32)
@@ -138,7 +141,7 @@ elif [[ $MODE = backup ]]; then
         BOOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-boot-uuid)")
         mount -o ro "$BOOTDEV" /old/boot
     fi
-    phase 2 'Archive the offline installation with rclone and verify a full download' bash /etc/zfs-on-boot/backup.sh save
+    ZFSIFY_OPERATION=backup phase 2 'Archive the offline installation with rclone and verify a full download' bash /etc/zfs-on-boot/backup.sh save
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
 fi
@@ -149,7 +152,7 @@ if [[ $MODE = erase ]]; then
     umount /old
 fi
 if [[ $MODE != preserve ]]; then
-    phase 3 "Erase $DISK and create ZFSBootMenu + ZFS partitions" bash -e -c 'disk=$1; type=$2; shift 2; sgdisk --zap-all "$disk"; sgdisk -n 1:1MiB:+512MiB -t "1:$type" "$@" -n 2:0:0 -t 2:BF01 "$disk"' _ "$DISK" "$BOOT_TYPE" "${BOOT_ATTR[@]}"
+    ZFSIFY_OPERATION=erase phase 3 "Erase $DISK and create ZFSBootMenu + ZFS partitions" bash -e -c 'disk=$1; type=$2; shift 2; sgdisk --zap-all "$disk"; sgdisk -n 1:1MiB:+512MiB -t "1:$type" "$@" -n 2:0:0 -t 2:BF01 "$disk"' _ "$DISK" "$BOOT_TYPE" "${BOOT_ATTR[@]}"
     partprobe "$DISK"
     udevadm settle
     ZPART=$(part 2)
@@ -165,21 +168,21 @@ create_root_pool
 # A separate source /boot is deliberately included; unsupported mounts were refused.
 EXCLUDES=(--exclude=/proc/*** --exclude=/sys/*** --exclude=/dev/*** --exclude=/run/*** --exclude=/target/*** --exclude=/old/*** --exclude=/tmp/*** --exclude=/init --exclude=/rescue-media/*** --exclude=/etc/zfs-on-boot/*** --exclude=/var/lib/zfs-on-boot/*** --exclude=/boot/zfs-on-boot/*** --exclude=/boot/efi/*** --exclude=/var/log/zfs-on-boot/*** --exclude=/swapfile --exclude=/swap.img)
 if [[ $MODE = backup ]]; then
-    phase 3 'Restore and checksum-check the rclone archive' bash /etc/zfs-on-boot/backup.sh restore
-    phase 3 'Remote archive checksum and extraction verified' true
+    ZFSIFY_OPERATION=restore phase 3 'Restore and checksum-check the rclone archive' bash /etc/zfs-on-boot/backup.sh restore
+    ZFSIFY_OPERATION=verify phase 3 'Remote archive checksum and extraction verified' true
 else
 rsync -aHAXS --numeric-ids --dry-run --stats "${EXCLUDES[@]}" "$SOURCE" /target/ > /run/copy-size.txt
 TOTAL=$(awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2); print $2}' /run/copy-size.txt)
 # Real copy errors (including ENOSPC) stop before original data is deleted.
-python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 3 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --source "$SOURCE" --target "$ZPART" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
-phase 3 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
+python3 /usr/local/lib/zfs-on-boot/progress.py run --operation copy --phase 3 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --source "$SOURCE" --target "$ZPART" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
+ZFSIFY_OPERATION=verify phase 3 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
 fi  # Existing preservation/backup/erase backend.
 if [[ $MODE != inplace || $INPLACE_PHASE != configured ]]; then
-phase 4 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
+ZFSIFY_OPERATION=configure phase 4 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
 fi
-phase 4 'Flush the configured ZFS root to disk' zpool sync rpool
+ZFSIFY_OPERATION=configure phase 4 'Flush the configured ZFS root to disk' zpool sync rpool
 [[ $MODE != inplace ]] || inplace_checkpoint configured
 if [[ $MODE = preserve ]]; then
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
@@ -189,7 +192,7 @@ if [[ $MODE = preserve ]]; then
     mapfile -t PARTS < <(while read -r name; do cat "/sys/class/block/$name/partition" 2>/dev/null || true; done < <(lsblk -nr -o NAME "$DISK") | awk '$1!=32')
     ARGS=()
     for number in "${PARTS[@]}"; do ARGS+=(-d "$number"); done
-    phase 4 "Replace original ext4 with front mirror member on $DISK" sgdisk "${ARGS[@]}" -n 1:2048:1050623 -t "1:$BOOT_TYPE" "${BOOT_ATTR[@]}" -n "2:1050624:$((SPLIT-1))" -t 2:BF01 "$DISK"
+    ZFSIFY_OPERATION=mirror phase 4 "Replace original ext4 with front mirror member on $DISK" sgdisk "${ARGS[@]}" -n 1:2048:1050623 -t "1:$BOOT_TYPE" "${BOOT_ATTR[@]}" -n "2:1050624:$((SPLIT-1))" -t 2:BF01 "$DISK"
     # Remove obsolete kernel partition mappings before installing the new ones.
     for number in "${PARTS[@]}"; do partx -d --nr "$number" "$DISK"; done
     partx -a --nr 1:2 "$DISK"
@@ -203,24 +206,24 @@ mount --rbind /dev /target/dev
 mount --make-rslave /target/dev
 mount -t proc proc /target/proc
 mount -t sysfs sysfs /target/sys
-phase 4 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
+ZFSIFY_OPERATION=boot phase 4 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
 umount /target/proc
 umount -R /target/sys
 umount -R /target/dev
 if [[ $MODE = preserve ]]; then
-    python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 4 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --source "$TEMP" --target "$FRONT" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
+    python3 /usr/local/lib/zfs-on-boot/progress.py run --operation mirror --phase 4 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --source "$TEMP" --target "$FRONT" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
     [[ $(zpool list -H -o health rpool) = ONLINE ]]
     zpool status -p rpool
     zpool status rpool | grep -q 'errors: No known data errors'
     # A successful attach -w must leave a readable, fully resilvered front copy.
     [[ $(zpool status -P rpool | awk -v d="$FRONT" '$1==d {print $2}') = ONLINE ]]
-    phase 4 "Detach temporary $TEMP after successful resilver" zpool detach rpool "$TEMP"
+    ZFSIFY_OPERATION=grow phase 4 "Detach temporary $TEMP after successful resilver" zpool detach rpool "$TEMP"
     zpool labelclear -f "$TEMP"
-    phase 4 "Remove temporary partition $TEMP" sgdisk -d 32 "$DISK"
+    ZFSIFY_OPERATION=grow phase 4 "Remove temporary partition $TEMP" sgdisk -d 32 "$DISK"
     partx -d --nr 32 "$DISK"
     ZPART=$FRONT
 elif [[ $MODE = inplace ]]; then
-    phase 4 'Native remap complete: no mirror relocation required' true
+    ZFSIFY_OPERATION=grow phase 4 'Native remap complete: no mirror relocation required' true
     # The new loader and root are durable before releasing the rescue area.
     cp -a "$STATE/." /target/var/log/zfs-on-boot/inplace/
     sync
@@ -228,10 +231,10 @@ elif [[ $MODE = inplace ]]; then
     sgdisk -d 32 "$DISK"
     partx -d --nr 32 "$DISK"
 else
-    phase 4 'Fresh install: no relocation required' true
+    ZFSIFY_OPERATION=grow phase 4 'Fresh install: no relocation required' true
 fi
 DEVICES=$DISK,$ZPART
-phase 4 "Grow final ZFS partition $ZPART to fill $DISK" bash -e -c '
+ZFSIFY_OPERATION=grow phase 4 "Grow final ZFS partition $ZPART to fill $DISK" bash -e -c '
 set +e
 output=$(growpart "$1" 2 2>&1); rc=$?
 set -e
@@ -245,7 +248,7 @@ touch /target/etc/machine-id
 mkdir -p /target/var/lib/dbus
 ln -sf /etc/machine-id /target/var/lib/dbus/machine-id
 printf 'Installed by zfsify (%s) at %s\n' "$MODE" "$(date -u +%FT%TZ)" > /target/etc/zfs-on-boot-installed
-phase 5 'Ready: snapshots, recovery and automatic disk growth' bash /etc/zfs-on-boot/recovery-setup.sh
+ZFSIFY_OPERATION=ready phase 5 'Ready: snapshots, recovery and automatic disk growth' bash /etc/zfs-on-boot/recovery-setup.sh
 mkdir -p /target/var/log/zfs-on-boot
 cp /run/zfs-on-boot.log /target/var/log/zfs-on-boot/install.log
 cp /var/log/zfs-on-boot/*.log /target/var/log/zfs-on-boot/

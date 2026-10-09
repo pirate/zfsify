@@ -8,7 +8,7 @@ chmod 700 "$STATE"
 IP=
 MODE=${1:-preserve}
 case "$MODE" in
-    preserve) INSTALL_ARGS=; FIXTURE_CHECK=verify-preserved.sh ;;
+    preserve) INSTALL_ARGS=--preserve; FIXTURE_CHECK=verify-preserved.sh ;;
     inplace) INSTALL_ARGS=--inplace; FIXTURE_CHECK=verify-preserved.sh ;;
     erase) INSTALL_ARGS=--erase; FIXTURE_CHECK=verify-erased.sh ;;
     *) echo 'Usage: scripts/do-e2e.sh [preserve|inplace|erase]' >&2; exit 2 ;;
@@ -56,7 +56,7 @@ fi
 "${SSH[@]}" "root@$IP" 'for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8765/install.sh && exit 0; sleep 1; done; exit 1'
 python3 "$BASE/scripts/recordings/capture-terminal.py" --output "$STATE/stage.cast" \
     --answer 'waiting for your selection (no timeout):=1' -- \
-    "${SSH[@]}" -tt "root@$IP" "TERM=xterm-256color bash /root/zfs-on-boot-source/install.sh $INSTALL_ARGS" || [[ $? = 255 ]]
+    "${SSH[@]}" -tt "root@$IP" "TERM=xterm-256color bash /root/zfs-on-boot-source/install.sh --no-encrypt $INSTALL_ARGS" || [[ $? = 255 ]]
 ready=0
 for attempt in {1..360}; do
     if "${SSH[@]}" "root@$IP" 'test -f /etc/zfs-on-boot-installed && test "$(findmnt -n -o FSTYPE /)" = zfs' 2>/dev/null; then ready=1; break; fi

@@ -12,11 +12,7 @@ preserving existing data through in-place filesystem conversion.
 </div>
 
 <p align="center">
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-1"><img src="docs/assets/recordings/phase-1.gif" width="49%" alt="1. Scan disk and choose a method"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-2"><img src="docs/assets/recordings/phase-2.gif" width="49%" alt="2. Prepare the disk"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-3"><img src="docs/assets/recordings/phase-3.gif" width="49%" alt="3. Convert ext4 to ZFS"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-4"><img src="docs/assets/recordings/phase-4.gif" width="49%" alt="4. Finish disk and boot setup"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-5"><img src="docs/assets/recordings/phase-5.gif" width="49%" alt="5. Enable snapshots, recovery and growth"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=dashboard"><img src="docs/assets/recordings/dashboard.gif" width="100%" alt="Live root conversion with animated blocks, total bytes, device activity and the selected algorithm"></a>
 </p>
 
 Cloud providers usually ship Ubuntu with ext4. Getting ZFS means building a
@@ -56,7 +52,8 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/by-id/YOUR-DISK
 ```
 
-Review the highlighted method and disk, then explicitly confirm conversion.
+Use the arrow keys or numbers to preview each method and its disk diagram, then
+press Enter to choose. Review the highlighted disk and explicitly confirm conversion.
 The interactive flow has no automatic start or timeout; method options preselect
 the method for review. Convert one disk per invocation.
 

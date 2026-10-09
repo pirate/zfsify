@@ -111,6 +111,46 @@ class ProgressTests(unittest.TestCase):
         self.assertNotIn('%', m.render(state)); self.assertIn('total unavailable', m.render(state))
         self.assertNotEqual(m.render(state, frame=1), m.render(state, frame=5))
 
+    def test_algorithm_panels_follow_operations_without_fake_extents(self):
+        state = dict(phase=3, label='Copy files', devices='/dev/vda,/dev/vda1',
+                     operation='copy', total=100, done=25, status='running',
+                     context=dict(kind='root', mode='preserve', disk='/dev/vda', size=1000, used=100))
+        text=m.render(state,width=120,color=True)
+        self.assertIn('temporary ZFS',text)
+        self.assertIn('Original ext4 is retained',text)
+        self.assertIn('25.0%',text)
+        self.assertIn('Schematic',text)
+        self.assertIn('\x1b[33m',text)
+        for method in m.METHODS:
+            state['context']['mode']=method
+            for operation in ('prepare','copy','verify','mirror','remap','grow'):
+                state['operation']=operation
+                for width in (40,80,120):
+                    self.assertTrue(all(len(m.clean(row))<=width for row in m.render(state,width=width,color=True).splitlines()))
+        state['context'].update(mode='inplace',kind='root')
+        state['operation']='remap'
+        self.assertIn('native ZFS partition',m.render(state,width=120))
+        state['context'].update(mode='preserve',kind='volume')
+        self.assertNotIn('/boot',m.render(state,width=120))
+        self.assertIn('OS disk unchanged',m.render(state,width=120))
+
+    def test_recovery_console_keeps_diagram_totals_and_error_visible(self):
+        s=dict(phase=3,label='Copy and verify each batch',devices='/dev/vda,/dev/vda1,/dev/vda32,/dev/mapper/zfsify-image',
+               total=100,done=23,status='failed',operation='copy',height=23,
+               context=dict(kind='root',mode='inplace',disk='/dev/vda',size=1000,used=700),
+               io={'/dev/vda':[1,2,3]},messages=['first line','second line','Disk full; conversion stopped'])
+        rendered=m.render(s,width=79)
+        self.assertLessEqual(len(rendered.splitlines()),23)
+        for text in ('23.0%', 'sparse ZFS image', 'Disk full; conversion stopped', 'IOPS', 'Transfer total'):
+            self.assertIn(text, rendered)
+
+    def test_wide_unicode_names_never_wrap_the_dashboard(self):
+        state=dict(phase=3,label='Verify 文件 '*20,devices='/dev/vda',total=100,done=2,
+                   context=dict(kind='root',mode='inplace',disk='/dev/vda',size=1000,used=100),
+                   operation='copy',messages=['文件 '*80])
+        for width in (40,80,120):
+            self.assertTrue(all(m.cells(row)<=width for row in m.render(state,width=width,color=True).splitlines()))
+
     def test_counter_protocol_and_resumed_baseline(self):
         state = {}; counters = m.Counters(state)
         self.assertTrue(counters.consume('ZFSIFY_START 500 1000'))

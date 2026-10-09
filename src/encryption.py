@@ -75,15 +75,14 @@ def configure(mode, url, yes, output):
         if yes:
             mode = 'off'
         else:
-            from strategy import choose, heading
-            heading('Encrypt the new ZFS root filesystem?')
+            from strategy import choose
             mode = {'1': 'off', '2': 'on', '3': 'temporary'}.get(choose(
-                '  1) No encryption [default]\n'
-                '  2) Encrypt / and /boot; enter a passphrase in RAM rescue\n'
-                '     Each subsequent boot requires unlocking in the preboot console.\n'
-                '  3) Encrypt with a TEMPORARY local key (automatic boot)\n'
-                '     Generate 16 characters; save and retype before proceeding.\n'
-                '  q) Cancel', '1', ['1', '2', '3', 'q']))
+                'Choose how this server will unlock at boot.', '1', ['1', '2', '3', 'q'],
+                title='Would you like to encrypt your files?', items=[
+                    ('1', 'No encryption [default]', 'Boot normally, without a passphrase.'),
+                    ('2', 'Encrypt · unlock at each boot', 'Encrypt / and /boot. Enter your passphrase after the rescue reboot; future boots need console unlock.'),
+                    ('3', 'Encrypt · temporary automatic unlock', 'Save a plaintext key on this disk: this defeats disk encryption. Generate 16 characters, then save and retype them.'),
+                    ('q', 'Cancel', '')]))
             if mode is None:
                 raise ValueError('Cancelled.')
     generated = mode == 'temporary'

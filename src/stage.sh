@@ -94,8 +94,9 @@ fi
 export LC_ALL=C
 [[ -t 1 ]] && export ZFS_PROGRESS_TTY=1
 PROGRESS=$SOURCE/progress.py
+export ZFSIFY_UI_CONTEXT=$SOURCE/ui-context.json
 python3 "$PROGRESS" header --phase 1 --label "Scan Ubuntu, boot configuration and disk layout"
-phase() { local n=$1 label=$2; shift 2; python3 "$PROGRESS" run --phase "$n" --label "$label" --devices "$DISK,$ROOTDEV" -- "$@"; }
+phase() { local n=$1 label=$2; shift 2; python3 "$PROGRESS" run --phase "$n" --label "$label" --operation "${ZFSIFY_OPERATION:-prepare}" --devices "$DISK,$ROOTDEV" -- "$@"; }
 WORK=/var/lib/zfs-on-boot
 ROOT=$WORK/root
 die() { echo "zfs-on-boot: $*" >&2; exit 1; }
@@ -199,7 +200,7 @@ ip -brief address
 CONSENT=()
 [[ $ASSUME_YES != 1 ]] || CONSENT=(--yes)
 while :; do
-python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
+python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --source "$ROOTDEV" --platform "$ARCH / $FIRMWARE" --size "$FS_BYTES" --used "$TOTAL_USED" \
     --preserve-capacity "$PRESERVE_CAPACITY" --inplace-capacity "$INPLACE_CAPACITY" \
     --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
 mapfile -t SELECTION < "$SOURCE/selection"
@@ -207,57 +208,7 @@ MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
 [[ -z $ENCRYPT_KEY_SET ]] || export ZFSIFY_ENCRYPT_KEY=$ENCRYPT_KEY
 python3 "$SOURCE/encryption.py" configure "${CONSENT[@]}" --mode "$ENCRYPT" --key-url "$ENCRYPT_KEY_URL" --output "$SOURCE/encryption.json"
 unset ZFSIFY_ENCRYPT_KEY
-lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
-PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
-if [[ $MODE = preserve ]]; then
-    cat <<EOF
-PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.
-Devices: source $ROOTDEV; temporary ${PREFIX}32; final ${PREFIX}2.
-$DISK (512 MiB ZFSBootMenu partition omitted):
-  [              original ext4              ]
-  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify
-  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver
-  [       new ZFS member    ][ free space    ]  detach temporary member
-  [                   ZFS                   ]  grow; / and /boot on ZFS
-The server reboots into RAM. Services are offline during migration.
-Original ext4 is removed only after the copy is checksum-verified.
-Power loss during repartitioning can require provider recovery.
-EOF
-elif [[ $MODE = inplace ]]; then
-    cat <<EOF
-EXPERIMENTAL IN-PLACE CONVERSION: $ROOTDEV -> one native ZFS root partition.
-  [ ext4 files + free space                    ]
-  [ ext4 files shrinking | sparse ZFS growing  ]  copy, sync, verify, release 64 MiB batches
-  [ completed ZFS image inside ext4           ]  verify the complete manifest
-  [ native ZFS partition; no image or mapper  ]  fsremap relocates physical blocks
-A temporary 1 GiB area at the end holds the rescue system and migration journal.
-Original file data is released progressively. This is not a retained full backup.
-The rescue entry resumes an interrupted copy or remap. Bootloader replacement
-still has a short recovery window; keep a provider backup before converting.
-EOF
-elif [[ $MODE = backup ]]; then
-    echo "BACKUP AND RESTORE: $ROOTDEV -> archive on a separate Volume or rclone remote"
-    echo "                    -> read-back verification -> reformat $DISK as ZFS -> restore."
-    echo 'The backup remains available after completion. Destination setup follows before rescue preparation.'
-else
-    cat <<EOF
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! ERASE MODE: ALL EXISTING DATA ON $DISK WILL BE DELETED.
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  [ existing partitions + ALL their data ]
-  [ 512 MiB ZFSBootMenu ][ ZFS: fresh Ubuntu / and /boot ]
-Devices: erase $DISK; create ${PREFIX}1 (ZFSBootMenu) and ${PREFIX}2 (ZFS).
-/etc, users, SSH authorized_keys and basic settings are retained.
-Complete optional files are retained in priority order within the RAM budget; omitted data is removed.
-EOF
-fi
-cat <<'EOF'
-5 phases: scan and choose > prepare > convert > finish setup > recovery and growth
-Live status includes logical copy bytes, MB/s and block-device IOPS.
-SSH disconnects at reboot. Reconnect and run: zfs-on-boot-status
-Package/metadata phases have no meaningful byte total and show n/a.
-EOF
-REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "$ROOTDEV on $DISK. Server reboots; services stop during migration. Power loss can require recovery. Reconnect with zfs-on-boot-status.")
 [[ $REVIEW != 1 ]] || break
 MODE=auto
 done
@@ -406,6 +357,7 @@ fi
 [[ $MODE != preserve && $MODE != inplace ]] || cp "$SOURCE/plan.env" "$ROOT/etc/zfs-on-boot/plan.env"
 mkdir -p "$ROOT/usr/local/lib/zfs-on-boot" "$ROOT/usr/local/sbin"
 cp "$PROGRESS" "$ROOT/usr/local/lib/zfs-on-boot/progress.py"
+cp "$ZFSIFY_UI_CONTEXT" "$ROOT/etc/zfs-on-boot/ui-context.json"
 install -m 755 "$SOURCE/status.sh" "$ROOT/usr/local/sbin/zfs-on-boot-status"
 install -m 755 "$SOURCE/grow.sh" "$ROOT/usr/local/sbin/zfs-on-boot-grow"
 cp "$SOURCE/grow.service" "$ROOT/etc/systemd/system/zfs-on-boot-grow.service"
