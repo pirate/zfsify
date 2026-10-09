@@ -4,7 +4,7 @@ set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask} ASSUME_YES=${5:-0}
 export ZFSIFY_UI_CONTEXT=$SOURCE/ui-context.json
-python3 "$SOURCE/progress.py" header --phase 1 --label "Scan the selected data disk and its mount settings"
+python3 "$SOURCE/progress.py" header --kind volume --phase 1 --label "Scan the selected data disk and its mount settings"
 [[ ! -t 1 ]] || export ZFS_PROGRESS_TTY=1
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'

@@ -132,6 +132,7 @@ class ProgressTests(unittest.TestCase):
         self.assertIn('native ZFS partition',m.render(state,width=120))
         state['context'].update(mode='preserve',kind='volume')
         self.assertNotIn('/boot',m.render(state,width=120))
+        self.assertNotIn('boot setup',m.render(state,width=120))
         self.assertIn('OS disk unchanged',m.render(state,width=120))
 
     def test_recovery_console_keeps_diagram_totals_and_error_visible(self):

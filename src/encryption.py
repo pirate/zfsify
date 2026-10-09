@@ -82,7 +82,7 @@ def configure(mode, url, yes, output):
                     ('1', 'No encryption [default]', 'Boot normally, without a passphrase.'),
                     ('2', 'Encrypt · unlock at each boot', 'Encrypt / and /boot. Enter your passphrase after the rescue reboot; future boots need console unlock.'),
                     ('3', 'Encrypt · temporary automatic unlock', 'Save a plaintext key on this disk: this defeats disk encryption. Generate 16 characters, then save and retype them.'),
-                    ('q', 'Cancel', '')]))
+                    ('q', 'Cancel', '')], danger=['3']))
             if mode is None:
                 raise ValueError('Cancelled.')
     generated = mode == 'temporary'

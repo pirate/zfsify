@@ -53,7 +53,7 @@ def backup_candidates(disk, used):
                                                      -item['free'], item['path']))
 
 
-def choose(prompt, default, options, *, title='Choose your next step', items=None, plan=None, unavailable=None):
+def choose(prompt, default, options, *, title='Choose your next step', items=None, plan=None, unavailable=None, danger=()):
     """Controlling-TTY input; arrows preview, Enter confirms. Never timed consent."""
     from progress import Display, context, disk_picture, columns, tint, wrapped, clean, METHODS, bounded
     import select
@@ -102,7 +102,7 @@ def choose(prompt, default, options, *, title='Choose your next step', items=Non
                     marker = '›' if unicode else '>'
                     prefix = f'{marker if active else " "} {key}  '
                     rows = wrapped(label, w-5)
-                    left += [tint(prefix + rows[0], '1;36' if active else '1', color)]
+                    left += [tint(prefix + rows[0], '1;31' if key in danger else '1;36' if active else '1', color)]
                     left += ['     '+row for row in rows[1:]]
                     if explanation:
                         left += ['     '+tint(row, '90', color) for row in wrapped(explanation, w-6)]
@@ -129,7 +129,7 @@ def choose(prompt, default, options, *, title='Choose your next step', items=Non
                     start = max(0, min(selected-count//2, len(items)-count))
                     body = [tint(title, '1;36', color)] + [
                         tint(('> ' if key == keys[selected] else '  ')+key+' '+clean(label),
-                             '1;36' if key == keys[selected] else '0', color)
+                             '1;31' if key in danger else '1;36' if key == keys[selected] else '0', color)
                         for key, label, _ in items[start:start+count]]
                     chosen = next((ex for key, _, ex in items if key == keys[selected]), '')
                     body += wrapped(chosen, width)
@@ -244,7 +244,7 @@ def main():
         answer = choose(args.label, 'q', ['1', '2', 'q'], title='Ready to change this disk?', items=[
             ('1', 'Start conversion', precaution + ' ' + args.label + ' Make a full offsite backup first; conversion can destroy data.'),
             ('2', 'Go back · choose another method', 'No conversion starts until you confirm.'),
-            ('q', 'Cancel [default]', 'Leave the disk as it is.')])
+            ('q', 'Cancel [default]', 'Leave the disk as it is.')], danger=['1'] if args.mode == 'erase' else [])
         if answer == 'q':
             raise ValueError('Cancelled.')
         print(answer)
@@ -298,7 +298,7 @@ def main():
     default_key = next(k for k, v in keys.items() if v == default)
     choice = choose('Choose a method. You will review its plan before confirming conversion.',
                     default_key, {**keys, 'q':'cancel'}, title='How would you like to move to ZFS?', items=items, plan=plan,
-                    unavailable={key: reason for key, _, reason in items if key in keys and not available[keys[key]]})
+                    unavailable={key: reason for key, _, reason in items if key in keys and not available[keys[key]]}, danger=['4'])
     if choice == 'q':
         raise ValueError('Cancelled.')
     mode = keys[choice]

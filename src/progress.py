@@ -57,11 +57,12 @@ PHASES = ('Scan disk + choose method', 'Prepare disk', 'Convert ext4 to ZFS',
           'Finish disk + boot setup', 'Snapshots + recovery + growth')
 
 
-def phase_header(phase, width=88, color=False, complete=False, compact=False):
+def phase_header(phase, width=88, color=False, complete=False, compact=False, kind="root"):
     """Wrap whole phase segments, keeping every stage visible on narrow terminals."""
     lines = ['  zfsify  ⚡  Ubuntu → ZFS', '']
     row = ''
-    for number, title in enumerate(('Plan', 'Prepare', 'Convert', 'Configure', 'Ready') if compact else PHASES, 1):
+    titles = PHASES if kind == 'root' else (*PHASES[:3], 'Finish disk + mounts', 'Growth + ready')
+    for number, title in enumerate(('Plan', 'Prepare', 'Convert', 'Configure', 'Ready') if compact else titles, 1):
         mark = '✓ ' if number < phase or complete else ''
         segment = f'{mark}{number}. {title}'
         if number == phase:
@@ -256,7 +257,7 @@ def render(s, width=88, frame=0, color=False, unicode=True):
     running = status == 'running'
     ready = s['phase'] == 5 and s['label'].startswith('Ready') and status == 'complete'
     compact = bool(c) and (width < 104 or 0 < s.get('height', 0) < 28)
-    lines = phase_header(s['phase'], width, color=color, complete=ready, compact=compact)
+    lines = phase_header(s['phase'], width, color=color, complete=ready, compact=compact, kind=c.get("kind", "root"))
     accent = '31' if status == 'failed' else '32' if status == 'complete' else '36'
     left = [tint(status.upper() + ('  ·  All done!' if ready else ''), '1;'+accent, color)]
     left += wrapped(s['label'], w-1) + ['']
@@ -595,6 +596,7 @@ def main():
     h = sub.add_parser('header')
     h.add_argument('--phase', type=int, choices=range(1, 6), required=True)
     h.add_argument('--label', required=True)
+    h.add_argument('--kind', choices=['root', 'volume'], default='root')
     f = sub.add_parser('watch')
     f.add_argument('--once', action='store_true')
     r = sub.add_parser('run')
@@ -611,7 +613,7 @@ def main():
     args = p.parse_args()
     if args.action == 'header':
         width = os.get_terminal_size().columns - 1 if sys.stdout.isatty() else 100
-        print('\n'.join(phase_header(args.phase, width, color=sys.stdout.isatty() and 'NO_COLOR' not in os.environ)))
+        print('\n'.join(phase_header(args.phase, width, color=sys.stdout.isatty() and 'NO_COLOR' not in os.environ, kind=args.kind)))
         print('\n  ' + args.label + '\n', flush=True)
         return 0
     def terminate(signum, _frame):

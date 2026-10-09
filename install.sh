@@ -440,7 +440,7 @@ sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
 ZFS_ON_BOOT_b54f857fbb613286b8ad63cf099411203b25322ce6367aa401be68109a4d158e
-cat > "$work/encryption.py" <<'ZFS_ON_BOOT_7e4279f4a39c2a1a7162df0f34bd6dec8012dbfe926d796736cf1663c8cbf6c8'
+cat > "$work/encryption.py" <<'ZFS_ON_BOOT_f58c2de11fee92eb31fd7d7ee8236d0d77a02c8a898a17d238572d2d70d8061f'
 #!/usr/bin/env python3
 """Optional root encryption; plaintext bootstrap keys require explicit selection."""
 import argparse
@@ -525,7 +525,7 @@ def configure(mode, url, yes, output):
                     ('1', 'No encryption [default]', 'Boot normally, without a passphrase.'),
                     ('2', 'Encrypt · unlock at each boot', 'Encrypt / and /boot. Enter your passphrase after the rescue reboot; future boots need console unlock.'),
                     ('3', 'Encrypt · temporary automatic unlock', 'Save a plaintext key on this disk: this defeats disk encryption. Generate 16 characters, then save and retype them.'),
-                    ('q', 'Cancel', '')]))
+                    ('q', 'Cancel', '')], danger=['3']))
             if mode is None:
                 raise ValueError('Cancelled.')
     generated = mode == 'temporary'
@@ -708,7 +708,7 @@ if __name__ == '__main__':
         print(f'zfsify: {error or "Passphrase input cancelled."}', file=sys.stderr)
         sys.exit(2)
 
-ZFS_ON_BOOT_7e4279f4a39c2a1a7162df0f34bd6dec8012dbfe926d796736cf1663c8cbf6c8
+ZFS_ON_BOOT_f58c2de11fee92eb31fd7d7ee8236d0d77a02c8a898a17d238572d2d70d8061f
 cat > "$work/encryption.sh" <<'ZFS_ON_BOOT_124465623ac538d5ac4109c617e345c0d8077e79860fccca3fe2f40e7b90f3a1'
 #!/bin/bash
 # Sourced only by the RAM installer and target setup. No secrets in shell variables.
@@ -759,7 +759,7 @@ HOOK
 }
 
 ZFS_ON_BOOT_124465623ac538d5ac4109c617e345c0d8077e79860fccca3fe2f40e7b90f3a1
-cat > "$work/strategy.py" <<'ZFS_ON_BOOT_4cc7cecb7e7a27f98a8b6ea1a3f7e8200022eb7a005d76b6254902c184480e03'
+cat > "$work/strategy.py" <<'ZFS_ON_BOOT_5bc3a10c0cc47044ad5d81bdf036e9414a213cb0459ebcc51895629cbdebd436'
 #!/usr/bin/env python3
 """Read-only strategy discovery and deliberate choices; never format or mount disks."""
 import argparse
@@ -815,7 +815,7 @@ def backup_candidates(disk, used):
                                                      -item['free'], item['path']))
 
 
-def choose(prompt, default, options, *, title='Choose your next step', items=None, plan=None, unavailable=None):
+def choose(prompt, default, options, *, title='Choose your next step', items=None, plan=None, unavailable=None, danger=()):
     """Controlling-TTY input; arrows preview, Enter confirms. Never timed consent."""
     from progress import Display, context, disk_picture, columns, tint, wrapped, clean, METHODS, bounded
     import select
@@ -864,7 +864,7 @@ def choose(prompt, default, options, *, title='Choose your next step', items=Non
                     marker = '›' if unicode else '>'
                     prefix = f'{marker if active else " "} {key}  '
                     rows = wrapped(label, w-5)
-                    left += [tint(prefix + rows[0], '1;36' if active else '1', color)]
+                    left += [tint(prefix + rows[0], '1;31' if key in danger else '1;36' if active else '1', color)]
                     left += ['     '+row for row in rows[1:]]
                     if explanation:
                         left += ['     '+tint(row, '90', color) for row in wrapped(explanation, w-6)]
@@ -891,7 +891,7 @@ def choose(prompt, default, options, *, title='Choose your next step', items=Non
                     start = max(0, min(selected-count//2, len(items)-count))
                     body = [tint(title, '1;36', color)] + [
                         tint(('> ' if key == keys[selected] else '  ')+key+' '+clean(label),
-                             '1;36' if key == keys[selected] else '0', color)
+                             '1;31' if key in danger else '1;36' if key == keys[selected] else '0', color)
                         for key, label, _ in items[start:start+count]]
                     chosen = next((ex for key, _, ex in items if key == keys[selected]), '')
                     body += wrapped(chosen, width)
@@ -1006,7 +1006,7 @@ def main():
         answer = choose(args.label, 'q', ['1', '2', 'q'], title='Ready to change this disk?', items=[
             ('1', 'Start conversion', precaution + ' ' + args.label + ' Make a full offsite backup first; conversion can destroy data.'),
             ('2', 'Go back · choose another method', 'No conversion starts until you confirm.'),
-            ('q', 'Cancel [default]', 'Leave the disk as it is.')])
+            ('q', 'Cancel [default]', 'Leave the disk as it is.')], danger=['1'] if args.mode == 'erase' else [])
         if answer == 'q':
             raise ValueError('Cancelled.')
         print(answer)
@@ -1060,7 +1060,7 @@ def main():
     default_key = next(k for k, v in keys.items() if v == default)
     choice = choose('Choose a method. You will review its plan before confirming conversion.',
                     default_key, {**keys, 'q':'cancel'}, title='How would you like to move to ZFS?', items=items, plan=plan,
-                    unavailable={key: reason for key, _, reason in items if key in keys and not available[keys[key]]})
+                    unavailable={key: reason for key, _, reason in items if key in keys and not available[keys[key]]}, danger=['4'])
     if choice == 'q':
         raise ValueError('Cancelled.')
     mode = keys[choice]
@@ -1078,7 +1078,7 @@ if __name__ == '__main__':
         print(f'\nzfsify: {error or "Cancelled."}', file=sys.stderr)
         sys.exit(2)
 
-ZFS_ON_BOOT_4cc7cecb7e7a27f98a8b6ea1a3f7e8200022eb7a005d76b6254902c184480e03
+ZFS_ON_BOOT_5bc3a10c0cc47044ad5d81bdf036e9414a213cb0459ebcc51895629cbdebd436
 cat > "$work/network.py" <<'ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec'
 #!/usr/bin/env python3
 """Capture hardware NIC addresses and main-table routes for the RAM installer."""
@@ -1583,7 +1583,7 @@ zpool get autoexpand rpool
 zfs list -t snapshot rpool/ROOT/ubuntu@zfsify-installed
 
 ZFS_ON_BOOT_e2bdd204344cf9783056867eea633d2799df85bd98819f45b4a89fd80e1aebc2
-cat > "$work/progress.py" <<'ZFS_ON_BOOT_97a45b9d6d25f81aee5e926dfe6814aa321b26852e7d82975a0bbfe6d5fe92e8'
+cat > "$work/progress.py" <<'ZFS_ON_BOOT_bc4b72b2b8d497a545648d028787fa4e49bc01099c1b225dec3ab69fafedd24b'
 #!/usr/bin/python3
 """Dependency-free migration dashboard, live Linux telemetry and durable plain logs."""
 import argparse
@@ -1643,11 +1643,12 @@ PHASES = ('Scan disk + choose method', 'Prepare disk', 'Convert ext4 to ZFS',
           'Finish disk + boot setup', 'Snapshots + recovery + growth')
 
 
-def phase_header(phase, width=88, color=False, complete=False, compact=False):
+def phase_header(phase, width=88, color=False, complete=False, compact=False, kind="root"):
     """Wrap whole phase segments, keeping every stage visible on narrow terminals."""
     lines = ['  zfsify  ⚡  Ubuntu → ZFS', '']
     row = ''
-    for number, title in enumerate(('Plan', 'Prepare', 'Convert', 'Configure', 'Ready') if compact else PHASES, 1):
+    titles = PHASES if kind == 'root' else (*PHASES[:3], 'Finish disk + mounts', 'Growth + ready')
+    for number, title in enumerate(('Plan', 'Prepare', 'Convert', 'Configure', 'Ready') if compact else titles, 1):
         mark = '✓ ' if number < phase or complete else ''
         segment = f'{mark}{number}. {title}'
         if number == phase:
@@ -1842,7 +1843,7 @@ def render(s, width=88, frame=0, color=False, unicode=True):
     running = status == 'running'
     ready = s['phase'] == 5 and s['label'].startswith('Ready') and status == 'complete'
     compact = bool(c) and (width < 104 or 0 < s.get('height', 0) < 28)
-    lines = phase_header(s['phase'], width, color=color, complete=ready, compact=compact)
+    lines = phase_header(s['phase'], width, color=color, complete=ready, compact=compact, kind=c.get("kind", "root"))
     accent = '31' if status == 'failed' else '32' if status == 'complete' else '36'
     left = [tint(status.upper() + ('  ·  All done!' if ready else ''), '1;'+accent, color)]
     left += wrapped(s['label'], w-1) + ['']
@@ -2181,6 +2182,7 @@ def main():
     h = sub.add_parser('header')
     h.add_argument('--phase', type=int, choices=range(1, 6), required=True)
     h.add_argument('--label', required=True)
+    h.add_argument('--kind', choices=['root', 'volume'], default='root')
     f = sub.add_parser('watch')
     f.add_argument('--once', action='store_true')
     r = sub.add_parser('run')
@@ -2197,7 +2199,7 @@ def main():
     args = p.parse_args()
     if args.action == 'header':
         width = os.get_terminal_size().columns - 1 if sys.stdout.isatty() else 100
-        print('\n'.join(phase_header(args.phase, width, color=sys.stdout.isatty() and 'NO_COLOR' not in os.environ)))
+        print('\n'.join(phase_header(args.phase, width, color=sys.stdout.isatty() and 'NO_COLOR' not in os.environ, kind=args.kind)))
         print('\n  ' + args.label + '\n', flush=True)
         return 0
     def terminate(signum, _frame):
@@ -2216,7 +2218,7 @@ def main():
 if __name__ == '__main__':
     sys.exit(main())
 
-ZFS_ON_BOOT_97a45b9d6d25f81aee5e926dfe6814aa321b26852e7d82975a0bbfe6d5fe92e8
+ZFS_ON_BOOT_bc4b72b2b8d497a545648d028787fa4e49bc01099c1b225dec3ab69fafedd24b
 cat > "$work/plan.py" <<'ZFS_ON_BOOT_fd829a283a69e4ef6b023f864bf2c9e95658d718af26f243cce82bf95c021242'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""
@@ -2702,14 +2704,14 @@ for ((i=0; i<${#OWNED[@]}-KEEP; i++)); do
 done
 
 ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717
-cat > "$work/volume.sh" <<'ZFS_ON_BOOT_582df55574ac332943f85e30d180b3bc372659cc39db9d79dca5bb58a94ff548'
+cat > "$work/volume.sh" <<'ZFS_ON_BOOT_88f5efc262e975d392f42b35490c010a13426e491325dd1544111ea6e61403c0'
 #!/bin/bash
 # Non-root ext4 conversion. The running OS stays on its own disk.
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask} ASSUME_YES=${5:-0}
 export ZFSIFY_UI_CONTEXT=$SOURCE/ui-context.json
-python3 "$SOURCE/progress.py" header --phase 1 --label "Scan the selected data disk and its mount settings"
+python3 "$SOURCE/progress.py" header --kind volume --phase 1 --label "Scan the selected data disk and its mount settings"
 [[ ! -t 1 ]] || export ZFS_PROGRESS_TTY=1
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'
@@ -2883,7 +2885,7 @@ ZFSIFY_OPERATION=ready phase 5 'Ready: data volume converted' zpool status "$POO
 echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
 [[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"
 
-ZFS_ON_BOOT_582df55574ac332943f85e30d180b3bc372659cc39db9d79dca5bb58a94ff548
+ZFS_ON_BOOT_88f5efc262e975d392f42b35490c010a13426e491325dd1544111ea6e61403c0
 cat > "$work/volume-finish.sh" <<'ZFS_ON_BOOT_5cf92df028744c7ddfffe4bde184a052ac9ca82fa4fc7ecb99c3d95deb7cb2cc'
 #!/bin/bash
 set -Eeuo pipefail
