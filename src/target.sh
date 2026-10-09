@@ -7,10 +7,13 @@ DISK=$(cat /etc/zfs-on-boot/disk)
 if [[ $MODE = erase ]]; then
     python3 /etc/zfs-on-boot/identity.py /target /etc/zfs-on-boot/identity.tar
     tar --numeric-owner --acls --xattrs -xpf /run/priority.tar -C /target
+    # The rescue-only helper has no role in the installed Ubuntu environment.
+    rm -f /target/usr/local/sbin/zfsify-unlock
 fi
 # Both modes retain the old /etc; replace only disk/boot-specific configuration.
 rm -f /target/etc/grub.d/41_zfs_on_boot
 rm -rf /target/boot/zfs-on-boot /target/var/lib/zfs-on-boot
+rm -f /target/etc/zfs-on-boot/bootstrap.key
 mkdir -p /target/boot/grub /target/{proc,sys,dev,run,tmp} /target/etc/{default/grub.d,modprobe.d,cloud/cloud.cfg.d,zfs,initramfs-tools/conf.d}
 chmod 1777 /target/tmp
 mount --rbind /dev /target/dev
@@ -64,6 +67,8 @@ hostonly="no"
 hostonly_cmdline="no"
 EOF
 fi
+source /etc/zfs-on-boot/encryption.sh
+encryption_target
 for kernel in /target/boot/vmlinuz-*; do
     version=${kernel##*/vmlinuz-}
     chroot /target modinfo -k "$version" zfs >/dev/null
@@ -73,6 +78,9 @@ for kernel in /target/boot/vmlinuz-*; do
         chroot /target update-initramfs -u -k "$version"
     else
         chroot /target update-initramfs -c -k "$version"
+    fi
+    if (( ${#ENCRYPTION_ARGS[@]} )); then
+        chmod 600 "/target/boot/initrd.img-$version"
     fi
 done
 umount /target/run /target/proc

@@ -4,20 +4,16 @@
 
 Convert a running Ubuntu VPS or attached volume from ext4 to ZFS in-place, preserving existing data through slice-by-slice filesystem conversion. 
 
-Reboots into a ramdisk, converts chunks slice-by-slice in O(N) time. The end result is existing OS + data running perfectly on a now-ZFS-formatted `/` disk (aka `rpool`, just like [Ubuntu Server's 24.04+'s native ZFS root](https://www.phoronix.com/news/OpenZFS-Ubuntu-24.04-LTS)). You also get a beautiful new [boot menu](https://zfsbootmenu.org) (in `bpool`) that lets you boot from previous snapshots, send/recv, and more.
+Reboots into a ramdisk, converts chunks slice-by-slice in O(N) time. The end result is existing OS + data running perfectly on a now-ZFS-formatted `/` disk (aka `rpool`, just like [Ubuntu Server's 24.04+'s native ZFS root](https://www.phoronix.com/news/OpenZFS-Ubuntu-24.04-LTS)). You also get a beautiful new [boot menu](https://zfsbootmenu.org) (on a small boot partition) that lets you boot from previous snapshots, send/recv, and more.
 
-[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#requirements)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#minimum-requirements)
 [![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#before-you-start)
 [![MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 
 </div>
 
 <p align="center">
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-1"><img src="docs/assets/recordings/phase-1.gif" width="49%" alt="1. Scan disk and choose a method"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-2"><img src="docs/assets/recordings/phase-2.gif" width="49%" alt="2. Prepare the disk"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-3"><img src="docs/assets/recordings/phase-3.gif" width="49%" alt="3. Convert ext4 to ZFS"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-4"><img src="docs/assets/recordings/phase-4.gif" width="49%" alt="4. Finish disk and boot setup"></a>
-<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=phase-5"><img src="docs/assets/recordings/phase-5.gif" width="49%" alt="5. Enable snapshots, recovery and growth"></a>
+<a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=dashboard"><img src="docs/assets/recordings/dashboard.gif" width="100%" alt="Live root conversion with animated blocks, total bytes, device activity and the selected algorithm"></a>
 </p>
 
 Cloud providers usually ship Ubuntu with ext4. Getting ZFS on `/` means building a
@@ -39,7 +35,7 @@ from snapshots, and all the other benefits of ZFS.
 
 **⚠️ This is experimental software! make a full offsite backup before proceeding.**
 
-We try to keep the process bootable/recoverable 90% of the time if it gets interrupted, and we provide [recovery instructions](docs/recovery) for some possible failure modes. Despite our best efforts, there are several 10~60s parts of the process where recovery/bootability is impossible if it gets interrupted (when changing the parition table). 🤞 Make offsite backups and avoid power outages during those parts!
+We try to keep the process bootable/recoverable 90% of the time if it gets interrupted, and we provide [recovery instructions](docs/recovery.md) for some possible failure modes. Despite our best efforts, there are several 10~60s parts of the process where recovery/bootability is impossible if it gets interrupted (when changing the parition table). 🤞 Make offsite backups and avoid power outages during those parts!
 
 If converting `/`: confirm that you can access your VM's display, VNC, or VPS cloud recovery console UI (only if you need to interact with ZFSBootMenu / boot from a snapshot). Expect 2 reboots and downtime/no apps runnable during the bulk of the process. After the first reboot you should be able to reconnect into the ramdisk and watch the transfer process over ssh, then reconnect after the last reboot into the new copied OS running in ZFS `rpool`.
 
@@ -48,7 +44,7 @@ If converting an attached disk other than `/`: make an offsite backup or snapsho
 ## 🔢 Quickstart
 
 ```sh
-# Convert your Ubuntu ext4 grub install to Ubuntu ZFS rpool + ZFSBootMenu bpool
+# Convert your Ubuntu ext4 grub install to Ubuntu ZFS rpool + ZFSBootMenu boot partition
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 
 # Or convert any other attached disk, e.g.
@@ -57,12 +53,46 @@ curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/di
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /mnt/data
 ```
 
+Use the arrow keys or numbers to preview each method and its disk diagram, then
+press Enter to choose. Review the highlighted disk and explicitly confirm conversion.
+The interactive flow has no automatic start or timeout; method options preselect
+the method for review. Convert one disk per invocation.
+
+### Optional root encryption
+
+Choose encryption in the interactive flow, or pass `--encrypt`:
+
+```sh
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- --encrypt
+
+# Headless conversion: retrieve the passphrase from your HTTPS key server in RAM.
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- \
+  --yes --encrypt --encrypt-key-url=https://keys.example.net/my-server
+```
+
+Encryption is off by default. With `--encrypt` and no key URL, enter and confirm the passphrase
+after the rescue reboot using the console, or reconnect over SSH and run
+`zfsify-unlock`. **Every subsequent boot needs the passphrase in ZFSBootMenu's
+preboot console**, including the first boot after conversion. Normal SSH becomes
+available after unlocking. `--no-encrypt` skips the encryption question.
+
+Encryption works with each root conversion method, including `--erase`; attached
+data volumes do not support this option. It encrypts the new `/` and `/boot`,
+but does not securely erase old ext4 remnants or encrypt external backups.
+For temporary automatic boot without a key server, choose the TUI's plaintext
+key option (save and retype its 16-character key), or supply `ZFSIFY_ENCRYPT_KEY`
+with `--yes --encrypt`. `--encrypt-key=KEY` is also supported. **This defeats disk encryption
+until the key is replaced and removed; old disk copies remain a forensic risk.**
+[Switch to a custom passphrase without rewriting data](docs/encryption.md#switch-to-a-custom-passphrase-later).
+[Key-server setup and recovery](docs/encryption.md) · [Phone notification and remote unlock](docs/remote-unlock.md).
+
 ## Minimum Requirements
 
-- **System:** 🍥 Ubuntu `>= 22.04` (tested on `24.04` and `26.04`), on 🛠️ `x64` or `arm64`, 📟 >512 MiB RAM, with 🌐 internet access (for Ubuntu package repositories)
-- **Source disk:** 💿 ext4 on a disk w/ 512-byte logical sectors. **❌ LVM, RAID, or encrypted ext4 sources are NOT supported.**
-- **Bootloaders:** BIOS or UEFI on `x64`, only UEFI on `arm64`. Secure Boot must be disabled. All get converted to ZFSBootMenu on `bpool`. 
-- **SSH:** you must have at least one public key in `/root/.ssh/authorized_keys`, it gets copied to the ramdisk to allow you to reconnect and watch the progress during the conversion.
+- **System:** Ubuntu 22.04, 24.04, or 26.04 on x64 or ARM64; internet access to Ubuntu package repositories.
+- **Source disk:** ext4 on a direct disk or partition with 512-byte logical sectors; no LVM, RAID, or encrypted sources. Attached disks: one source filesystem, with room for a second copy or a separate backup.
+- **Boot-drive resources:** 512 MiB RAM; working space for package preparation and conversion, plus room in `/boot` for the temporary kernel and boot image.
+- **Boot-drive setup:** GPT and GRUB; BIOS or UEFI on x64, UEFI on ARM64; Secure Boot disabled. A separate ext4 `/boot` is supported.
+- **SSH:** for boot-drive conversion, a public key in `/root/.ssh/authorized_keys`; copied to rescue and fresh installs to preserve access.
 
 ## How it Works
 
