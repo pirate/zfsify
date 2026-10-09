@@ -6,6 +6,11 @@ BASE=$(cd "$(dirname "$0")/.." && pwd)
 STATE=$(mktemp -d "${TMPDIR:-/tmp}/zfs-on-boot-e2e.XXXXXXXX")
 chmod 700 "$STATE"
 IP=
+ENCRYPTION=${DO_TEST_ENCRYPTION:-none}
+case "$ENCRYPTION" in
+    none|temporary) ;;
+    *) echo 'DO_TEST_ENCRYPTION must be none or temporary' >&2; exit 2 ;;
+esac
 MODE=${1:-preserve}
 case "$MODE" in
     preserve) INSTALL_ARGS=--preserve; FIXTURE_CHECK=verify-preserved.sh ;;
@@ -22,7 +27,7 @@ cleanup() {
         echo "Retained test resources and SSH key in $STATE; destroy them with scripts/do-test.py."
     elif [[ -f $STATE/resources.json ]]; then
         if python3 "$BASE/scripts/do-test.py" destroy --state "$STATE/resources.json"; then
-            rm -f "$STATE/key" "$STATE/key.pub"
+            rm -f "$STATE/key" "$STATE/key.pub" "$STATE/encryption-key"
         else
             echo "Cleanup failed. Resource IDs and SSH key remain in $STATE." >&2
             code=1
@@ -54,9 +59,21 @@ fi
 "${SSH[@]}" "root@$IP" 'systemd-run --unit=zfs-on-boot-source --collect python3 -m http.server 8765 --bind 127.0.0.1 --directory /root/zfs-on-boot-source'
 # Wait for the test HTTP server. It runs on the DO Droplet, not the controller.
 "${SSH[@]}" "root@$IP" 'for i in $(seq 1 30); do curl -fsS -o /dev/null http://127.0.0.1:8765/install.sh && exit 0; sleep 1; done; exit 1'
+INSTALL_COMMAND="TERM=xterm-256color bash /root/zfs-on-boot-source/install.sh --no-encrypt $INSTALL_ARGS"
+if [[ $ENCRYPTION = temporary ]]; then
+    # Test fixture only: retained privately for console unlock/rotation checks.
+    python3 - "$STATE/encryption-key" <<'PYKEY'
+import os, secrets, sys
+fd = os.open(sys.argv[1], os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+with os.fdopen(fd, 'w') as f:
+    f.write(secrets.token_urlsafe(24))
+PYKEY
+    "${SCP[@]}" "$STATE/encryption-key" "root@$IP:/run/zfsify-test-key"
+    INSTALL_COMMAND="export ZFSIFY_ENCRYPT_KEY=\"\$(cat /run/zfsify-test-key)\"; TERM=xterm-256color bash /root/zfs-on-boot-source/install.sh --yes --encrypt $INSTALL_ARGS"
+fi
 python3 "$BASE/scripts/recordings/capture-terminal.py" --output "$STATE/stage.cast" \
     --answer 'waiting for your selection (no timeout):=1' -- \
-    "${SSH[@]}" -tt "root@$IP" "TERM=xterm-256color bash /root/zfs-on-boot-source/install.sh --no-encrypt $INSTALL_ARGS" || [[ $? = 255 ]]
+    "${SSH[@]}" -tt "root@$IP" "$INSTALL_COMMAND" || [[ $? = 255 ]]
 ready=0
 for attempt in {1..360}; do
     if "${SSH[@]}" "root@$IP" 'test -f /etc/zfs-on-boot-installed && test "$(findmnt -n -o FSTYPE /)" = zfs' 2>/dev/null; then ready=1; break; fi
@@ -80,4 +97,20 @@ done
 [[ $ready = 1 ]]
 "${SSH[@]}" "root@$IP" 'bash /root/zfs-on-boot-verify.sh' | tee "$STATE/verification-after-reboot.txt"
 "${SSH[@]}" "root@$IP" "bash /root/$FIXTURE_CHECK" | tee "$STATE/fixture-after-reboot.txt"
+if [[ $ENCRYPTION = temporary ]]; then
+    "${SCP[@]}" "$BASE/scripts/verify-encryption.sh" "root@$IP:/root/"
+    "${SSH[@]}" "root@$IP" 'bash /root/verify-encryption.sh' | tee "$STATE/encryption.txt"
+    "${SSH[@]}" "root@$IP" 'umask 077; update-initramfs -u -k all' > "$STATE/initramfs-rebuild.txt" 2>&1
+    OLD_BOOT=$NEW_BOOT
+    "${SSH[@]}" "root@$IP" 'systemctl reboot' || true
+    ready=0
+    for attempt in {1..60}; do
+        NEW_BOOT=$("${SSH[@]}" "root@$IP" 'cat /proc/sys/kernel/random/boot_id' 2>/dev/null || true)
+        if [[ -n $NEW_BOOT && $NEW_BOOT != "$OLD_BOOT" ]]; then ready=1; break; fi
+        sleep 5
+    done
+    [[ $ready = 1 ]]
+    "${SSH[@]}" "root@$IP" 'bash /root/verify-encryption.sh && bash /root/zfs-on-boot-verify.sh' | tee "$STATE/encryption-after-rebuild.txt"
+    "${SSH[@]}" "root@$IP" "bash /root/$FIXTURE_CHECK" | tee "$STATE/fixture-after-rebuild.txt"
+fi
 echo 'One-command installation and subsequent reboot passed on DigitalOcean.'

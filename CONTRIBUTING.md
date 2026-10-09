@@ -52,6 +52,7 @@ OpenSSH, and an API token supplied privately as `DIGITALOCEAN_TOKEN`.
 ```sh
 bash scripts/do-e2e.sh preserve
 bash scripts/do-e2e.sh erase
+DO_TEST_ENCRYPTION=temporary bash scripts/do-e2e.sh preserve
 DO_TEST_SIZE=s-1vcpu-512mb-10gb DO_TEST_IMAGE=ubuntu-22-04-x64 \
   bash scripts/do-e2e.sh preserve
 ```
@@ -60,7 +61,10 @@ By default, the harness creates a billable Ubuntu 24.04 `s-1vcpu-1gb` Droplet an
 a temporary SSH key. It installs a data/account fixture, runs the packaged
 installer, verifies the result and another reboot, then deletes the resources
 recorded in its state file. The smaller-plan override above exercises Ubuntu
-22.04 with 512 MiB RAM.
+22.04 with 512 MiB RAM. `DO_TEST_ENCRYPTION=temporary` supplies a private test
+passphrase through the environment, verifies encrypted automatic boot, rebuilds
+the initramfs and verifies another reboot. It does not test manual console unlock.
+The generated credential is a test fixture only and is deleted during cleanup.
 
 Native ARM64 tests must boot Ubuntu through UEFI and GRUB, so they exercise the
 firmware path used after conversion. A hypervisor's direct-kernel boot skips that
