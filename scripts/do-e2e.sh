@@ -77,7 +77,9 @@ python3 "$BASE/scripts/recordings/capture-terminal.py" --output "$STATE/stage.ca
     --answer 'waiting for your selection (no timeout):=1' -- \
     "${SSH[@]}" -tt "root@$IP" "$INSTALL_COMMAND" || [[ $? = 255 ]]
 ready=0
-for _ in {1..360}; do
+# The slice fixture fsyncs each file before releasing its original blocks;
+# small shared-CPU Droplets can need more than an hour for Ubuntu's file tree.
+for _ in {1..1080}; do
     if "${SSH[@]}" "root@$IP" 'test -f /etc/zfs-on-boot-installed && test "$(findmnt -n -o FSTYPE /)" = zfs' 2>/dev/null; then ready=1; break; fi
     sleep 10
 done
