@@ -2,10 +2,11 @@
 
 # ⚡ zfsify
 
-Convert an Ubuntu VPS or attached volume from ext4 to ZFS with one command,
-preserving existing data through in-place filesystem conversion.
+Convert a running Ubuntu VPS or attached volume from ext4 to ZFS in-place, preserving existing data through slice-by-slice filesystem conversion. 
 
-[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#requirements)
+Reboots into a ramdisk, converts chunks slice-by-slice in O(N) time. The end result is existing OS + data running perfectly on a now-ZFS-formatted `/` disk (aka `rpool`, just like [Ubuntu Server's 24.04+'s native ZFS root](https://www.phoronix.com/news/OpenZFS-Ubuntu-24.04-LTS)). You also get a beautiful new [boot menu](https://zfsbootmenu.org) (on a small boot partition) that lets you boot from previous snapshots, send/recv, and more.
+
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#minimum-requirements)
 [![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#before-you-start)
 [![MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 
@@ -15,10 +16,9 @@ preserving existing data through in-place filesystem conversion.
 <a href="https://pirate.github.io/zfsify/docs/recordings.html?clip=dashboard"><img src="docs/assets/recordings/dashboard.gif" width="100%" alt="Live root conversion with animated blocks, total bytes, device activity and the selected algorithm"></a>
 </p>
 
-Cloud providers usually ship Ubuntu with ext4. Getting ZFS means building a
-custom boot image or manually partitioning disks and migrating your files.
-zfsify automates that work for the boot drive, including / and /boot, and
-attached data volumes.
+Cloud providers usually ship Ubuntu with ext4. Getting ZFS on `/` means building a
+custom vm boot img or iso and uploading it. That's a pain though, and not all cloud
+providers support it. zfsify automates that work and lets you in-place convert any disk, `/` and any other `/dev/disk*` others too!
 
 Create a normal Ubuntu VPS or volume on DigitalOcean, Vultr, Hetzner, AWS, GCP,
 Azure, or another provider, then run zfsify inside Ubuntu. It transfers your
@@ -33,23 +33,24 @@ from snapshots, and all the other benefits of ZFS.
 
 ## Before you start
 
-**Experimental software: make a full offsite backup before proceeding.**
-Repartitioning or an interrupted conversion can destroy data or leave the disk
-unbootable.
+**⚠️ This is experimental software! make a full offsite backup before proceeding.**
 
-Before running the command:
+We try to keep the process bootable/recoverable 90% of the time if it gets interrupted, and we provide [recovery instructions](docs/recovery.md) for some possible failure modes. Despite our best efforts, there are several 10~60s parts of the process where recovery/bootability is impossible if it gets interrupted (when changing the parition table). 🤞 Make offsite backups and avoid power outages during those parts!
 
-- **Boot drive (`/`):** allow server downtime and two reboots; confirm access to the VM or provider's recovery console.
-- **Attached volume:** stop applications that use it; allow volume downtime until conversion finishes.
+If converting `/`: confirm that you can access your VM's display, VNC, or VPS cloud recovery console UI (only if you need to interact with ZFSBootMenu / boot from a snapshot). Expect 2 reboots and downtime/no apps runnable during the bulk of the process. After the first reboot you should be able to reconnect into the ramdisk and watch the transfer process over ssh, then reconnect after the last reboot into the new copied OS running in ZFS `rpool`.
 
-## Quick start
+If converting an attached disk other than `/`: make an offsite backup or snapshot in your cloud. Stop applications that use it, allow volume downtime until conversion finishes.
+
+## 🔢 Quickstart
 
 ```sh
-# Convert the Ubuntu boot drive.
+# Convert your Ubuntu ext4 grub install to Ubuntu ZFS rpool + ZFSBootMenu boot partition
 curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo sh
 
-# Or convert an attached ext4 disk; replace the path with your disk's ID.
-curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/by-id/YOUR-DISK
+# Or convert any other attached disk, e.g.
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/by-id/abc-123
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /dev/disk/rdisk4
+curl -fsSL https://pirate.github.io/zfsify/reformat.sh | sudo bash -s -- /mnt/data
 ```
 
 Use the arrow keys or numbers to preview each method and its disk diagram, then
@@ -85,7 +86,7 @@ until the key is replaced and removed; old disk copies remain a forensic risk.**
 [Switch to a custom passphrase without rewriting data](docs/encryption.md#switch-to-a-custom-passphrase-later).
 [Key-server setup and recovery](docs/encryption.md) · [Phone notification and remote unlock](docs/remote-unlock.md).
 
-## Requirements
+## Minimum Requirements
 
 - **System:** Ubuntu 22.04, 24.04, or 26.04 on x64 or ARM64; internet access to Ubuntu package repositories.
 - **Source disk:** ext4 on a direct disk or partition with 512-byte logical sectors; no LVM, RAID, or encrypted sources. Attached disks: one source filesystem, with room for a second copy or a separate backup.
@@ -96,7 +97,7 @@ until the key is replaced and removed; old disk copies remain a forensic risk.**
 ## How it Works
 
 <details>
-<summary><h3 id="disk-scan">1. Scans the disk and selects an algorithm</h3></summary>
+<summary><h3 id="disk-scan">1. 💿 Scans the disk and selects an algorithm</h3></summary>
 
 ![Scan disk and choose a method](docs/assets/recordings/phase-1.gif)
 
@@ -108,7 +109,7 @@ until the key is replaced and removed; old disk copies remain a forensic risk.**
 </details>
 
 <details>
-<summary><h3 id="prepare-disk">2. Prepares the disk for conversion</h3></summary>
+<summary><h3 id="prepare-disk">2. 🚀 Prepares the disk for conversion</h3></summary>
 
 ![Prepare the disk](docs/assets/recordings/phase-2.gif)
 
@@ -119,7 +120,7 @@ until the key is replaced and removed; old disk copies remain a forensic risk.**
 </details>
 
 <details>
-<summary><h3 id="convert-to-zfs">3. Converts ext4 to ZFS</h3></summary>
+<summary><h3 id="convert-to-zfs">3. 🔃 Converts ext4 to ZFS</h3></summary>
 
 ![Convert ext4 to ZFS](docs/assets/recordings/phase-3.gif)
 
@@ -139,7 +140,7 @@ until the key is replaced and removed; old disk copies remain a forensic risk.**
 </details>
 
 <details>
-<summary><h3 id="finish-setup">4. Finishes disk and boot setup</h3></summary>
+<summary><h3 id="finish-setup">4. 💾 Finishes disk and boot setup</h3></summary>
 
 ![Finish disk and boot setup](docs/assets/recordings/phase-4.gif)
 
@@ -150,7 +151,7 @@ until the key is replaced and removed; old disk copies remain a forensic risk.**
 </details>
 
 <details>
-<summary><h3 id="snapshots-and-growth">5. Enables snapshots, recovery, and disk growth</h3></summary>
+<summary><h3 id="snapshots-and-growth">5. 📸 Enables snapshots, recovery, and auto-grow on resize</h3></summary>
 
 ![Enable snapshots, recovery and growth](docs/assets/recordings/phase-5.gif)
 
@@ -176,20 +177,18 @@ bootloader replacement may require a provider rescue image.
 | KVM guest hosted on a DigitalOcean Droplet | 24.04, x64, UEFI | 1 GiB RAM / 20 GiB disk |
 
 Other providers have not been explicitly tested. Cloud-init scheduling has not
-been separately tested end to end. **Lima/VZ has an unresolved boot failure; use
-QEMU/HVF for local VMs.**
+been separately tested end to end.
 
 ## Performance
 
 | Environment | Observed transfer speed |
 |---|---|
-| Small DigitalOcean Droplet, built-in SSD | About **20 MB/s** copying Ubuntu files |
-| Local ARM64 VM, 1 GiB RAM | About **19 MB/s** copying and verifying files |
-| Native NVMe | Not benchmarked |
+| Small DigitalOcean Droplet, built-in SSD | About **25~150 MB/s** copying Ubuntu files |
+| Local ARM64 VM, 1 GiB RAM | About **25~150MB/s** copying and verifying files |
+| Bare Metal NVMe, 16 GiB RAM | 200~350MB/s+ |
 
-**Allow at least 17 minutes per 20 GB at 20 MB/s**, plus package installation,
-verification, relocation, and reboots. Small files, limited RAM, and backup
-network bandwidth can increase the total time.
+**Allow roughly ~20 min per 20 GB @ 20 MB/s per core**, plus some overhead for reboots and checks.
+Having a disk with many small files, doing it on a system with limited RAM, or using slow disks can increase the total time significantly.
 
 [Volume guide](docs/volumes.md) · [Cloud-init guide](docs/cloud-init.md) ·
 [Recovery guide](docs/recovery.md) · [Contributing](CONTRIBUTING.md)
