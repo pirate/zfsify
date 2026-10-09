@@ -35,6 +35,20 @@ assert shlex.split(config.commandlines('root=/dev/vda1 ro', ['tty0', 'ttyAMA0'])
     'console=tty0', 'console=ttyAMA0']
 assert config.commandlines('console="ttyS1,57600n8"')['ubuntu'] == 'console="ttyS1,57600n8"'
 
+# Dual-console cloud images must expose passphrase/menu input to VNC. Keep
+# serial diagnostics and leave the installed Ubuntu's original console order.
+dual = 'console=tty1 console=ttyS0,115200 net.ifnames=0'
+visible = config.commandlines(dual, ['tty1', 'ttyS0'], display=True)
+assert visible['ubuntu'] == dual
+assert shlex.split(visible['rescue'])[-1] == 'console=tty1'
+assert 'console=ttyS0,115200' in visible['rescue']
+assert shlex.split(visible['grub']) == shlex.split(visible['rescue'])
+assert config.commandlines(dual, ['tty1', 'ttyS0'], display=False)['rescue'] == dual
+assert config.commandlines(dual, ['ttyS0'], display=True)['rescue'] == dual
+serial = 'console=ttyAMA0,115200 console=hvc0'
+assert config.commandlines(serial, ['ttyAMA0', 'hvc0'], display=True)['rescue'] == serial
+assert config.commandlines('console="tty1" console=ttyS0', ['tty1', 'ttyS0'], display=True)['rescue'].endswith('console="tty1"')
+
 # Verify GRUB accepts the command containing quoted kernel values.
 script = ('menuentry test {\n linux /vmlinuz ' + result['grub'] + ' rdinit=/init panic=0\n}\n')
 subprocess.run(['grub-script-check'], input=script, text=True, check=True)

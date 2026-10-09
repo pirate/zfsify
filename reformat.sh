@@ -1140,7 +1140,7 @@ if __name__ == '__main__':
     Path(sys.argv[1]).write_text(render(links, routes))
 
 ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec
-cat > "$work/boot-config.py" <<'ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b'
+cat > "$work/boot-config.py" <<'ZFS_ON_BOOT_4a183c0ac4b6e5c18388e74a827d7491cdd2646d2aef76d2c03aecd27c3466d3'
 #!/usr/bin/env python3
 """Retain existing boot options while replacing the old root/initramfs contract."""
 from pathlib import Path
@@ -1157,7 +1157,7 @@ REPLACED = {
 }
 
 
-def commandlines(text, consoles=('tty0',)):
+def commandlines(text, consoles=('tty0',), display=False):
     # Linux command lines use double quotes, not shell evaluation. Retain their
     # spelling, including quoted values containing spaces, for the final kernel.
     tokens = re.findall(r'(?:[^\s"]|"[^"]*")+', text)
@@ -1176,6 +1176,13 @@ def commandlines(text, consoles=('tty0',)):
     rescue = [t for t in kept if t.split('=', 1)[0].strip('"') not in
               {'quiet', 'splash', 'vt.handoff', 'panic'}
               and not t.split('=', 1)[0].strip('"').startswith(('systemd.', 'rd.', 'zfs.', 'spl.'))]
+    # ZFSBootMenu and /dev/console use the last console=. Prefer an existing
+    # active display console when one is usable, so VNC/local unlock is visible.
+    # Serial-only machines and the final Ubuntu command line stay unchanged.
+    if display:
+        graphical = [t for t in rescue if re.fullmatch(r'console=(?:"tty[0-9]+"|tty[0-9]+)', t)
+                     and t.split('=', 1)[1].strip('"') in consoles]
+        rescue = [t for t in rescue if t not in graphical] + graphical
     return {'ubuntu': ' '.join(kept), 'rescue': ' '.join(rescue),
             'grub': ' '.join(shlex.quote(t) for t in rescue)}
 
@@ -1185,10 +1192,12 @@ if __name__ == '__main__':
     out.mkdir(parents=True, exist_ok=True)
     active = Path('/sys/class/tty/console/active')
     consoles = active.read_text().split() if active.exists() else ['tty0']
-    for name, value in commandlines(Path('/proc/cmdline').read_text(), consoles or ['tty0']).items():
+    display = bool(list(Path('/sys/class/graphics').glob('fb[0-9]*'))) or any(
+        'VGA' in name.read_text() for name in Path('/sys/class/vtconsole').glob('vtcon*/name'))
+    for name, value in commandlines(Path('/proc/cmdline').read_text(), consoles or ['tty0'], display).items():
         (out / ('cmdline-' + name)).write_text(value + '\n')
 
-ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b
+ZFS_ON_BOOT_4a183c0ac4b6e5c18388e74a827d7491cdd2646d2aef76d2c03aecd27c3466d3
 cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_8e9ef249be7f38b8fb98768e1048d0d82bf8426d2355cc1ff175fe8f357e5f92'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
