@@ -52,6 +52,7 @@ OpenSSH, and an API token supplied privately as `DIGITALOCEAN_TOKEN`.
 ```sh
 bash scripts/do-e2e.sh preserve
 bash scripts/do-e2e.sh erase
+DO_TEST_ENCRYPTION=temporary bash scripts/do-e2e.sh preserve
 DO_TEST_SIZE=s-1vcpu-512mb-10gb DO_TEST_IMAGE=ubuntu-22-04-x64 \
   bash scripts/do-e2e.sh preserve
 ```
@@ -60,7 +61,10 @@ By default, the harness creates a billable Ubuntu 24.04 `s-1vcpu-1gb` Droplet an
 a temporary SSH key. It installs a data/account fixture, runs the packaged
 installer, verifies the result and another reboot, then deletes the resources
 recorded in its state file. The smaller-plan override above exercises Ubuntu
-22.04 with 512 MiB RAM.
+22.04 with 512 MiB RAM. `DO_TEST_ENCRYPTION=temporary` supplies a private test
+passphrase through the environment, verifies encrypted automatic boot, rebuilds
+the initramfs and verifies another reboot. It does not test manual console unlock.
+The generated credential is a test fixture only and is deleted during cleanup.
 
 Native ARM64 tests must boot Ubuntu through UEFI and GRUB, so they exercise the
 firmware path used after conversion. A hypervisor's direct-kernel boot skips that
@@ -86,6 +90,13 @@ GRUB syntax on that VM. Boot/shim changes also need a full conversion and reboot
 snapshot and clone, verifies their contents, and removes those test objects.
 When reporting a completed run, include the installer checksum, Ubuntu image,
 RAM/disk size, firmware, kernel and ZFS versions, and post-reboot results.
+
+For root encryption, run `python3 scripts/test-encryption.py`, then exercise
+`--encrypt`, `--yes --encrypt --encrypt-key=KEY`, and `--yes --encrypt --encrypt-key-url=HTTPS` in disposable guests. Run
+`bash scripts/verify-encryption.sh` after conversion and after rebuilding the
+initramfs and rebooting. Also verify snapshot boot and an interrupted slice
+copy with a wrong key followed by the correct key. Keep test keys and key-server
+credentials outside the repository; never include them in recordings or logs.
 
 ## Credentials and cleanup
 

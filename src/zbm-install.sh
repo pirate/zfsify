@@ -2,6 +2,13 @@
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ACTION=${1:?} ROOT=${2:?}
+if [[ $ACTION = kcl-tool ]]; then
+    DEST=$ROOT/etc/zfs-on-boot/zbm
+    mkdir -p "$DEST"
+    curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zbm-kcl -o "$DEST/zbm-kcl"
+    echo '16edae3eee5df9a0b133734bc4d8a8cb68ca73ac30f98cb21cea3212b051ff01  '"$DEST/zbm-kcl" | sha256sum -c -
+    exit 0
+fi
 FIRMWARE=$(cat "$ROOT/etc/zfs-on-boot/firmware" 2>/dev/null || cat /etc/zfs-on-boot/firmware)
 BOOT_CONFIG=$ROOT/etc/zfs-on-boot/boot
 [[ $ACTION = download ]] || BOOT_CONFIG=/etc/zfs-on-boot/boot
@@ -12,8 +19,7 @@ if [[ $ACTION = download ]]; then
     if [[ $FIRMWARE = uefi ]]; then
         curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zfsbootmenu-release-x86_64-v3.1.0-linux6.6.EFI -o "$DEST/zfsbootmenu.EFI"
         echo 'd4a67012f03659c91a1f227aa6739b4b41bd5c7d0bd64e89aa7358bf08826cfd  '"$DEST/zfsbootmenu.EFI" | sha256sum -c -
-        curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zbm-kcl -o "$DEST/zbm-kcl"
-        echo '16edae3eee5df9a0b133734bc4d8a8cb68ca73ac30f98cb21cea3212b051ff01  '"$DEST/zbm-kcl" | sha256sum -c -
+        bash "$0" kcl-tool "$ROOT"
         chroot "$ROOT" bash /etc/zfs-on-boot/zbm/zbm-kcl -d -a "$KCL" /etc/zfs-on-boot/zbm/zfsbootmenu.EFI
         exit 0
     fi
@@ -27,6 +33,15 @@ if [[ $ACTION = download ]]; then
 fi
 [[ $ACTION = install ]]
 DISK=${3:?} BOOTDEV=${4:?}
+install_boot_key() {
+    if python3 -c 'import json; exit(not json.load(open("/etc/zfs-on-boot/encryption.json")).get("boot_key", False))'; then
+        python3 /etc/zfs-on-boot/encryption.py boot-hook --output "$1/zfsify-hooks/load-key.d/zfsify-plaintext-key"
+        KCL+=" zbm.hookroot=UUID=$(blkid -s UUID -o value "$BOOTDEV")//zfsify-hooks"
+        if [[ $FIRMWARE = uefi ]]; then
+            bash /etc/zfs-on-boot/zbm/zbm-kcl -d -a "$KCL" /etc/zfs-on-boot/zbm/zfsbootmenu.EFI
+        fi
+    fi
+}
 # A resumed installation can format this partition again, changing its UUID.
 # Replace the boot mount entry rather than accumulating obsolete UUIDs.
 python3 - "$ROOT/etc/fstab" <<'PY'
@@ -47,6 +62,7 @@ if [[ $FIRMWARE = uefi ]]; then
     mkfs.vfat -F 32 -n ZFSBOOTMENU "$BOOTDEV"
     mkdir -p "$ROOT/boot/efi"
     mount "$BOOTDEV" "$ROOT/boot/efi"
+    install_boot_key "$ROOT/boot/efi"
     mkdir -p "$ROOT/boot/efi/EFI/BOOT" "$ROOT/boot/efi/EFI/ZFSBootMenu"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/$EFI_FALLBACK"
@@ -61,6 +77,7 @@ fi
 mkfs.ext4 -F -O '^64bit,^metadata_csum' -L ZFSBOOTMENU "$BOOTDEV"
 mkdir -p "$ROOT/boot/syslinux"
 mount "$BOOTDEV" "$ROOT/boot/syslinux"
+install_boot_key "$ROOT/boot/syslinux"
 cp /usr/lib/syslinux/modules/bios/ldlinux.c32 "$ROOT/boot/syslinux/"
 cp /etc/zfs-on-boot/zbm/{vmlinuz-bootmenu,initramfs-bootmenu.img} "$ROOT/boot/syslinux/"
 cat > "$ROOT/boot/syslinux/syslinux.cfg" <<CFG

@@ -14,7 +14,7 @@ REPLACED = {
 }
 
 
-def commandlines(text, consoles=('tty0',)):
+def commandlines(text, consoles=('tty0',), display=False):
     # Linux command lines use double quotes, not shell evaluation. Retain their
     # spelling, including quoted values containing spaces, for the final kernel.
     tokens = re.findall(r'(?:[^\s"]|"[^"]*")+', text)
@@ -33,6 +33,13 @@ def commandlines(text, consoles=('tty0',)):
     rescue = [t for t in kept if t.split('=', 1)[0].strip('"') not in
               {'quiet', 'splash', 'vt.handoff', 'panic'}
               and not t.split('=', 1)[0].strip('"').startswith(('systemd.', 'rd.', 'zfs.', 'spl.'))]
+    # ZFSBootMenu and /dev/console use the last console=. Prefer an existing
+    # active display console when one is usable, so VNC/local unlock is visible.
+    # Serial-only machines and the final Ubuntu command line stay unchanged.
+    if display:
+        graphical = [t for t in rescue if re.fullmatch(r'console=(?:"tty[0-9]+"|tty[0-9]+)', t)
+                     and t.split('=', 1)[1].strip('"') in consoles]
+        rescue = [t for t in rescue if t not in graphical] + graphical
     return {'ubuntu': ' '.join(kept), 'rescue': ' '.join(rescue),
             'grub': ' '.join(shlex.quote(t) for t in rescue)}
 
@@ -42,5 +49,7 @@ if __name__ == '__main__':
     out.mkdir(parents=True, exist_ok=True)
     active = Path('/sys/class/tty/console/active')
     consoles = active.read_text().split() if active.exists() else ['tty0']
-    for name, value in commandlines(Path('/proc/cmdline').read_text(), consoles or ['tty0']).items():
+    display = bool(list(Path('/sys/class/graphics').glob('fb[0-9]*'))) or any(
+        'VGA' in name.read_text() for name in Path('/sys/class/vtconsole').glob('vtcon*/name'))
+    for name, value in commandlines(Path('/proc/cmdline').read_text(), consoles or ['tty0'], display).items():
         (out / ('cmdline-' + name)).write_text(value + '\n')

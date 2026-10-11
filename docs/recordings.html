@@ -37,6 +37,7 @@
   <a class="brand" href="../">⚡ zfsify</a>
   <h1 id="title">Watch a conversion</h1>
   <nav aria-label="Choose a demonstration">
+    <a href="?clip=dashboard" data-clip="dashboard">Live dashboard</a>
     <a href="?clip=phase-1" data-clip="phase-1">1. Scan disk and choose a method</a>
     <a href="?clip=phase-2" data-clip="phase-2">2. Prepare the disk</a>
     <a href="?clip=phase-3" data-clip="phase-3">3. Convert ext4 to ZFS</a>
@@ -59,6 +60,7 @@
 <script>
   (() => {
     const clips = new Map([
+      ['dashboard', {title: 'Live root conversion', file: 'dashboard'}],
       ['phase-1', {title: '1. Scan disk and choose a method', file: 'phase-1'}],
       ['phase-2', {title: '2. Prepare the disk', file: 'phase-2'}],
       ['phase-3', {title: '3. Convert ext4 to ZFS', file: 'phase-3'}],

@@ -4,7 +4,7 @@ set -eu
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_a72e1dbe84478a25015739dded68766d1034c0ea169b13b8b8e82d683ba7d1d3'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_b54f857fbb613286b8ad63cf099411203b25322ce6367aa401be68109a4d158e'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -18,9 +18,19 @@ TARGET=/
 BACKUP=
 MODE_COUNT=0
 TARGET_COUNT=0
+ENCRYPT=auto
+ENCRYPT_COUNT=0
+ENCRYPT_KEY_URL=
+ENCRYPT_KEY_SET=${ZFSIFY_ENCRYPT_KEY+x}
+ENCRYPT_KEY=${ZFSIFY_ENCRYPT_KEY-}
+unset ZFSIFY_ENCRYPT_KEY
 for arg in "$@"; do
     case "$arg" in
         --yes) ASSUME_YES=1 ;;
+        --encrypt) ENCRYPT=on; ENCRYPT_COUNT=$((ENCRYPT_COUNT+1)) ;;
+        --encrypt-key=*) ENCRYPT_KEY=${arg#*=}; ENCRYPT_KEY_SET=x ;;
+        --no-encrypt) ENCRYPT=off; ENCRYPT_COUNT=$((ENCRYPT_COUNT+1)) ;;
+        --encrypt-key-url=*) ENCRYPT_KEY_URL=${arg#*=}; [[ -n $ENCRYPT_KEY_URL ]] || { echo "Missing HTTPS key URL." >&2; exit 2; } ;;
         --auto) MODE=auto; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --preserve) MODE=preserve; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
@@ -29,7 +39,7 @@ for arg in "$@"; do
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--encrypt [--encrypt-key=KEY | --encrypt-key-url=HTTPS] | --no-encrypt] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
 Default: detect the disk and choose a data-preserving strategy.
 Review the recommended method, then explicitly confirm before any conversion.
@@ -38,6 +48,15 @@ Method flags select a method; only --yes skips selection and confirmation.
                            plan. Auto mode prefers preservation, never erasure.
                            Backup requires an explicit --backup= destination and
                            an existing rclone configuration or mounted ext4 disk.
+  --encrypt                Encrypt the new root pool; enter the passphrase in RAM
+                           rescue via console or SSH (zfsify-unlock).
+  --encrypt-key-url=HTTPS  Fetch the passphrase in RAM for headless conversion.
+                           Requires --encrypt. Each later boot needs console unlock.
+  --encrypt-key=KEY        TEMPORARY: save your supplied key on the boot partition.
+                           Requires --encrypt; defeats disk encryption. Prefer
+                           ZFSIFY_ENCRYPT_KEY in the environment to a CLI secret.
+                           Random keys are offered only in the TUI: save + retype.
+  --no-encrypt             Skip the encryption question (the default with --yes).
   --preserve               Request the 50/50 copy-and-verify strategy.
   --auto                   Choose automatically (the default).
   --backup                 Guide me through a temporary Volume or rclone remote.
@@ -64,7 +83,7 @@ EOF
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
-(( MODE_COUNT <= 1 && TARGET_COUNT <= 1 )) || { echo "Specify one mode and one target per invocation." >&2; exit 2; }
+(( MODE_COUNT <= 1 && TARGET_COUNT <= 1 && ENCRYPT_COUNT <= 1 )) || { echo "Specify one mode, one encryption choice and one target per invocation." >&2; exit 2; }
 if [[ $TARGET != / ]]; then
     running_root=$(findmnt -n -o SOURCE /)
     running_disk=
@@ -75,14 +94,16 @@ if [[ $TARGET != / ]]; then
     resolved=$(readlink -f "$TARGET")
     if [[ $resolved != "$running_root" && $resolved != "$running_disk" ]]; then
         [[ $MODE != inplace ]] || { echo '--inplace currently supports the boot drive only.' >&2; exit 2; }
+        [[ $ENCRYPT != on && -z $ENCRYPT_KEY_URL && -z $ENCRYPT_KEY_SET ]] || { echo "Encryption currently supports the root drive only." >&2; exit 2; }
         exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP" "$ASSUME_YES"
     fi
 fi
 export LC_ALL=C
 [[ -t 1 ]] && export ZFS_PROGRESS_TTY=1
 PROGRESS=$SOURCE/progress.py
+export ZFSIFY_UI_CONTEXT=$SOURCE/ui-context.json
 python3 "$PROGRESS" header --phase 1 --label "Scan Ubuntu, boot configuration and disk layout"
-phase() { local n=$1 label=$2; shift 2; python3 "$PROGRESS" run --phase "$n" --label "$label" --devices "$DISK,$ROOTDEV" -- "$@"; }
+phase() { local n=$1 label=$2; shift 2; python3 "$PROGRESS" run --phase "$n" --label "$label" --operation "${ZFSIFY_OPERATION:-prepare}" --devices "$DISK,$ROOTDEV" -- "$@"; }
 WORK=/var/lib/zfs-on-boot
 ROOT=$WORK/root
 die() { echo "zfs-on-boot: $*" >&2; exit 1; }
@@ -186,62 +207,15 @@ ip -brief address
 CONSENT=()
 [[ $ASSUME_YES != 1 ]] || CONSENT=(--yes)
 while :; do
-python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
+python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --source "$ROOTDEV" --platform "$ARCH / $FIRMWARE" --size "$FS_BYTES" --used "$TOTAL_USED" \
     --preserve-capacity "$PRESERVE_CAPACITY" --inplace-capacity "$INPLACE_CAPACITY" \
     --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
 mapfile -t SELECTION < "$SOURCE/selection"
 MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
-lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
-PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
-if [[ $MODE = preserve ]]; then
-    cat <<EOF
-PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.
-Devices: source $ROOTDEV; temporary ${PREFIX}32; final ${PREFIX}2.
-$DISK (512 MiB ZFSBootMenu partition omitted):
-  [              original ext4              ]
-  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify
-  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver
-  [       new ZFS member    ][ free space    ]  detach temporary member
-  [                   ZFS                   ]  grow; / and /boot on ZFS
-The server reboots into RAM. Services are offline during migration.
-Original ext4 is removed only after the copy is checksum-verified.
-Power loss during repartitioning can require provider recovery.
-EOF
-elif [[ $MODE = inplace ]]; then
-    cat <<EOF
-EXPERIMENTAL IN-PLACE CONVERSION: $ROOTDEV -> one native ZFS root partition.
-  [ ext4 files + free space                    ]
-  [ ext4 files shrinking | sparse ZFS growing  ]  copy, sync, verify, release 64 MiB batches
-  [ completed ZFS image inside ext4           ]  verify the complete manifest
-  [ native ZFS partition; no image or mapper  ]  fsremap relocates physical blocks
-A temporary 1 GiB area at the end holds the rescue system and migration journal.
-Original file data is released progressively. This is not a retained full backup.
-The rescue entry resumes an interrupted copy or remap. Bootloader replacement
-still has a short recovery window; keep a provider backup before converting.
-EOF
-elif [[ $MODE = backup ]]; then
-    echo "BACKUP AND RESTORE: $ROOTDEV -> archive on a separate Volume or rclone remote"
-    echo "                    -> read-back verification -> reformat $DISK as ZFS -> restore."
-    echo 'The backup remains available after completion. Destination setup follows before rescue preparation.'
-else
-    cat <<EOF
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! ERASE MODE: ALL EXISTING DATA ON $DISK WILL BE DELETED.
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  [ existing partitions + ALL their data ]
-  [ 512 MiB ZFSBootMenu ][ ZFS: fresh Ubuntu / and /boot ]
-Devices: erase $DISK; create ${PREFIX}1 (ZFSBootMenu) and ${PREFIX}2 (ZFS).
-/etc, users, SSH authorized_keys and basic settings are retained.
-Complete optional files are retained in priority order within the RAM budget; omitted data is removed.
-EOF
-fi
-cat <<'EOF'
-5 phases: scan and choose > prepare > convert > finish setup > recovery and growth
-Live status includes logical copy bytes, MB/s and block-device IOPS.
-SSH disconnects at reboot. Reconnect and run: zfs-on-boot-status
-Package/metadata phases have no meaningful byte total and show n/a.
-EOF
-REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
+[[ -z $ENCRYPT_KEY_SET ]] || export ZFSIFY_ENCRYPT_KEY=$ENCRYPT_KEY
+python3 "$SOURCE/encryption.py" configure "${CONSENT[@]}" --mode "$ENCRYPT" --key-url "$ENCRYPT_KEY_URL" --output "$SOURCE/encryption.json"
+unset ZFSIFY_ENCRYPT_KEY
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "$ROOTDEV on $DISK. Server reboots; services stop during migration. Power loss can require recovery. Reconnect with zfs-on-boot-status.")
 [[ $REVIEW != 1 ]] || break
 MODE=auto
 done
@@ -326,6 +300,11 @@ cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
 phase 2 'Update rescue package indexes' chroot "$ROOT" apt-get update
 # Only boot utilities are needed here; do not install a GRUB loader on the live disk.
 phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual "$INITRAMFS_PACKAGE" zfsutils-linux "${BOOT_PACKAGES[@]}" openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static rclone binutils efibootmgr </dev/null
+# Internal HTTPS key servers use the same public trust anchors as the host.
+if [[ -d /usr/local/share/ca-certificates ]]; then
+    cp -a /usr/local/share/ca-certificates/. "$ROOT/usr/local/share/ca-certificates/"
+    chroot "$ROOT" update-ca-certificates
+fi
 if [[ $MODE = inplace ]]; then
     phase 2 'Install experimental block remapper' chroot "$ROOT" apt-get install -y --no-install-recommends fstransform dmsetup
 fi
@@ -335,6 +314,7 @@ python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
 if [[ $ARCH = arm64 ]]; then
     mkdir -p "$ROOT/etc/zfs-on-boot/zbm"
     mv "$WORK/zfsbootmenu.EFI" "$ROOT/etc/zfs-on-boot/zbm/"
+    bash "$SOURCE/zbm-install.sh" kcl-tool "$ROOT"
 else
     phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
 fi
@@ -384,10 +364,15 @@ fi
 [[ $MODE != preserve && $MODE != inplace ]] || cp "$SOURCE/plan.env" "$ROOT/etc/zfs-on-boot/plan.env"
 mkdir -p "$ROOT/usr/local/lib/zfs-on-boot" "$ROOT/usr/local/sbin"
 cp "$PROGRESS" "$ROOT/usr/local/lib/zfs-on-boot/progress.py"
+cp "$ZFSIFY_UI_CONTEXT" "$ROOT/etc/zfs-on-boot/ui-context.json"
 install -m 755 "$SOURCE/status.sh" "$ROOT/usr/local/sbin/zfs-on-boot-status"
 install -m 755 "$SOURCE/grow.sh" "$ROOT/usr/local/sbin/zfs-on-boot-grow"
 cp "$SOURCE/grow.service" "$ROOT/etc/systemd/system/zfs-on-boot-grow.service"
 cp "$SOURCE/target.sh" "$SOURCE/recovery-setup.sh" "$ROOT/etc/zfs-on-boot/"
+cp "$SOURCE/encryption.sh" "$SOURCE/encryption.py" "$SOURCE/encryption.json" "$ROOT/etc/zfs-on-boot/"
+[[ ! -f $SOURCE/bootstrap.key ]] || install -m 600 "$SOURCE/bootstrap.key" "$ROOT/etc/zfs-on-boot/bootstrap.key"
+printf '#!/bin/sh\nexec python3 /etc/zfs-on-boot/encryption.py prompt\n' > "$ROOT/usr/local/sbin/zfsify-unlock"
+chmod 755 "$ROOT/usr/local/sbin/zfsify-unlock"
 install -m 755 "$SOURCE/snapshot.sh" "$ROOT/usr/local/sbin/zfsify-snapshot"
 cp "$SOURCE/backup.sh" "$ROOT/etc/zfs-on-boot/backup.sh"
 cp "$SOURCE/zbm-install.sh" "$ROOT/etc/zfs-on-boot/zbm-install.sh"
@@ -454,8 +439,327 @@ phase 2 'Rebooting into RAM; reconnect and run zfs-on-boot-status' true
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_a72e1dbe84478a25015739dded68766d1034c0ea169b13b8b8e82d683ba7d1d3
-cat > "$work/strategy.py" <<'ZFS_ON_BOOT_180b7ba1d2fe105878859d744658f86718536e73083364b93131ecd44a685d80'
+ZFS_ON_BOOT_b54f857fbb613286b8ad63cf099411203b25322ce6367aa401be68109a4d158e
+cat > "$work/encryption.py" <<'ZFS_ON_BOOT_f58c2de11fee92eb31fd7d7ee8236d0d77a02c8a898a17d238572d2d70d8061f'
+#!/usr/bin/env python3
+"""Optional root encryption; plaintext bootstrap keys require explicit selection."""
+import argparse
+import getpass
+import json
+import os
+from pathlib import Path
+import resource
+import secrets
+import signal
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.parse
+import urllib.request
+import warnings
+
+CONFIG = Path('/etc/zfs-on-boot/encryption.json')
+KEY = Path('/run/zfsify-encryption/rpool.key')
+
+
+def validate_url(url):
+    try:
+        value = urllib.parse.urlsplit(url)
+    except ValueError:
+        # urlsplit errors can include the supplied netloc, including credentials.
+        raise ValueError('Invalid HTTPS key URL.') from None
+    if (value.scheme != 'https' or not value.hostname or value.username is not None
+            or value.password is not None or value.query or value.fragment
+            or any(c.isspace() for c in url)):
+        raise ValueError('Use an HTTPS key URL without credentials, query, fragment, or whitespace. '
+                         'The URL is stored on the unencrypted rescue disk; restrict access at the key server.')
+    return url
+
+
+def validate_key(data):
+    # A single optional line ending is convenient for ordinary text key files.
+    if data.endswith(b'\n'):
+        data = data[:-1]
+        if data.endswith(b'\r'):
+            data = data[:-1]
+    if not 8 <= len(data) <= 512 or any(c in data for c in (b'\0', b'\n', b'\r')):
+        raise ValueError('Use a single-line passphrase of 8–512 UTF-8 bytes.')
+    data.decode('utf-8')
+    return data
+
+
+def boot_key_warning():
+    print('\033[1;31m\n!!! PLAINTEXT BOOT KEY: THIS DEFEATS DISK ENCRYPTION !!!\n'
+          'Anyone with the boot disk or its snapshots can decrypt this server.\n'
+          'Temporary bootstrap only. Later remove this file and change the passphrase.\n'
+          'That is fast, but DOES NOT revoke old disk copies or an exposed data key.\n'
+          'For forensic protection, rewrite under a fresh encryption root and\n'
+          'retire old copies. Passphrase rotation alone cannot provide that.\n'
+          'Then use a person or remote key source at boot.\n'
+          'https://pirate.github.io/zfsify/docs/encryption#temporary-plaintext-boot-key\n'
+          '\033[0m', file=sys.stderr)
+
+
+def configure(mode, url, yes, output):
+    key = os.environ.get('ZFSIFY_ENCRYPT_KEY')
+    boot_key = key is not None
+    if url or boot_key:
+        if mode != 'on':
+            raise ValueError('Key sources require explicit --encrypt.')
+        if url and boot_key:
+            raise ValueError('Choose one key source: HTTPS or a supplied key.')
+        if url:
+            validate_url(url)
+        else:
+            key = validate_key(key.encode()).decode()
+    if mode == 'auto':
+        if yes:
+            mode = 'off'
+        else:
+            from strategy import choose
+            mode = {'1': 'off', '2': 'on', '3': 'temporary'}.get(choose(
+                'Choose how this server will unlock at boot.', '1', ['1', '2', '3', 'q'],
+                title='Would you like to encrypt your files?', items=[
+                    ('1', 'No encryption [default]', 'Boot normally, without a passphrase.'),
+                    ('2', 'Encrypt · unlock at each boot', 'Encrypt / and /boot. Enter your passphrase after the rescue reboot; future boots need console unlock.'),
+                    ('3', 'Encrypt · temporary automatic unlock', 'Save a plaintext key on this disk: this defeats disk encryption. Generate 16 characters, then save and retype them.'),
+                    ('q', 'Cancel', '')], danger=['3']))
+            if mode is None:
+                raise ValueError('Cancelled.')
+    generated = mode == 'temporary'
+    if generated:
+        mode, boot_key = 'on', True
+        boot_key_warning()
+        # Deliberately short and hand-transcribable; generated only in the TUI.
+        key = ''.join(secrets.choice('ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789') for _ in range(16))
+        warnings.simplefilter('error', getpass.GetPassWarning)
+        with open('/dev/tty', 'w') as tty:
+            print('Temporary key: ' + key + '\nSave this key in your password manager or write it down.', file=tty, flush=True)
+            while getpass.getpass('Retype the saved key to continue (no timeout): ', stream=tty) != key:
+                print('Key does not match. Save and retype the displayed key.', file=tty, flush=True)
+    if mode == 'on':
+        if yes and not url and not boot_key:
+            raise ValueError('--yes --encrypt requires --encrypt-key-url=https://host/path or '
+                             'ZFSIFY_ENCRYPT_KEY / --encrypt-key=KEY. Without --yes, enter the passphrase in RAM rescue.')
+        print('Encryption: AES-256-GCM for / and /boot.\n'
+              'The bootloader remains unencrypted. Old ext4 remnants and external backups are not erased/encrypted.',
+              file=sys.stderr)
+        if url:
+            print('The RAM installer will fetch the passphrase over HTTPS. The URL is not a secret; '
+                  'control access at your key server. Keep the same passphrase available for interrupted rescue.\n'
+                  'This URL is used during conversion only, not for automatic unlocking on later boots.', file=sys.stderr)
+        if boot_key:
+            if not generated:
+                boot_key_warning()
+            with open(output.parent/'bootstrap.key', 'w', opener=lambda p, f: os.open(p, f, 0o600)) as stream:
+                stream.write(key)
+            print('Temporary key saved for rescue and automatic boot. Replace it after bootstrap.', file=sys.stderr)
+        elif not url:
+            print('After the rescue reboot, enter the passphrase in the console, or reconnect via SSH and run:\n'
+                  '  zfsify-unlock\nNo passphrase is saved in the staged rescue image.', file=sys.stderr)
+        if not boot_key:
+            print('ZFSBootMenu requires a passphrase at every boot.', file=sys.stderr)
+    output.write_text(json.dumps({'enabled': mode == 'on', 'key_url': url, 'boot_key': boot_key}) + '\n')
+
+
+def require_rescue():
+    if os.geteuid() != 0:
+        raise ValueError('Run as root in the zfsify RAM rescue environment.')
+    fs = subprocess.check_output(['findmnt', '-n', '-o', 'FSTYPE', '/run'], text=True).strip()
+    if fs != 'tmpfs' or not Path('/run/zfsify-encryption-ready').exists():
+        raise ValueError('Passphrases may only be supplied after booting the zfsify RAM rescue environment.')
+    if len(Path('/proc/swaps').read_text().splitlines()) > 1:
+        raise ValueError('Disable disk swap before handling the encryption passphrase in rescue.')
+    resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    os.umask(0o077)
+    KEY.parent.mkdir(mode=0o700, exist_ok=True)
+
+
+def save_key(data):
+    data = validate_key(data)
+    # Publish only complete keys. The directory is private and lives on tmpfs.
+    fd, name = tempfile.mkstemp(dir=KEY.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(data)
+        os.replace(name, KEY)
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
+def prompt():
+    require_rescue()
+    if not json.loads(CONFIG.read_text())['enabled']:
+        raise ValueError('Encryption was not selected for this conversion.')
+    if KEY.exists():
+        raise ValueError('A passphrase has already been supplied to the RAM installer.')
+    # Never fall back to echoed input, including when invoked over non-PTY SSH.
+    warnings.simplefilter('error', getpass.GetPassWarning)
+    while True:
+        try:
+            data = validate_key(getpass.getpass('ZFS passphrase (also used for future boots): ').encode())
+            if getpass.getpass('Confirm passphrase: ').encode() != data:
+                print('Passphrases differ. Try again.', file=sys.stderr)
+                continue
+            save_key(data)
+            print('Passphrase delivered to the RAM installer. Follow progress with zfs-on-boot-status.')
+            return
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        raise ValueError('Key URL redirects are not allowed. Use the final HTTPS URL.')
+
+
+def acquire():
+    config = json.loads(CONFIG.read_text())
+    if not config['enabled']:
+        return
+    require_rescue()
+    if KEY.exists():
+        validate_key(KEY.read_bytes())
+        return
+    if config.get('boot_key') and not config['key_url']:
+        save_key((CONFIG.parent/'bootstrap.key').read_bytes())
+        return
+    if config['key_url']:
+        validate_url(config['key_url'])
+        # No inherited proxies or redirect downgrade; normal TLS certificate verification.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
+        try:
+            with opener.open(config['key_url'], timeout=30) as response:
+                save_key(response.read(515))
+        except Exception:
+            # Never echo server response bodies, URLs, or key material into logs.
+            raise ValueError('Unable to obtain a valid passphrase from the HTTPS key server. '
+                             'No further migration will run; restore key-server access before resuming the rescue boot.') from None
+        print('Encryption passphrase received in RAM.')
+        return
+    print('Waiting for encryption passphrase. Use this console, or SSH in and run zfsify-unlock.', flush=True)
+    with open('/dev/console', 'r+b', buffering=0) as console:
+        child = subprocess.Popen([sys.executable, __file__, 'prompt'], stdin=console,
+                                 stdout=console, stderr=console, start_new_session=True)
+        try:
+            while not KEY.exists():
+                if child.poll() is not None:
+                    # An unavailable console still allows the explicit SSH helper.
+                    print('Console input closed; waiting for zfsify-unlock over SSH.', flush=True)
+                    while not KEY.exists():
+                        time.sleep(.25)
+                    break
+                time.sleep(.25)
+        finally:
+            if child.poll() is None:
+                child.send_signal(signal.SIGINT)  # getpass restores terminal echo in finally.
+            child.wait()
+    validate_key(KEY.read_bytes())
+
+
+def install_boot_hook(output):
+    config = json.loads(CONFIG.read_text())
+    if not config.get('boot_key'):
+        return
+    require_rescue()
+    if not config['enabled']:
+        raise ValueError('A boot key requires encryption.')
+    key = validate_key(KEY.read_bytes()).decode('utf-8')
+    output.parent.mkdir(parents=True, exist_ok=True)
+    # A shell builtin feeds stdin: the secret is never a process argument.
+    hook = ('#!/bin/sh\nset +x\n'
+            '[ "${ZBM_ENCRYPTION_ROOT:-}" = rpool ] || exit 0\n'
+            "printf '%s' " + shlex.quote(key) +
+            ' | zfs load-key -L file:///dev/stdin rpool\n')
+    with open(output, 'w', opener=lambda p, f: os.open(p, f, 0o700)) as stream:
+        stream.write(hook)
+    boot_key_warning()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest='action', required=True)
+    config = sub.add_parser('configure')
+    config.add_argument('--mode', choices=['auto', 'on', 'off'], default='auto')
+    config.add_argument('--key-url', default='')
+    config.add_argument('--yes', action='store_true')
+    config.add_argument('--output', type=Path, required=True)
+    hook = sub.add_parser('boot-hook')
+    hook.add_argument('--output', type=Path, required=True)
+    sub.add_parser('acquire')
+    sub.add_parser('prompt')
+    args = parser.parse_args()
+    if args.action == 'configure':
+        configure(args.mode, args.key_url, args.yes, args.output)
+    elif args.action == 'boot-hook':
+        install_boot_hook(args.output)
+    elif args.action == 'prompt':
+        prompt()
+    else:
+        acquire()
+
+
+if __name__ == '__main__':
+    try:
+        main()
+    except (ValueError, OSError, getpass.GetPassWarning, EOFError, KeyboardInterrupt) as error:
+        print(f'zfsify: {error or "Passphrase input cancelled."}', file=sys.stderr)
+        sys.exit(2)
+
+ZFS_ON_BOOT_f58c2de11fee92eb31fd7d7ee8236d0d77a02c8a898a17d238572d2d70d8061f
+cat > "$work/encryption.sh" <<'ZFS_ON_BOOT_124465623ac538d5ac4109c617e345c0d8077e79860fccca3fe2f40e7b90f3a1'
+#!/bin/bash
+# Sourced only by the RAM installer and target setup. No secrets in shell variables.
+ENCRYPTION_ARGS=()
+ENCRYPTION_ENABLED=$(python3 -c 'import json; print(int(json.load(open("/etc/zfs-on-boot/encryption.json"))["enabled"]))')
+if [[ $ENCRYPTION_ENABLED = 1 ]]; then
+    ENCRYPTION_ARGS=(-O encryption=aes-256-gcm -O keyformat=passphrase -O keylocation=file:///run/zfsify-encryption/rpool.key)
+fi
+encryption_acquire() {
+    (( ${#ENCRYPTION_ARGS[@]} == 0 )) || python3 /etc/zfs-on-boot/encryption.py acquire
+}
+encryption_load() {
+    [[ $(zfs get -H -o value encryption rpool) != off ]] || return 0
+    [[ $(zfs get -H -o value keystatus rpool) != available ]] || return 0
+    while ! zfs load-key -L file:///run/zfsify-encryption/rpool.key rpool; do
+        echo 'Unable to unlock rpool; no further copy, remap or partition changes will run.' >&2
+        rm -f /run/zfsify-encryption/rpool.key
+        # An automatic source returning the wrong key must stop, not spin forever.
+        if python3 -c 'import json; c=json.load(open("/etc/zfs-on-boot/encryption.json")); exit(not (c["key_url"] or c.get("boot_key")))'; then
+            return 1
+        fi
+        encryption_acquire
+    done
+}
+encryption_target() {
+    (( ${#ENCRYPTION_ARGS[@]} != 0 )) || return 0
+    # Only the verified, encrypted target ever receives a persistent key.
+    [[ $(zfs get -H -o value encryptionroot rpool/ROOT/ubuntu) = rpool ]]
+    install -m 600 /run/zfsify-encryption/rpool.key /target/etc/zfs/zfsify-rpool.key
+    zfs set keylocation=file:///etc/zfs/zfsify-rpool.key rpool
+    zfs set org.zfsbootmenu:keysource=rpool/ROOT/ubuntu rpool
+    printf 'UMASK=0077\n' > /target/etc/initramfs-tools/conf.d/zfsify-encryption
+    # Explicit hook works across Ubuntu zfs-initramfs package versions.
+    mkdir -p /target/etc/initramfs-tools/hooks /target/etc/dracut.conf.d
+    cat > /target/etc/initramfs-tools/hooks/zfsify-encryption <<'HOOK'
+#!/bin/sh
+set -e
+case "$1" in prereqs) exit 0;; esac
+. /usr/share/initramfs-tools/hook-functions
+# Ubuntu's zfs hook may already have included the same key.
+if [ ! -e "$DESTDIR/etc/zfs/zfsify-rpool.key" ]; then
+    copy_file config /etc/zfs/zfsify-rpool.key
+fi
+chmod 600 "$DESTDIR/etc/zfs/zfsify-rpool.key"
+HOOK
+    chmod 755 /target/etc/initramfs-tools/hooks/zfsify-encryption
+    printf 'install_items+=" /etc/zfs/zfsify-rpool.key "\n' > /target/etc/dracut.conf.d/91-zfsify-encryption.conf
+}
+
+ZFS_ON_BOOT_124465623ac538d5ac4109c617e345c0d8077e79860fccca3fe2f40e7b90f3a1
+cat > "$work/strategy.py" <<'ZFS_ON_BOOT_5bc3a10c0cc47044ad5d81bdf036e9414a213cb0459ebcc51895629cbdebd436'
 #!/usr/bin/env python3
 """Read-only strategy discovery and deliberate choices; never format or mount disks."""
 import argparse
@@ -511,33 +815,144 @@ def backup_candidates(disk, used):
                                                      -item['free'], item['path']))
 
 
-def choose(prompt, default, options):
-    """Read the controlling terminal, never the curl pipe; no unattended consent."""
-    print(prompt, file=sys.stderr, flush=True)
+def choose(prompt, default, options, *, title='Choose your next step', items=None, plan=None, unavailable=None, danger=()):
+    """Controlling-TTY input; arrows preview, Enter confirms. Never timed consent."""
+    from progress import Display, context, disk_picture, columns, tint, wrapped, clean, METHODS, bounded
+    import select
+    import signal
+    import termios
+    import tty as terminal
+    if items is None:
+        items = [(key, key, '') for key in options]
+    unavailable = unavailable or {}
+    plan = plan or context()
+    keys = list(options)
+    selected = keys.index(default)
     try:
         with open('/dev/tty', 'r') as tty:
-            while True:
-                print(f'Enter = {default}; waiting for your selection (no timeout): ',
-                      end='', file=sys.stderr, flush=True)
-                line = tty.readline()
-                if not line:
-                    raise ValueError('Terminal closed; cancelled.')
-                answer = line.strip().lower() or default
-                if answer in options:
-                    return answer
-                print('Choose one of: ' + ', '.join(options), file=sys.stderr)
+            if not sys.stderr.isatty() or os.environ.get('TERM') == 'dumb':
+                print(title + '\n' + prompt, file=sys.stderr, flush=True)
+                for key, label, explanation in items:
+                    print(f'  {key}) {label}\n     {explanation}', file=sys.stderr)
+                while True:
+                    print(f'Enter = {default}; waiting for your selection (no timeout): ',
+                          end='', file=sys.stderr, flush=True)
+                    line = tty.readline()
+                    if not line:
+                        raise ValueError('Terminal closed; cancelled.')
+                    answer = line.strip().lower() or default
+                    if answer in options:
+                        if answer not in unavailable:
+                            return answer
+                        print(unavailable[answer], file=sys.stderr)
+                        continue
+                    print('Choose one of: ' + ', '.join(options), file=sys.stderr)
+            display = Display(stream=sys.stderr)
+            previous = termios.tcgetattr(tty.fileno())
+            def terminate(signum, _frame):
+                raise SystemExit(128 + signum)
+            previous_signal = signal.signal(signal.SIGTERM, terminate)
+            message = ''
+            sequence = ''
+            number = ''
+            def draw(width, frame, color, unicode):
+                wide = bool(plan) and width >= 104
+                w = width - 45 if wide else width
+                left = [tint(title, '1;36', color), '']
+                for key, label, explanation in items:
+                    active = key == keys[selected]
+                    marker = '›' if unicode else '>'
+                    prefix = f'{marker if active else " "} {key}  '
+                    rows = wrapped(label, w-5)
+                    left += [tint(prefix + rows[0], '1;31' if key in danger else '1;36' if active else '1', color)]
+                    left += ['     '+row for row in rows[1:]]
+                    if explanation:
+                        left += ['     '+tint(row, '90', color) for row in wrapped(explanation, w-6)]
+                    left += ['']
+                preview = dict(plan)
+                if keys[selected] in options and isinstance(options, dict) and options[keys[selected]] in ('preserve', 'inplace', 'backup', 'erase'):
+                    preview['mode'] = options[keys[selected]]
+                if wide:
+                    body = columns(left, disk_picture(preview, preview=True, frame=frame//4, color=color, unicode=unicode), width, color)
+                else:
+                    body = left
+                    if preview:
+                        body += wrapped('Disk: '+preview.get('disk', '')+' · '+preview.get('mode', '')+' plan', width)
+                        body += wrapped('Preview: '+ METHODS[preview['mode']][1], width)
+                footer = [tint(message or '↑ ↓ preview · number to select · Enter to confirm · Ctrl-C cancels', '33' if message else '90', color),
+                          f'Enter = {keys[selected]}; waiting for your selection (no timeout): ']
+                # Keep the consent control visible on small consoles; shorten
+                # explanations before losing options or the selected drive.
+                height = os.get_terminal_size(sys.stderr.fileno()).lines or 24
+                if len(body) + 4 > height:
+                    body = [line for line in body if clean(line).strip()]
+                if len(body) + 4 > height:
+                    count = max(1, height-10)
+                    start = max(0, min(selected-count//2, len(items)-count))
+                    body = [tint(title, '1;36', color)] + [
+                        tint(('> ' if key == keys[selected] else '  ')+key+' '+clean(label),
+                             '1;31' if key in danger else '1;36' if key == keys[selected] else '0', color)
+                        for key, label, _ in items[start:start+count]]
+                    chosen = next((ex for key, _, ex in items if key == keys[selected]), '')
+                    body += wrapped(chosen, width)
+                    if preview:
+                        body += wrapped('Disk: '+preview.get('disk', ''), width)
+                        body += disk_picture(preview, preview=True, color=color, unicode=unicode, width=width)[4:7]
+                return '\n'.join(bounded(line, width)
+                                 for line in ['zfsify  /  SETUP', ''] + body + footer)
+            try:
+                terminal.setcbreak(tty.fileno())
+                while True:
+                    display.paint(draw)
+                    if not select.select([tty], [], [], .125)[0]:
+                        continue
+                    data = os.read(tty.fileno(), 1)
+                    if not data or b'\x04' in data:
+                        raise ValueError('Terminal closed; cancelled.')
+                    for char in data.decode(errors='ignore'):
+                        if sequence or char == '\x1b':
+                            sequence += char
+                            if sequence in ('\x1b[A', '\x1b[B'):
+                                selected = (selected + (1 if sequence.endswith('B') else -1)) % len(keys)
+                                sequence = ''
+                                number = message = ''
+                            elif len(sequence) >= 3:
+                                sequence = ''
+                            continue
+                        if char in '\r\n':
+                            if keys[selected] in unavailable:
+                                message = unavailable[keys[selected]]
+                            if not message:
+                                return keys[selected]
+                            number = ''
+                            continue
+                        if char.isdigit():
+                            number += char
+                            if number in keys:
+                                selected = keys.index(number)
+                                message = ''
+                            else:
+                                message = 'Choose ' + ', '.join(keys) + ', then press Enter.'
+                            continue
+                        if char in ('\x7f', '\b'):
+                            number = number[:-1]
+                            message = ''
+                            if number in keys:
+                                selected = keys.index(number)
+                            continue
+                        number = ''
+                        if char.lower() in keys:
+                            selected = keys.index(char.lower())
+                            message = ''
+                        else:
+                            message = 'Choose ' + ', '.join(keys) + ', then press Enter.'
+            finally:
+                signal.signal(signal.SIGTERM, previous_signal)
+                termios.tcsetattr(tty.fileno(), termios.TCSADRAIN, previous)
+                display.close()
+                print(file=sys.stderr, flush=True)
     except OSError:
         raise ValueError('Manual confirmation requires a terminal. Re-run in an interactive SSH session.') from None
-
-
-def heading(title, clear=False):
-    # Presentation stays in progress.py; discovery never writes migration state.
-    from progress import phase_header
-    color = sys.stderr.isatty() and 'NO_COLOR' not in os.environ
-    width = os.get_terminal_size(sys.stderr.fileno()).columns - 1 if sys.stderr.isatty() else 100
-    if clear and sys.stderr.isatty():
-        print('\033[2J\033[H', end='', file=sys.stderr)
-    print(('' if clear else '\n') + '\n'.join(phase_header(1, width, color=color)) + '\n\n' + title + '\n', file=sys.stderr)
 
 
 def main():
@@ -546,6 +961,9 @@ def main():
     menu = sub.add_parser('menu')
     menu.add_argument('--kind', choices=['root', 'volume'], required=True)
     menu.add_argument('--disk', required=True)
+    menu.add_argument('--source', default='')
+    menu.add_argument('--platform', default='')
+    menu.add_argument('--fstype', default='ext4')
     menu.add_argument('--size', type=int, required=True)
     menu.add_argument('--used', type=int, required=True)
     menu.add_argument('--preserve-capacity', type=int, required=True)
@@ -565,15 +983,16 @@ def main():
     args = p.parse_args()
     if args.action == 'destination':
         candidates = backup_candidates(args.disk, args.used)
-        print('Candidate destinations (space available does not mean a disk is reserved for backups):', file=sys.stderr)
-        for i, item in enumerate(candidates, 1):
-            print(f"  {i}) {item['path']} — {item['device']} on {item['disk']}; "
-                  f"{item['free']/1e9:.1f}/{item['total']/1e9:.1f} GB free"
-                  + (' [recommended by free-space ratio; confirm ownership/use]' if i == 1 else ''), file=sys.stderr)
         options = {str(i): item['path'] for i, item in enumerate(candidates, 1)}
         options.update(p='path', r='', q='q')
-        choice = choose('  p) Enter another directory  r) Refresh disks  q) Back',
-                        '1' if candidates else 'r', options)
+        choice = choose('Choose a backup destination. Free space is not permission to use a disk.',
+                        '1' if candidates else 'r', options, title='Choose a disk for the backup', items=[
+                            (str(i), item['path'] + (' [suggested; confirm use]' if i == 1 else ''),
+                             f"{item['device']} on {item['disk']} · {item['free']/1e9:.1f}/{item['total']/1e9:.1f} GB free")
+                            for i, item in enumerate(candidates, 1)] + [
+                            ('p', 'Enter another directory', 'Choose the mount point of your backup volume.'),
+                            ('r', 'Refresh disks', 'Attach and mount a volume, then refresh this list.'),
+                            ('q', 'Back', '')])
         print(options[choice])
         return
     if args.action == 'confirm':
@@ -581,15 +1000,23 @@ def main():
             print('Explicit non-interactive consent: proceeding with the selected plan.', file=sys.stderr)
             print('1')
             return
-        heading('⚠  Make a full offsite backup before proceeding. This software is experimental.')
-        answer = choose(args.label + '\n\n  1) Confirm backup precaution and start conversion\n  2) Review all methods\n  q) Cancel [default]', 'q', ['1', '2', 'q'])
+        from progress import METHODS
+        precaution = ('ERASE: existing data will be deleted. ' if args.mode == 'erase' else '') + METHODS[args.mode][2]
+        print('Make a full offsite backup before proceeding. This software is experimental.', file=sys.stderr)
+        answer = choose(args.label, 'q', ['1', '2', 'q'], title='Ready to change this disk?', items=[
+            ('1', 'Start conversion', precaution + ' ' + args.label + ' Make a full offsite backup first; conversion can destroy data.'),
+            ('2', 'Go back · choose another method', 'No conversion starts until you confirm.'),
+            ('q', 'Cancel [default]', 'Leave the disk as it is.')], danger=['1'] if args.mode == 'erase' else [])
         if answer == 'q':
             raise ValueError('Cancelled.')
         print(answer)
         return
     if args.action == 'transport':
-        print(choose('Choose backup setup: 1) attached Volume  2) rclone config  3) existing remote  q) cancel',
-                     '1', ['1', '2', '3', 'q']))
+        print(choose('Choose backup setup', '1', ['1', '2', '3', 'q'], title='Where should your backup live?', items=[
+            ('1', 'An attached disk or cloud volume', 'Next: choose a mounted directory and explicitly approve its use.'),
+            ('2', 'Set up cloud storage with rclone', 'Open rclone configuration, then choose your remote.'),
+            ('3', 'Use an existing rclone remote', 'You provide remote:path; the archive stays there after conversion.'),
+            ('q', 'Cancel', '')]))
         return
     backup = args.backup if args.backup not in ('', 'ask') else 'ask'
     default, preserve, inplace = recommended(args.size, args.used, args.preserve_capacity,
@@ -599,38 +1026,47 @@ def main():
         available.update(preserve=False, inplace=False, backup=False)
     if args.mode != 'auto':
         default = args.mode
-    labels = {'preserve': '50/50: keep ext4 until the ZFS copy is verified',
-              'inplace': 'Slice-by-slice: recycle verified ext4 blocks (experimental)',
-              'backup': 'External backup: verify an independent archive, then restore',
-              'erase': 'ERASE: discard data; root gets limited settings restoration'}
+    from progress import METHODS
+    labels = {key: value[0] for key, value in METHODS.items()}
     keys = {'1': 'preserve', '2': 'inplace', '3': 'backup', '4': 'erase'}
-    heading('Select a conversion method', clear=True)
-    print('Make a full offsite backup before proceeding. Conversion can destroy data.', file=sys.stderr)
-    print(f'\nMigration options for {args.disk} ({args.used/1e9:.2f}/{args.size/1e9:.2f} GB used):', file=sys.stderr)
+    plan = dict(kind=args.kind, disk=args.disk, source=args.source, platform=args.platform,
+                fstype=args.fstype, size=args.size, used=args.used, mode=default)
+    items = []
     for key, mode in keys.items():
-        reason = '' if available[mode] else (' — rerun without --erase to assess preservation' if args.erase_only else ' — unavailable for data volumes' if mode == 'inplace' and args.kind != 'root'
-                  else ' — unavailable: insufficient working space')
-        line = f'  {key}) {labels[mode]}{reason}' + (' ◀ RECOMMENDED' if mode == default and args.mode == 'auto' else ' ◀ SELECTED' if mode == default else '')
-        if mode == default and sys.stderr.isatty() and 'NO_COLOR' not in os.environ:
-            line = '\033[1;36m' + line + '\033[0m'
-        print(line + '\n', file=sys.stderr)
-    print('  q) Cancel\nExternal backup needs a destination you explicitly select. Review the plan before conversion.', file=sys.stderr)
+        reason = '' if available[mode] else ('Unavailable with --erase.' if args.erase_only else
+                 'unavailable for data volumes.' if mode == 'inplace' and args.kind != 'root' else 'Not enough working space.')
+        label = labels[mode] + (' [recommended]' if mode == default and args.mode == 'auto' else '')
+        description = METHODS[mode][2]
+        if mode == 'erase':
+            description = ('Fresh Ubuntu; keep /etc, accounts and SSH keys. Other files are not guaranteed.'
+                           if args.kind == 'root' else 'Delete every file on this volume. The OS disk stays unchanged.')
+        items.append((key, label, reason or description))
+    items.append(('q', 'Cancel · leave this disk alone', ''))
+    def save_plan(mode):
+        plan['mode'] = mode
+        if os.environ.get('ZFSIFY_UI_CONTEXT'):
+            Path(os.environ['ZFSIFY_UI_CONTEXT']).write_text(json.dumps(plan))
+    print('Make a full offsite backup before proceeding. Conversion can destroy data.', file=sys.stderr)
     if not available[default]:
         raise ValueError(f'{default} does not fit this disk; use automatic selection or --backup.')
     if args.yes and default == 'backup' and backup == 'ask':
         raise ValueError('Non-interactive backup requires --backup=/mounted/directory or --backup=remote:path. No destination was selected.')
     if args.yes or args.mode != 'auto':
+        save_plan(default)
+        print(f'Selected: {labels[default]} on {args.disk}', file=sys.stderr)
         print(default)
         print(backup)
         return
     default_key = next(k for k, v in keys.items() if v == default)
     choice = choose('Choose a method. You will review its plan before confirming conversion.',
-                    default_key, [*keys, 'q'])
+                    default_key, {**keys, 'q':'cancel'}, title='How would you like to move to ZFS?', items=items, plan=plan,
+                    unavailable={key: reason for key, _, reason in items if key in keys and not available[keys[key]]}, danger=['4'])
     if choice == 'q':
         raise ValueError('Cancelled.')
     mode = keys[choice]
     if not available[mode]:
         raise ValueError('That strategy is unavailable; cancelled without starting conversion.')
+    save_plan(mode)
     print(mode)
     print(backup or 'ask')
 
@@ -642,7 +1078,7 @@ if __name__ == '__main__':
         print(f'\nzfsify: {error or "Cancelled."}', file=sys.stderr)
         sys.exit(2)
 
-ZFS_ON_BOOT_180b7ba1d2fe105878859d744658f86718536e73083364b93131ecd44a685d80
+ZFS_ON_BOOT_5bc3a10c0cc47044ad5d81bdf036e9414a213cb0459ebcc51895629cbdebd436
 cat > "$work/network.py" <<'ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec'
 #!/usr/bin/env python3
 """Capture hardware NIC addresses and main-table routes for the RAM installer."""
@@ -704,7 +1140,7 @@ if __name__ == '__main__':
     Path(sys.argv[1]).write_text(render(links, routes))
 
 ZFS_ON_BOOT_a82ba05a7315d207cd87119e21c43094cf67c3e79fbc41412e7a6cee530b5aec
-cat > "$work/boot-config.py" <<'ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b'
+cat > "$work/boot-config.py" <<'ZFS_ON_BOOT_4a183c0ac4b6e5c18388e74a827d7491cdd2646d2aef76d2c03aecd27c3466d3'
 #!/usr/bin/env python3
 """Retain existing boot options while replacing the old root/initramfs contract."""
 from pathlib import Path
@@ -721,7 +1157,7 @@ REPLACED = {
 }
 
 
-def commandlines(text, consoles=('tty0',)):
+def commandlines(text, consoles=('tty0',), display=False):
     # Linux command lines use double quotes, not shell evaluation. Retain their
     # spelling, including quoted values containing spaces, for the final kernel.
     tokens = re.findall(r'(?:[^\s"]|"[^"]*")+', text)
@@ -740,6 +1176,13 @@ def commandlines(text, consoles=('tty0',)):
     rescue = [t for t in kept if t.split('=', 1)[0].strip('"') not in
               {'quiet', 'splash', 'vt.handoff', 'panic'}
               and not t.split('=', 1)[0].strip('"').startswith(('systemd.', 'rd.', 'zfs.', 'spl.'))]
+    # ZFSBootMenu and /dev/console use the last console=. Prefer an existing
+    # active display console when one is usable, so VNC/local unlock is visible.
+    # Serial-only machines and the final Ubuntu command line stay unchanged.
+    if display:
+        graphical = [t for t in rescue if re.fullmatch(r'console=(?:"tty[0-9]+"|tty[0-9]+)', t)
+                     and t.split('=', 1)[1].strip('"') in consoles]
+        rescue = [t for t in rescue if t not in graphical] + graphical
     return {'ubuntu': ' '.join(kept), 'rescue': ' '.join(rescue),
             'grub': ' '.join(shlex.quote(t) for t in rescue)}
 
@@ -749,11 +1192,13 @@ if __name__ == '__main__':
     out.mkdir(parents=True, exist_ok=True)
     active = Path('/sys/class/tty/console/active')
     consoles = active.read_text().split() if active.exists() else ['tty0']
-    for name, value in commandlines(Path('/proc/cmdline').read_text(), consoles or ['tty0']).items():
+    display = bool(list(Path('/sys/class/graphics').glob('fb[0-9]*'))) or any(
+        'VGA' in name.read_text() for name in Path('/sys/class/vtconsole').glob('vtcon*/name'))
+    for name, value in commandlines(Path('/proc/cmdline').read_text(), consoles or ['tty0'], display).items():
         (out / ('cmdline-' + name)).write_text(value + '\n')
 
-ZFS_ON_BOOT_36d30568afc0a651df79dd47bddc4d62e8de417c96f14604377c7c68db04201b
-cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_4dea2cffed49b3b8d76b9118906f450a63c6555b92f05ac0b8d4416fe769eeb1'
+ZFS_ON_BOOT_4a183c0ac4b6e5c18388e74a827d7491cdd2646d2aef76d2c03aecd27c3466d3
+cat > "$work/ram-init.sh" <<'ZFS_ON_BOOT_8e9ef249be7f38b8fb98768e1048d0d82bf8426d2355cc1ff175fe8f357e5f92'
 #!/bin/bash
 export DEBIAN_FRONTEND=noninteractive
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -770,6 +1215,7 @@ mount -t tmpfs -o mode=755 tmpfs /run
 mount -t devpts devpts /dev/pts
 exec </dev/console >/dev/console 2>&1
 set -Eeuo pipefail
+ulimit -c 0
 MIGRATION_STARTED=0
 [[ " $(cat /proc/cmdline) " != *' zfsify.rescue='* ]] || MIGRATION_STARTED=1
 rescue() {
@@ -786,6 +1232,8 @@ rescue() {
     while true; do /bin/bash </dev/console >/dev/console 2>&1 || true; sleep 2; done
 }
 trap 'rescue "$LINENO"' ERR
+# Render directly to the rescue console while keeping the durable log plain.
+export ZFS_PROGRESS_CONSOLE=1 TERM=${TERM:-linux}
 exec > >(tee -a /run/zfs-on-boot.log) 2>&1
 /usr/lib/systemd/systemd-udevd --daemon
 udevadm trigger --action=add
@@ -813,6 +1261,7 @@ mkdir -p /run/sshd
 bash /etc/zfs-on-boot/network.sh
 DISK=$(cat /etc/zfs-on-boot/disk)
 MODE=$(cat /etc/zfs-on-boot/mode)
+export ZFSIFY_UI_CONTEXT=/etc/zfs-on-boot/ui-context.json
 BOOT_TYPE=8300
 BOOT_ATTR=(-A 1:set:2)
 if [[ $(cat /etc/zfs-on-boot/firmware) = uefi ]]; then
@@ -830,7 +1279,7 @@ if [[ -f /etc/zfs-on-boot/backup/volume-uuid ]]; then
     BACKUPDEV=$(blkid -U "$(cat /etc/zfs-on-boot/backup/volume-uuid)")
 fi
 DEVICES=$DISK,$ROOTDEV${BACKUPDEV:+,$BACKUPDEV}
-phase() { local n=$1 label=$2; shift 2; python3 /usr/local/lib/zfs-on-boot/progress.py run --phase "$n" --label "$label" --devices "$DEVICES" -- "$@"; }
+phase() { local n=$1 label=$2; shift 2; python3 /usr/local/lib/zfs-on-boot/progress.py run --phase "$n" --label "$label" --operation "${ZFSIFY_OPERATION:-prepare}" --devices "$DEVICES" -- "$@"; }
 part() { local name; while read -r name; do [[ $(cat "/sys/class/block/${name##*/}/partition" 2>/dev/null || true) != "$1" ]] || printf '%s\n' "$name"; done < <(lsblk -nrpo NAME "$DISK"); }
 [[ -b $DISK && -b $ROOTDEV ]]
 [[ $ROOTDEV = "$(cat /etc/zfs-on-boot/old-root-device)" ]]
@@ -842,10 +1291,17 @@ part() { local name; while read -r name; do [[ $(cat "/sys/class/block/${name##*
 [[ -z $(zpool list -H -o name 2>/dev/null) ]]
 echo "Independent RAM OS ready. Mode: $MODE. Devices: $DEVICES"
 lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
+# Ask/fetch only after the disk-independent RAM OS is live, before changing disks.
+source /etc/zfs-on-boot/encryption.sh
+touch /run/zfsify-encryption-ready
+if [[ $ENCRYPTION_ENABLED = 1 ]]; then
+    phase 2 'Encryption key required: console / zfsify-unlock / configured HTTPS server' true
+fi
+encryption_acquire
 create_root_pool() {
 # Ubuntu's root-pool defaults, with boot-image compatibility and disk growth.
 # Keep ext4's distinct Unicode filenames distinct rather than normalizing them.
-phase 3 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target rpool "$ZPART"
+ZFSIFY_OPERATION=create phase 3 "Create rpool on $ZPART" zpool create -f -o ashift=12 -o autotrim="${1:-on}" -o compatibility=openzfs-2.1-linux -o autoexpand=on -o cachefile=none -O compression=lz4 -O relatime=on -O devices=off -O dnodesize=auto -O xattr=sa -O acltype=posixacl -O canmount=off -O mountpoint=none -R /target "${ENCRYPTION_ARGS[@]}" rpool "$ZPART"
 zfs create -o canmount=off -o mountpoint=none rpool/ROOT
 zfs create -o mountpoint=/ -o canmount=noauto rpool/ROOT/ubuntu
 zfs mount rpool/ROOT/ubuntu
@@ -868,11 +1324,11 @@ if [[ $MODE = preserve ]]; then
     rm -rf /old/var/lib/zfs-on-boot /old/boot/zfs-on-boot
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
-    phase 3 "Check offline ext4 $ROOTDEV" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    ZFSIFY_OPERATION=shrink phase 3 "Check offline ext4 $ROOTDEV" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     # Leave an extra MiB between the shrunken filesystem and its partition end.
     SHRINK_KIB=$(( (SPLIT-ROOT_START)*512/1024-1024 ))
-    phase 3 "Shrink ext4 on $ROOTDEV" resize2fs -p "$ROOTDEV" "${SHRINK_KIB}K"
-    phase 3 "Shorten $ROOTDEV and create temporary ZFS partition" sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$((SPLIT-1))" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SPLIT:$ROOT_END" -t 32:BF01 "$DISK"
+    ZFSIFY_OPERATION=shrink phase 3 "Shrink ext4 on $ROOTDEV" resize2fs -p "$ROOTDEV" "${SHRINK_KIB}K"
+    ZFSIFY_OPERATION=shrink phase 3 "Shorten $ROOTDEV and create temporary ZFS partition" sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$((SPLIT-1))" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SPLIT:$ROOT_END" -t 32:BF01 "$DISK"
     partprobe "$DISK"
     udevadm settle
     TEMP=$(part 32)
@@ -886,7 +1342,7 @@ elif [[ $MODE = backup ]]; then
         BOOTDEV=$(blkid -U "$(cat /etc/zfs-on-boot/old-boot-uuid)")
         mount -o ro "$BOOTDEV" /old/boot
     fi
-    phase 2 'Archive the offline installation with rclone and verify a full download' bash /etc/zfs-on-boot/backup.sh save
+    ZFSIFY_OPERATION=backup phase 2 'Archive the offline installation with rclone and verify a full download' bash /etc/zfs-on-boot/backup.sh save
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
     umount /old
 fi
@@ -897,7 +1353,7 @@ if [[ $MODE = erase ]]; then
     umount /old
 fi
 if [[ $MODE != preserve ]]; then
-    phase 3 "Erase $DISK and create ZFSBootMenu + ZFS partitions" bash -e -c 'disk=$1; type=$2; shift 2; sgdisk --zap-all "$disk"; sgdisk -n 1:1MiB:+512MiB -t "1:$type" "$@" -n 2:0:0 -t 2:BF01 "$disk"' _ "$DISK" "$BOOT_TYPE" "${BOOT_ATTR[@]}"
+    ZFSIFY_OPERATION=erase phase 3 "Erase $DISK and create ZFSBootMenu + ZFS partitions" bash -e -c 'disk=$1; type=$2; shift 2; sgdisk --zap-all "$disk"; sgdisk -n 1:1MiB:+512MiB -t "1:$type" "$@" -n 2:0:0 -t 2:BF01 "$disk"' _ "$DISK" "$BOOT_TYPE" "${BOOT_ATTR[@]}"
     partprobe "$DISK"
     udevadm settle
     ZPART=$(part 2)
@@ -913,21 +1369,21 @@ create_root_pool
 # A separate source /boot is deliberately included; unsupported mounts were refused.
 EXCLUDES=(--exclude=/proc/*** --exclude=/sys/*** --exclude=/dev/*** --exclude=/run/*** --exclude=/target/*** --exclude=/old/*** --exclude=/tmp/*** --exclude=/init --exclude=/rescue-media/*** --exclude=/etc/zfs-on-boot/*** --exclude=/var/lib/zfs-on-boot/*** --exclude=/boot/zfs-on-boot/*** --exclude=/boot/efi/*** --exclude=/var/log/zfs-on-boot/*** --exclude=/swapfile --exclude=/swap.img)
 if [[ $MODE = backup ]]; then
-    phase 3 'Restore and checksum-check the rclone archive' bash /etc/zfs-on-boot/backup.sh restore
-    phase 3 'Remote archive checksum and extraction verified' true
+    ZFSIFY_OPERATION=restore phase 3 'Restore and checksum-check the rclone archive' bash /etc/zfs-on-boot/backup.sh restore
+    ZFSIFY_OPERATION=verify phase 3 'Remote archive checksum and extraction verified' true
 else
 rsync -aHAXS --numeric-ids --dry-run --stats "${EXCLUDES[@]}" "$SOURCE" /target/ > /run/copy-size.txt
 TOTAL=$(awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2); print $2}' /run/copy-size.txt)
 # Real copy errors (including ENOSPC) stop before original data is deleted.
-python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 3 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --source "$SOURCE" --target "$ZPART" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
-phase 3 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
+python3 /usr/local/lib/zfs-on-boot/progress.py run --operation copy --phase 3 --label "Copy $SOURCE to $ZPART" --devices "$DEVICES" --source "$SOURCE" --target "$ZPART" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L --stats "${EXCLUDES[@]}" "$SOURCE" /target/
+ZFSIFY_OPERATION=verify phase 3 "Checksum and metadata verification: $ROOTDEV -> $ZPART" bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$@" > /run/copy-differences; cat /run/copy-differences; test ! -s /run/copy-differences' _ "${EXCLUDES[@]}" "$SOURCE" /target/
 echo 'Verified: file checksums, ownership, permissions, ACLs, xattrs and hard links match.'
 fi
 fi  # Existing preservation/backup/erase backend.
 if [[ $MODE != inplace || $INPLACE_PHASE != configured ]]; then
-phase 4 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
+ZFSIFY_OPERATION=configure phase 4 'Configure ZFS root, initramfs and boot services' bash /etc/zfs-on-boot/target.sh
 fi
-phase 4 'Flush the configured ZFS root to disk' zpool sync rpool
+ZFSIFY_OPERATION=configure phase 4 'Flush the configured ZFS root to disk' zpool sync rpool
 [[ $MODE != inplace ]] || inplace_checkpoint configured
 if [[ $MODE = preserve ]]; then
     [[ -z ${BOOTDEV:-} ]] || umount /old/boot
@@ -937,7 +1393,7 @@ if [[ $MODE = preserve ]]; then
     mapfile -t PARTS < <(while read -r name; do cat "/sys/class/block/$name/partition" 2>/dev/null || true; done < <(lsblk -nr -o NAME "$DISK") | awk '$1!=32')
     ARGS=()
     for number in "${PARTS[@]}"; do ARGS+=(-d "$number"); done
-    phase 4 "Replace original ext4 with front mirror member on $DISK" sgdisk "${ARGS[@]}" -n 1:2048:1050623 -t "1:$BOOT_TYPE" "${BOOT_ATTR[@]}" -n "2:1050624:$((SPLIT-1))" -t 2:BF01 "$DISK"
+    ZFSIFY_OPERATION=mirror phase 4 "Replace original ext4 with front mirror member on $DISK" sgdisk "${ARGS[@]}" -n 1:2048:1050623 -t "1:$BOOT_TYPE" "${BOOT_ATTR[@]}" -n "2:1050624:$((SPLIT-1))" -t 2:BF01 "$DISK"
     # Remove obsolete kernel partition mappings before installing the new ones.
     for number in "${PARTS[@]}"; do partx -d --nr "$number" "$DISK"; done
     partx -a --nr 1:2 "$DISK"
@@ -951,24 +1407,24 @@ mount --rbind /dev /target/dev
 mount --make-rslave /target/dev
 mount -t proc proc /target/proc
 mount -t sysfs sysfs /target/sys
-phase 4 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
+ZFSIFY_OPERATION=boot phase 4 "Install ZFSBootMenu on $(part 1); Ubuntu /boot remains on ZFS" bash /etc/zfs-on-boot/zbm-install.sh install /target "$DISK" "$(part 1)"
 umount /target/proc
 umount -R /target/sys
 umount -R /target/dev
 if [[ $MODE = preserve ]]; then
-    python3 /usr/local/lib/zfs-on-boot/progress.py run --phase 4 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --source "$TEMP" --target "$FRONT" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
+    python3 /usr/local/lib/zfs-on-boot/progress.py run --operation mirror --phase 4 --label "Relocate via mirror: $TEMP -> $FRONT" --devices "$DEVICES" --source "$TEMP" --target "$FRONT" --resilver -- zpool attach -f -w rpool "$TEMP" "$FRONT"
     [[ $(zpool list -H -o health rpool) = ONLINE ]]
     zpool status -p rpool
     zpool status rpool | grep -q 'errors: No known data errors'
     # A successful attach -w must leave a readable, fully resilvered front copy.
     [[ $(zpool status -P rpool | awk -v d="$FRONT" '$1==d {print $2}') = ONLINE ]]
-    phase 4 "Detach temporary $TEMP after successful resilver" zpool detach rpool "$TEMP"
+    ZFSIFY_OPERATION=grow phase 4 "Detach temporary $TEMP after successful resilver" zpool detach rpool "$TEMP"
     zpool labelclear -f "$TEMP"
-    phase 4 "Remove temporary partition $TEMP" sgdisk -d 32 "$DISK"
+    ZFSIFY_OPERATION=grow phase 4 "Remove temporary partition $TEMP" sgdisk -d 32 "$DISK"
     partx -d --nr 32 "$DISK"
     ZPART=$FRONT
 elif [[ $MODE = inplace ]]; then
-    phase 4 'Native remap complete: no mirror relocation required' true
+    ZFSIFY_OPERATION=grow phase 4 'Native remap complete: no mirror relocation required' true
     # The new loader and root are durable before releasing the rescue area.
     cp -a "$STATE/." /target/var/log/zfs-on-boot/inplace/
     sync
@@ -976,10 +1432,10 @@ elif [[ $MODE = inplace ]]; then
     sgdisk -d 32 "$DISK"
     partx -d --nr 32 "$DISK"
 else
-    phase 4 'Fresh install: no relocation required' true
+    ZFSIFY_OPERATION=grow phase 4 'Fresh install: no relocation required' true
 fi
 DEVICES=$DISK,$ZPART
-phase 4 "Grow final ZFS partition $ZPART to fill $DISK" bash -e -c '
+ZFSIFY_OPERATION=grow phase 4 "Grow final ZFS partition $ZPART to fill $DISK" bash -e -c '
 set +e
 output=$(growpart "$1" 2 2>&1); rc=$?
 set -e
@@ -993,7 +1449,7 @@ touch /target/etc/machine-id
 mkdir -p /target/var/lib/dbus
 ln -sf /etc/machine-id /target/var/lib/dbus/machine-id
 printf 'Installed by zfsify (%s) at %s\n' "$MODE" "$(date -u +%FT%TZ)" > /target/etc/zfs-on-boot-installed
-phase 5 'Ready: snapshots, recovery and automatic disk growth' bash /etc/zfs-on-boot/recovery-setup.sh
+ZFSIFY_OPERATION=ready phase 5 'Ready: snapshots, recovery and automatic disk growth' bash /etc/zfs-on-boot/recovery-setup.sh
 mkdir -p /target/var/log/zfs-on-boot
 cp /run/zfs-on-boot.log /target/var/log/zfs-on-boot/install.log
 cp /var/log/zfs-on-boot/*.log /target/var/log/zfs-on-boot/
@@ -1001,12 +1457,20 @@ cp /run/zfs-on-boot-progress.json /target/var/log/zfs-on-boot/last-progress.json
 sync
 [[ -z ${CACHE_GUARD:-} ]] || kill "$CACHE_GUARD"
 zpool export rpool
+rm -f /run/zfsify-encryption/rpool.key
+if [[ $ENCRYPTION_ENABLED = 1 ]]; then
+    if python3 -c 'import json; exit(not json.load(open("/etc/zfs-on-boot/encryption.json")).get("boot_key", False))'; then
+        echo 'WARNING: plaintext boot key installed; disk encryption provides no secrecy.'
+    else
+        echo 'Encrypted root ready. Enter your passphrase in the ZFSBootMenu preboot console after reboot.'
+    fi
+fi
 echo 'Migration complete. Rebooting into Ubuntu with / and /boot on ZFS.'
 sync
 reboot -f
 
-ZFS_ON_BOOT_4dea2cffed49b3b8d76b9118906f450a63c6555b92f05ac0b8d4416fe769eeb1
-cat > "$work/target.sh" <<'ZFS_ON_BOOT_647c033e829bb5def90a0c863f039fd77d97d654067637009f9dfd2c9983cf95'
+ZFS_ON_BOOT_8e9ef249be7f38b8fb98768e1048d0d82bf8426d2355cc1ff175fe8f357e5f92
+cat > "$work/target.sh" <<'ZFS_ON_BOOT_ca19a13e200d49b60212a4bb217e89f4e6dbdf26023d6fd2089c44e88d9aa597'
 #!/bin/bash
 # Called in RAM after verified copy. Boot setup is deliberately after verification.
 set -Eeuo pipefail
@@ -1016,10 +1480,13 @@ DISK=$(cat /etc/zfs-on-boot/disk)
 if [[ $MODE = erase ]]; then
     python3 /etc/zfs-on-boot/identity.py /target /etc/zfs-on-boot/identity.tar
     tar --numeric-owner --acls --xattrs -xpf /run/priority.tar -C /target
+    # The rescue-only helper has no role in the installed Ubuntu environment.
+    rm -f /target/usr/local/sbin/zfsify-unlock
 fi
 # Both modes retain the old /etc; replace only disk/boot-specific configuration.
 rm -f /target/etc/grub.d/41_zfs_on_boot
 rm -rf /target/boot/zfs-on-boot /target/var/lib/zfs-on-boot
+rm -f /target/etc/zfs-on-boot/bootstrap.key
 mkdir -p /target/boot/grub /target/{proc,sys,dev,run,tmp} /target/etc/{default/grub.d,modprobe.d,cloud/cloud.cfg.d,zfs,initramfs-tools/conf.d}
 chmod 1777 /target/tmp
 mount --rbind /dev /target/dev
@@ -1073,6 +1540,8 @@ hostonly="no"
 hostonly_cmdline="no"
 EOF
 fi
+source /etc/zfs-on-boot/encryption.sh
+encryption_target
 for kernel in /target/boot/vmlinuz-*; do
     version=${kernel##*/vmlinuz-}
     chroot /target modinfo -k "$version" zfs >/dev/null
@@ -1083,13 +1552,16 @@ for kernel in /target/boot/vmlinuz-*; do
     else
         chroot /target update-initramfs -c -k "$version"
     fi
+    if (( ${#ENCRYPTION_ARGS[@]} )); then
+        chmod 600 "/target/boot/initrd.img-$version"
+    fi
 done
 umount /target/run /target/proc
 # UEFI package hooks may mount efivarfs beneath the chroot's sysfs.
 umount -R /target/sys
 umount -R /target/dev
 
-ZFS_ON_BOOT_647c033e829bb5def90a0c863f039fd77d97d654067637009f9dfd2c9983cf95
+ZFS_ON_BOOT_ca19a13e200d49b60212a4bb217e89f4e6dbdf26023d6fd2089c44e88d9aa597
 cat > "$work/recovery-setup.sh" <<'ZFS_ON_BOOT_e2bdd204344cf9783056867eea633d2799df85bd98819f45b4a89fd80e1aebc2'
 #!/bin/bash
 set -Eeuo pipefail
@@ -1120,7 +1592,7 @@ zpool get autoexpand rpool
 zfs list -t snapshot rpool/ROOT/ubuntu@zfsify-installed
 
 ZFS_ON_BOOT_e2bdd204344cf9783056867eea633d2799df85bd98819f45b4a89fd80e1aebc2
-cat > "$work/progress.py" <<'ZFS_ON_BOOT_7cedae557d27358f2b46e5a97f417513ea8f3b3bc0a9afb47754702ac63ead45'
+cat > "$work/progress.py" <<'ZFS_ON_BOOT_bc4b72b2b8d497a545648d028787fa4e49bc01099c1b225dec3ab69fafedd24b'
 #!/usr/bin/python3
 """Dependency-free migration dashboard, live Linux telemetry and durable plain logs."""
 import argparse
@@ -1133,6 +1605,9 @@ import signal
 import subprocess
 import sys
 import time
+import textwrap
+import unicodedata
+from itertools import zip_longest
 
 STATE = Path('/run/zfs-on-boot-progress.json')
 LOG = Path('/var/log/zfs-on-boot/progress.log')
@@ -1141,6 +1616,24 @@ ANSI = re.compile(r'\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))')
 
 def clean(value):
     return ''.join(c for c in ANSI.sub('', str(value)) if c.isprintable())
+
+
+def cells(text):
+    return sum(0 if unicodedata.combining(c) else 2 if unicodedata.east_asian_width(c) in ('W', 'F') else 1
+               for c in clean(text))
+
+
+def bounded(text, width):
+    if cells(text) <= width:
+        return text
+    # Strip styling only for clipped lines; never cut an ANSI escape sequence.
+    result, used = '', 0
+    for char in clean(text):
+        used += cells(char)
+        if used > width:
+            break
+        result += char
+    return result
 
 
 def amount(n):
@@ -1159,11 +1652,12 @@ PHASES = ('Scan disk + choose method', 'Prepare disk', 'Convert ext4 to ZFS',
           'Finish disk + boot setup', 'Snapshots + recovery + growth')
 
 
-def phase_header(phase, width=88, color=False, complete=False):
+def phase_header(phase, width=88, color=False, complete=False, compact=False, kind="root"):
     """Wrap whole phase segments, keeping every stage visible on narrow terminals."""
     lines = ['  zfsify  ⚡  Ubuntu → ZFS', '']
     row = ''
-    for number, title in enumerate(PHASES, 1):
+    titles = PHASES if kind == 'root' else (*PHASES[:3], 'Finish disk + mounts', 'Growth + ready')
+    for number, title in enumerate(('Plan', 'Prepare', 'Convert', 'Configure', 'Ready') if compact else titles, 1):
         mark = '✓ ' if number < phase or complete else ''
         segment = f'{mark}{number}. {title}'
         if number == phase:
@@ -1180,73 +1674,260 @@ def phase_header(phase, width=88, color=False, complete=False):
     return lines
 
 
+# Only presentation context is persisted here; never credentials or backup URLs.
+CONTEXT = Path('/etc/zfs-on-boot/ui-context.json')
+METHODS = {
+    'preserve': ('Keep everything · 50/50', 'Copy, verify, then replace ext4.',
+                 'Needs room for two copies. The original stays until verification.'),
+    'inplace': ('Keep everything · slice-by-slice', 'Reuse space as files are verified.',
+                'Experimental. Original data is released in 64 MiB batches; no full second copy.'),
+    'backup': ('Keep everything · external backup', 'Archive elsewhere, rebuild, restore.',
+               'Needs a destination you explicitly approve. The archive is retained.'),
+    'erase': ('Start fresh · ERASE', 'Discard data and build fresh ZFS.',
+              'Root: retain limited settings only. Data volume: retain no files.'),
+}
+# Operations are supplied by the installer, never guessed from human-readable logs.
+STEPS = {
+    'preserve': [('shrink', 'Shrink ext4 offline'), ('copy', 'Copy to ZFS at disk end'),
+                 ('verify', 'Verify files + metadata'), ('mirror', 'Mirror ZFS to disk start'),
+                 ('grow', 'Remove tail; grow ZFS')],
+    'inplace': [('reserve', 'Reserve rescue + journal'), ('copy', 'Copy / verify / release'),
+                ('verify', 'Verify complete ZFS image'), ('remap', 'Relocate image blocks'),
+                ('grow', 'Grow native ZFS partition')],
+    'backup': [('backup', 'Archive + read-back verify'), ('erase', 'Rebuild disk as ZFS'),
+               ('restore', 'Restore saved archive'), ('verify', 'Verify restored files')],
+    'erase': [('prepare', 'Save limited root settings'), ('erase', 'Rebuild disk as ZFS'),
+              ('restore', 'Install fresh Ubuntu')],
+}
+
+
+def context():
+    try:
+        return json.loads(Path(os.environ.get('ZFSIFY_UI_CONTEXT', CONTEXT)).read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def tint(text, code, color):
+    return f'\033[{code}m{text}\033[0m' if color else text
+
+
+def wrapped(text, width):
+    return textwrap.wrap(clean(text), max(1, width), break_long_words=True, break_on_hyphens=False) or ['']
+
+
+def columns(left, right, width, color=False):
+    """Join already bounded, styled rows without counting ANSI as visible columns."""
+    left_width = width - 45
+    return [a + ' ' * max(0, left_width - cells(a)) + tint(' │ ', '90', color) + b
+            for a, b in zip_longest(left, right, fillvalue='')]
+
+
+def disk_picture(c, operation='prepare', fraction=None, frame=0, color=False,
+                 unicode=True, preview=False, width=42, running=True):
+    """Algorithm schematic, not invented sector telemetry. Byte tiles are logical."""
+    solid, empty, head = ('█', '░', '▓') if unicode else ('#', '.', '>')
+    method = c.get('mode', 'preserve')
+    tiles_count = max(4, min(32, width - 4))
+    half = tiles_count // 2
+    def blocks(parts):
+        return '  ' + ''.join(tint((empty if kind == 'free' else '▒' if kind == 'pending' and unicode else '.' if kind == 'pending' else solid) * count,
+                                {'ext4':'33', 'zfs':'36', 'free':'90', 'boot':'35', 'pending':'90'}[kind], color)
+                              for kind, count in parts)
+    lines = [tint('YOUR DISK  /  ' + ('PLAN PREVIEW' if preview else 'LIVE OPERATION'), '1;36', color)]
+    lines += wrapped(c.get('disk', 'Detecting selected disk'), width)
+    if c.get('size'):
+        lines += wrapped(f"{'Before: ' if not preview else ''}{amount(c['used'])} used / {amount(c['size'])} FS", width)
+    lines += ['']
+    if method == 'preserve':
+        if operation in ('prepare', 'shrink'):
+            parts = [('ext4', tiles_count)]
+            caption = 'ext4 → smaller ext4 + free tail'
+        elif operation in ('copy', 'verify', 'configure', 'create'):
+            filled = int((tiles_count-half) * (fraction or 0)) if operation == 'copy' else 0 if operation == 'create' else tiles_count-half
+            parts = [('ext4', half), ('zfs', filled), ('pending', tiles_count-half-filled)]
+            caption = 'original ext4  →  temporary ZFS'
+        elif operation in ('mirror', 'boot'):
+            filled = int(half * (fraction or 0)) if operation == 'mirror' else 0
+            parts = [('zfs', filled), ('pending', half-filled), ('zfs', tiles_count-half)]
+            caption = 'new ZFS front  ←  verified ZFS tail'
+        else:
+            parts = [('zfs', tiles_count)]
+            caption = 'front ZFS expands into freed tail'
+    elif method == 'inplace':
+        if operation in ('prepare', 'reserve'):
+            parts = [('ext4', tiles_count-2), ('boot', 2)]
+            caption = 'ext4 + 1 GiB rescue / journal'
+        elif operation in ('copy', 'verify', 'create'):
+            # This is logical file progress, not physical ext4 free-space layout.
+            filled = int(tiles_count * (fraction or 0)) if operation in ('copy', 'create') else tiles_count
+            parts = [('ext4', tiles_count-filled), ('zfs', filled)]
+            caption = 'ext4 files → sparse ZFS image'
+        else:
+            parts = [('zfs', tiles_count)]
+            caption = 'ZFS image → native ZFS partition'
+    else:
+        parts = [('ext4' if operation in ('prepare', 'backup') else 'zfs', tiles_count)]
+        caption = ('disk → independent archive → ZFS' if method == 'backup'
+                   else 'existing data → fresh filesystem')
+    lines += blocks(parts), *wrapped(caption, width), ''
+    if preview:
+        used = round(tiles_count * min(1, max(0, c.get('used', 0) / max(1, c.get('size', 1)))))
+        lines = lines[:4] + [blocks([('ext4', used), ('free', tiles_count-used)]),
+                            'Current filesystem usage · shaded = free', '']
+        arrow = ('›' if unicode else '>')
+        flow = ' ' * (frame % 4) + arrow
+        if method == 'preserve':
+            stages = [('Shrink + copy + verify', [('ext4', half), ('zfs', tiles_count-half)]),
+                      ('Mirror tail back to front', [('zfs', half), ('zfs', tiles_count-half)]),
+                      ('Remove tail; grow front', [('zfs', tiles_count)])]
+        elif method == 'inplace':
+            stages = [('Copy / verify / release batches', [('ext4', half), ('zfs', tiles_count-half)]),
+                      ('Verify image; relocate blocks', [('zfs', tiles_count-2), ('boot', 2)]),
+                      ('Native ZFS; grow partition', [('zfs', tiles_count)])]
+        elif method == 'backup':
+            stages = [('Archive + verify on another disk / remote', [('ext4', tiles_count)]),
+                      ('Reformat; restore + verify archive', [('zfs', tiles_count)])]
+        else:
+            stages = [('Discard data; create fresh ZFS', [('zfs', tiles_count)])]
+        for title, parts in stages:
+            lines += [tint(flow+' '+title, '36', color), blocks(parts)]
+        if method == 'inplace':
+            lines += ['64 MiB batches · rescue + journal: 1 GiB']
+        elif method == 'backup':
+            lines += ['Destination: you choose and approve it']
+        elif method == 'erase':
+            lines += wrapped('No files retained.' if c.get('kind') == 'volume' else
+                             'Limited settings retained; other files lost.', width)
+    else:
+        lines += wrapped(c.get('operation_note', dict(STEPS[method]).get(operation,
+                          'Verify native ZFS files' if operation == 'verify-final' else 'Prepare tools / configure system')), width)
+        if operation in ('copy', 'mirror', 'remap', 'restore', 'backup'):
+            n = max(4, (tiles_count//2)*2)
+            filled = int(n * fraction) if fraction is not None else 0
+            tiles = []
+            for i in range(n):
+                if fraction is not None and i < filled:
+                    char, code = solid, '36'
+                elif running and ((fraction is None and (i-frame) % n < 3) or
+                                  (fraction is not None and i == filled)):
+                    char, code = head, '1;33' if frame % 2 else '1;36'
+                else:
+                    char, code = empty, '90'
+                tiles.append(tint(char, code, color))
+            lines += ['  ' + ' '.join(tiles[:n//2]), '  ' + ' '.join(tiles[n//2:]), 'Logical bytes in this operation' if fraction is not None else 'Activity only · byte total unavailable']
+        else:
+            dots = '.' * (1 + frame % 4) if running else ''
+            lines += [f'{"Working" if running else "Operation finished"}{dots}']
+        if method == 'inplace' and operation == 'copy':
+            lines += wrapped('Each batch: copy → sync → verify → release ext4 blocks.', width)
+        elif method == 'preserve' and operation == 'copy':
+            lines += wrapped('Original ext4 is retained until the full copy is verified.', width)
+        elif method == 'backup':
+            lines += wrapped('Your independent archive is retained after restoration.', width)
+    lines += ['', tint('ext4 ■  ZFS ■  rescue ■', '90', color) if not color else
+              tint('ext4 ■', '33', True) + '  ' + tint('ZFS ■', '36', True) + '  ' + tint('rescue ■', '35', True),
+              'Schematic · not physical block positions']
+    if c.get('source'):
+        lines += wrapped('Source: '+c['source'], width)
+    if c.get('platform'):
+        lines += wrapped(c['platform'], width)
+    if c.get('kind') == 'root':
+        lines += wrapped('Final: boot partition + ZFS / and /boot', width)
+    else:
+        lines += wrapped('Final: ZFS data disk; OS disk unchanged', width)
+    lines = [line.replace('ext4', clean(c.get('fstype', 'ext4'))) for line in lines]
+    return [bounded(line, width) for line in lines]
+
+
 def render(s, width=88, frame=0, color=False, unicode=True):
-    """Each tile represents a share of logical bytes, not a physical disk extent."""
     width = max(1, width)
+    c = s.get('context', {})
+    height = s.get('height') or 24
+    wide = bool(c) and width >= 104
+    w = width - 45 if wide else width
     total, done = s.get('total', 0), s.get('done', 0)
-    fraction = min(1, max(0, done / total)) if total else 0
+    fraction = min(1, max(0, done / total)) if total else None
     status = s.get('status', 'running')
     running = status == 'running'
-    solid, empty, active = ('█', '░', '▓') if unicode else ('#', '.', '>')
-    tick, arrow, dot = ('✓', '→', '·') if unicode else ('+', '->', '.')
-    pulses = '·•●•' if unicode else '|/-\\'
-    spinner = pulses[frame % len(pulses)]
-    badge = spinner if running else tick if status == 'complete' else '!'
-    phase = s['phase']
-    ready = phase == 5 and s['label'].startswith('Ready') and status == 'complete'
-    lines = phase_header(phase, width, color=False, complete=ready)
-    lines += ['', f'  {badge} {status.upper()}  ·  STEP: {s["label"]}', '']
+    ready = s['phase'] == 5 and s['label'].startswith('Ready') and status == 'complete'
+    compact = bool(c) and (width < 104 or 0 < s.get('height', 0) < 28)
+    lines = phase_header(s['phase'], width, color=color, complete=ready, compact=compact, kind=c.get("kind", "root"))
+    accent = '31' if status == 'failed' else '32' if status == 'complete' else '36'
+    left = [tint(status.upper() + ('  ·  All done!' if ready else ''), '1;'+accent, color)]
+    left += wrapped(s['label'], w-1) + ['']
+    if c:
+        left += wrapped(METHODS[c['mode']][0], w-1)
+    left += wrapped(f"Devices: {s.get('devices', 'detecting')}", w-1)
     if s.get('source') or s.get('target'):
-        lines.append(f"  {s.get('source') or 'source'}  {arrow}  {s.get('target') or 'destination'}")
+        left += wrapped(f"{s.get('source') or 'source'} → {s.get('target') or 'destination'}", w-1)
+    n = max(1, min(34, w-12))
+    filled = int((fraction or 0)*n)
+    solid, empty = ('━', '─') if unicode else ('#', '.')
+    bar = solid*filled + empty*(n-filled)
+    if fraction is not None:
+        left += ['', tint(bar + f' {fraction*100:5.1f}%', '1;'+accent, color),
+                 f"{'~' if s.get('approximate') else ''}Transfer total  {amount(done)} / {amount(total)}"]
     else:
-        lines.append(f"  Devices  {s['devices']}")
-    cells = max(1, min(28, (width - 12) // 2))
-    bar_row = len(lines)
-    if total:
-        filled = int(fraction * cells)
-        blocks = solid * filled + empty * (cells - filled)
-        if running and filled < cells:
-            blocks = blocks[:filled] + active + blocks[filled+1:]
-        lines += [f'  {" ".join(blocks)}  {fraction*100:5.1f}%',
-                  f"  {'~' if s.get('approximate') else ''}Transfer total  {amount(done)} / {amount(total)}"]
-    else:
-        head = frame % (cells + 4)
-        blocks = ''.join(active if 0 <= head-i < 4 and running else empty for i in range(cells))
-        lines += [f'  {" ".join(blocks)}', f'  {"Working" if running else status.capitalize()}  {dot}  total unavailable (streaming / metadata)']
+        marker = frame % max(1, n)
+        bar = empty*marker + ('●' if unicode else '>') + empty*(n-marker-1) if running else bar
+        left += ['', tint(bar, accent, color), 'Byte total unavailable · ' + ('working' if running else status)]
     speed = max(0, s.get('speed', 0))
-    eta = duration((total - done) / speed) if total > done and speed > 0 and running else '--'
-    rate = f'{amount(speed)}/s' if total else '--'
-    lines.append(f"  {rate}{' avg' if not running and total else ''}  {dot}  elapsed {duration(s.get('elapsed', 0))}  {dot}  ETA {eta}")
+    eta = duration((total-done)/speed) if total > done and speed and running else '--'
+    rate_label = ' (' + s['rate_label'] + ')' if total and s.get('rate_label') else ''
+    left += [f"{amount(speed)+'/s' if total else '--'}{rate_label}  ·  ETA {eta}  ·  {duration(s.get('elapsed', 0))} elapsed"]
     if s.get('files_total'):
-        lines.append(f"  Files  {s.get('files_done', 0):,} / {s['files_total']:,}")
+        left += [f"Files  {s.get('files_done', 0):,} / {s['files_total']:,}"]
+    left += ['', tint('DISK ACTIVITY', '1', color)]
     for device, values in s.get('io', {}).items():
-        lines.append(f'  {device}  R {values[0]:.1f} MB/s  W {values[1]:.1f} MB/s  {values[2]:.0f} IOPS')
+        left += wrapped(f'{device}  R {values[0]:.1f} MB/s  W {values[1]:.1f} MB/s  {values[2]:.0f} IOPS', w-1)
     if not s.get('io'):
-        lines.append('  Device I/O  waiting for counters' if running else '  Device I/O  unavailable')
+        left += ['Waiting for device counters' if running else 'Device counters unavailable']
+    left = [bounded(line, w) for line in left]
+    operation = s.get('operation', 'prepare')
+    if compact:
+        # Recovery consoles commonly expose only 80x24. Prioritize the operation,
+        # whole-transfer counters and disk diagram over repeated I/O devices.
+        lines += [tint(status.upper()+' · '+clean(s['label']), '1;'+accent, color)]
+        if height >= 22:
+            lines += [METHODS[c['mode']][0]]
+        lines += wrapped('Devices: '+s.get('devices', ''), width)[:2]
+        lines += [tint(bar + (f' {fraction*100:5.1f}%' if fraction is not None else ''), accent, color)]
+        lines += [f'Transfer total  {amount(done)} / {amount(total)}' if total else 'Byte total unavailable · '+status]
+        lines += [f"{amount(speed)+'/s' if total else '--'}{rate_label} · ETA {eta} · {duration(s.get('elapsed', 0))} elapsed"]
+        if s.get('files_total') and height >= 22:
+            lines += [f"Files {s.get('files_done', 0):,} / {s['files_total']:,}"]
+        for device, values in list(s.get('io', {}).items())[:1]:
+            lines += [f'{device} R {values[0]:.1f} MB/s · W {values[1]:.1f} MB/s · {values[2]:.0f} IOPS']
+        lines += disk_picture(c, operation, fraction, frame, color, unicode, width=width, running=running)[4:6]
+        room = max(0, height-len(lines)-2)
+        if room and s.get('messages'):
+            lines += [tint('LATEST OUTPUT', '1', color)] + [clean(line) for line in s['messages'][-min(room, 3):]]
+        lines += [tint('Log: /var/log/zfs-on-boot/progress.log', '90', color)]
+        return '\n'.join(bounded(line, width) for line in lines)
+    if wide:
+        lines += [''] + columns(left, disk_picture(c, operation, fraction, frame, color, unicode,
+                                                   running=running), width, color)
+    else:
+        lines += [''] + left
+        if c:
+            lines += [tint('DISK PLAN · '+dict(STEPS[c['mode']]).get(operation, 'Prepare / configure'), '36', color)]
+            lines += disk_picture(c, operation, fraction, frame, color, unicode, width=width, running=running)[4:7]
     if s.get('messages'):
-        lines += ['', '  Recent output  ·  full log: /var/log/zfs-on-boot/progress.log']
-        lines += ['  ' + line for line in s['messages'][-5:]]
-    lines = [clean(line)[:width] for line in lines]
-    if color:
-        accent = '31' if status == 'failed' else '32' if status == 'complete' else '36'
-        lines[0] = f'\033[1;{accent}m{lines[0]}\033[0m'
-        for row, line in enumerate(lines):
-            if '[' in line and ']' in line:
-                lines[row] = re.sub(r'(\[[^]]+\])', lambda m: '\033[1;36m' + m[0] + '\033[0m', line)
-        tiles = re.compile('(' + '|'.join(re.escape(c)+'+' for c in (solid, empty, active)) + ')')
-        lines[bar_row] = tiles.sub(lambda match: f'\033[{"90" if match[0][0] == empty else "1;"+accent}m'
-                             + match[0] + '\033[0m', lines[bar_row])
-    return '\n'.join(lines)
+        lines += ['', tint('LATEST OUTPUT', '1', color)]
+        lines += [bounded(clean(line), width) for line in s['messages'][-3:]]
+    lines += [tint('Log: /var/log/zfs-on-boot/progress.log', '90', color)]
+    return '\n'.join(bounded(line, width) for line in lines)
 
 
 class Display:
     """A fixed dashboard in the terminal viewport; raw output stays in the log."""
-    def __init__(self, animate=True):
-        self.stream = sys.stdout
+    def __init__(self, animate=True, stream=None):
+        self.stream = stream or sys.stdout
         self.owned = False
-        if animate and not self.stream.isatty() and os.environ.get('ZFS_PROGRESS_TTY') == '1':
+        if animate and not self.stream.isatty() and (os.environ.get('ZFS_PROGRESS_TTY') == '1' or os.environ.get('ZFS_PROGRESS_CONSOLE') == '1'):
             try:
-                self.stream = open('/dev/tty', 'w', buffering=1)
+                self.stream = open('/dev/console' if os.environ.get('ZFS_PROGRESS_CONSOLE') == '1' else '/dev/tty', 'w', buffering=1)
                 self.owned = True
             except OSError:
                 pass
@@ -1254,6 +1935,7 @@ class Display:
         self.color = self.live and 'NO_COLOR' not in os.environ
         self.unicode = 'UTF' in (self.stream.encoding or '').upper().replace('-', '')
         self.rows = 0
+        self.content_rows = 0
         self.frame = 0
         self.width = None
         self.height = None
@@ -1263,10 +1945,17 @@ class Display:
             self.stream.write('\033[?25l')
 
     def draw(self, state):
+        self.paint(lambda width, frame, color, unicode: render(
+            {**state, "messages": state.get("messages", self.messages), "height": self.height-1 if self.height else 0}, width, frame, color, unicode))
+
+    def paint(self, renderer):
         if not self.live:
-            print(render(state, width=160, unicode=False), file=self.stream, flush=True)
+            print(renderer(100, self.frame, False, False), file=self.stream, flush=True)
             return
-        size = os.get_terminal_size(self.stream.fileno())
+        try:
+            size = os.get_terminal_size(self.stream.fileno())
+        except OSError:
+            size = os.terminal_size((80, 24))
         width = max(1, (size.columns or 80) - 1)
         # Repaint the viewport after resize; unchanged rows otherwise stay intact.
         if self.width != width or self.height != (size.lines or 24):
@@ -1274,9 +1963,9 @@ class Display:
             self.width = width
             self.height = size.lines or 24
             self.previous = []
-        state = {**state, 'messages': state.get('messages', self.messages)}
-        lines = render(state, width, self.frame, self.color, self.unicode).splitlines()
+        lines = renderer(width, self.frame, self.color, self.unicode).splitlines()
         height = max(1, (size.lines or 24) - 1)
+        self.content_rows = min(len(lines), height)
         lines = (lines + [''] * height)[:height]
         # Replace each row's text before erasing its old suffix. One write
         # keeps redraws together; no erase-screen/erase-region blank transition.
@@ -1301,7 +1990,7 @@ class Display:
 
     def close(self):
         if self.live:
-            self.stream.write('\033[0m\033[?25h')
+            self.stream.write(f'\033[{self.content_rows+1};1H\033[0m\033[?25h')
             self.stream.flush()
         if self.owned:
             self.stream.close()
@@ -1394,21 +2083,28 @@ def run(args, display):
     prev = disks(names)
     state = dict(phase=args.phase, label=args.label, devices=','.join(names), total=args.total,
                  source=args.source, target=args.target, runner_pid=os.getpid(), runner_start=process_start(os.getpid()), done=0, speed=0, elapsed=0, status='running', io={})
+    state.update(context=context(), operation=getattr(args, 'operation', 'prepare'))
     counters = Counters(state)
-    last_done = last_print = last_frame = 0
+    last_print = last_frame = 0
+    samples = [(start, 0)]
     buffer = ''
 
     def publish(final=False):
-        nonlocal tick, prev, last_done, last_print
+        nonlocal tick, prev, last_print
         now = time.monotonic()
         dt = max(now-tick, .001)
         current = disks(names)
         state['io'] = {d: [(v[0]-prev[d][0])/dt/1e6, (v[1]-prev[d][1])/dt/1e6, (v[2]-prev[d][2])/dt]
                        for d, v in current.items() if d in prev and all(new >= old for new, old in zip(v, prev[d]))}
-        state['speed'] = max(0, state['done']-counters.initial)/max(now-start, .001) if final else max(0, state['done']-last_done)/dt
+        samples.append((now, state['done']))
+        while len(samples) > 2 and samples[1][0] <= now-5:
+            samples.pop(0)
+        state['speed'] = (max(0, state['done']-counters.initial)/max(now-start, .001) if final else
+                          max(0, state['done']-samples[0][1])/max(now-samples[0][0], .001))
+        state['rate_label'] = 'avg' if final else '5s'
         state['elapsed'] = now-start
         state['messages'] = display.messages
-        prev, tick, last_done = current, now, state['done']
+        prev, tick = current, now
         tmp = STATE.with_suffix('.tmp')
         tmp.write_text(json.dumps(state))
         tmp.replace(STATE)
@@ -1448,7 +2144,7 @@ def run(args, display):
                     for line in lines:
                         if counters.consume(line):
                             if line.startswith('ZFSIFY_START '):
-                                last_done = counters.initial
+                                samples[:] = [(time.monotonic(), counters.initial)]
                         elif line:
                             display.message(line)
                             log.write(clean(line)+'\n')
@@ -1495,6 +2191,7 @@ def main():
     h = sub.add_parser('header')
     h.add_argument('--phase', type=int, choices=range(1, 6), required=True)
     h.add_argument('--label', required=True)
+    h.add_argument('--kind', choices=['root', 'volume'], default='root')
     f = sub.add_parser('watch')
     f.add_argument('--once', action='store_true')
     r = sub.add_parser('run')
@@ -1504,13 +2201,14 @@ def main():
     r.add_argument('--source', default='')
     r.add_argument('--target', default='')
     r.add_argument('--total', type=int, default=0)
+    r.add_argument('--operation', default='prepare')
     r.add_argument('--resilver', action='store_true')
     r.add_argument('--pool', default='rpool')
     r.add_argument('command', nargs=argparse.REMAINDER)
     args = p.parse_args()
     if args.action == 'header':
         width = os.get_terminal_size().columns - 1 if sys.stdout.isatty() else 100
-        print('\n'.join(phase_header(args.phase, width, color=sys.stdout.isatty() and 'NO_COLOR' not in os.environ)))
+        print('\n'.join(phase_header(args.phase, width, color=sys.stdout.isatty() and 'NO_COLOR' not in os.environ, kind=args.kind)))
         print('\n  ' + args.label + '\n', flush=True)
         return 0
     def terminate(signum, _frame):
@@ -1529,7 +2227,7 @@ def main():
 if __name__ == '__main__':
     sys.exit(main())
 
-ZFS_ON_BOOT_7cedae557d27358f2b46e5a97f417513ea8f3b3bc0a9afb47754702ac63ead45
+ZFS_ON_BOOT_bc4b72b2b8d497a545648d028787fa4e49bc01099c1b225dec3ab69fafedd24b
 cat > "$work/plan.py" <<'ZFS_ON_BOOT_fd829a283a69e4ef6b023f864bf2c9e95658d718af26f243cce82bf95c021242'
 #!/usr/bin/python3
 """Validate a GPT layout and calculate disjoint source, scratch and final regions."""
@@ -1808,11 +2506,18 @@ with image.open('rb') as stream:
 (shim/'config').write_text(f'SOURCE_UUID={uuid}\nRESCUE_SHA={digest}\nMODULES="{" ".join(modules)}"\n')
 
 ZFS_ON_BOOT_6937b61de010540f98d6814303fa45e6671b21a2273402e37bcc911d198d235a
-cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_ed338db083ec398d1f5969db5185383810761cd6ddeb3b2b5a6c455eb7e9c0d4'
+cat > "$work/zbm-install.sh" <<'ZFS_ON_BOOT_975e6e5041edac9dddfc33510e53f1679c8fb7d75f810431e00eb19e84967b62'
 #!/bin/bash
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 ACTION=${1:?} ROOT=${2:?}
+if [[ $ACTION = kcl-tool ]]; then
+    DEST=$ROOT/etc/zfs-on-boot/zbm
+    mkdir -p "$DEST"
+    curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zbm-kcl -o "$DEST/zbm-kcl"
+    echo '16edae3eee5df9a0b133734bc4d8a8cb68ca73ac30f98cb21cea3212b051ff01  '"$DEST/zbm-kcl" | sha256sum -c -
+    exit 0
+fi
 FIRMWARE=$(cat "$ROOT/etc/zfs-on-boot/firmware" 2>/dev/null || cat /etc/zfs-on-boot/firmware)
 BOOT_CONFIG=$ROOT/etc/zfs-on-boot/boot
 [[ $ACTION = download ]] || BOOT_CONFIG=/etc/zfs-on-boot/boot
@@ -1823,8 +2528,7 @@ if [[ $ACTION = download ]]; then
     if [[ $FIRMWARE = uefi ]]; then
         curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zfsbootmenu-release-x86_64-v3.1.0-linux6.6.EFI -o "$DEST/zfsbootmenu.EFI"
         echo 'd4a67012f03659c91a1f227aa6739b4b41bd5c7d0bd64e89aa7358bf08826cfd  '"$DEST/zfsbootmenu.EFI" | sha256sum -c -
-        curl --fail --location --retry 3 https://github.com/zbm-dev/zfsbootmenu/releases/download/v3.1.0/zbm-kcl -o "$DEST/zbm-kcl"
-        echo '16edae3eee5df9a0b133734bc4d8a8cb68ca73ac30f98cb21cea3212b051ff01  '"$DEST/zbm-kcl" | sha256sum -c -
+        bash "$0" kcl-tool "$ROOT"
         chroot "$ROOT" bash /etc/zfs-on-boot/zbm/zbm-kcl -d -a "$KCL" /etc/zfs-on-boot/zbm/zfsbootmenu.EFI
         exit 0
     fi
@@ -1838,6 +2542,15 @@ if [[ $ACTION = download ]]; then
 fi
 [[ $ACTION = install ]]
 DISK=${3:?} BOOTDEV=${4:?}
+install_boot_key() {
+    if python3 -c 'import json; exit(not json.load(open("/etc/zfs-on-boot/encryption.json")).get("boot_key", False))'; then
+        python3 /etc/zfs-on-boot/encryption.py boot-hook --output "$1/zfsify-hooks/load-key.d/zfsify-plaintext-key"
+        KCL+=" zbm.hookroot=UUID=$(blkid -s UUID -o value "$BOOTDEV")//zfsify-hooks"
+        if [[ $FIRMWARE = uefi ]]; then
+            bash /etc/zfs-on-boot/zbm/zbm-kcl -d -a "$KCL" /etc/zfs-on-boot/zbm/zfsbootmenu.EFI
+        fi
+    fi
+}
 # A resumed installation can format this partition again, changing its UUID.
 # Replace the boot mount entry rather than accumulating obsolete UUIDs.
 python3 - "$ROOT/etc/fstab" <<'PY'
@@ -1858,6 +2571,7 @@ if [[ $FIRMWARE = uefi ]]; then
     mkfs.vfat -F 32 -n ZFSBOOTMENU "$BOOTDEV"
     mkdir -p "$ROOT/boot/efi"
     mount "$BOOTDEV" "$ROOT/boot/efi"
+    install_boot_key "$ROOT/boot/efi"
     mkdir -p "$ROOT/boot/efi/EFI/BOOT" "$ROOT/boot/efi/EFI/ZFSBootMenu"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/ZFSBootMenu/zfsbootmenu.EFI"
     cp /etc/zfs-on-boot/zbm/zfsbootmenu.EFI "$ROOT/boot/efi/EFI/BOOT/$EFI_FALLBACK"
@@ -1872,6 +2586,7 @@ fi
 mkfs.ext4 -F -O '^64bit,^metadata_csum' -L ZFSBOOTMENU "$BOOTDEV"
 mkdir -p "$ROOT/boot/syslinux"
 mount "$BOOTDEV" "$ROOT/boot/syslinux"
+install_boot_key "$ROOT/boot/syslinux"
 cp /usr/lib/syslinux/modules/bios/ldlinux.c32 "$ROOT/boot/syslinux/"
 cp /etc/zfs-on-boot/zbm/{vmlinuz-bootmenu,initramfs-bootmenu.img} "$ROOT/boot/syslinux/"
 cat > "$ROOT/boot/syslinux/syslinux.cfg" <<CFG
@@ -1892,7 +2607,7 @@ umount "$ROOT/boot/syslinux"
 # Activate the BIOS loader only after its files are durable.
 dd if=/usr/lib/syslinux/mbr/gptmbr.bin of="$DISK" bs=440 count=1 conv=notrunc,fsync
 
-ZFS_ON_BOOT_ed338db083ec398d1f5969db5185383810761cd6ddeb3b2b5a6c455eb7e9c0d4
+ZFS_ON_BOOT_975e6e5041edac9dddfc33510e53f1679c8fb7d75f810431e00eb19e84967b62
 cat > "$work/zbm-build.sh" <<'ZFS_ON_BOOT_4c76357c973dd0cf134c763bf14137a2d5fafead0fd40a9e34313a98f32866a3'
 #!/bin/bash
 # Build upstream ARM64 ZFSBootMenu without changing the host's initramfs tooling.
@@ -1998,13 +2713,14 @@ for ((i=0; i<${#OWNED[@]}-KEEP; i++)); do
 done
 
 ZFS_ON_BOOT_6980f24230b5f647bc24e8520a2de685e8f6d362da9351c3ff3bff41675ba717
-cat > "$work/volume.sh" <<'ZFS_ON_BOOT_ac4fdd9c7b45b334abec4ee613248f364e0b4dfefccd9aeed04765153947b046'
+cat > "$work/volume.sh" <<'ZFS_ON_BOOT_88f5efc262e975d392f42b35490c010a13426e491325dd1544111ea6e61403c0'
 #!/bin/bash
 # Non-root ext4 conversion. The running OS stays on its own disk.
 set -Eeuo pipefail
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin LC_ALL=C DEBIAN_FRONTEND=noninteractive
 SOURCE=${1:?} TARGET=${2:?} MODE=${3:-auto} BACKUP=${4:-ask} ASSUME_YES=${5:-0}
-python3 "$SOURCE/progress.py" header --phase 1 --label "Scan the selected data disk and its mount settings"
+export ZFSIFY_UI_CONTEXT=$SOURCE/ui-context.json
+python3 "$SOURCE/progress.py" header --kind volume --phase 1 --label "Scan the selected data disk and its mount settings"
 [[ ! -t 1 ]] || export ZFS_PROGRESS_TTY=1
 die() { echo "zfsify: $*" >&2; exit 1; }
 [[ $(id -u) = 0 ]] || die 'Run as root.'
@@ -2105,25 +2821,16 @@ ERASE_ONLY=()
 CONSENT=()
 [[ $ASSUME_YES != 1 ]] || CONSENT=(--yes)
 while :; do
-python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind volume --disk "$DISK" --size "$FS_BYTES" --used "$USED_BYTES" \
+python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind volume --disk "$DISK" --source "$DEV" --fstype "${SOURCE_FS:-empty}" --size "$FS_BYTES" --used "$USED_BYTES" \
     --preserve-capacity "$PRESERVE_CAPACITY" --mode "$MODE" --backup "$BACKUP" "${ERASE_ONLY[@]}" > "$WORK/selection"
 mapfile -t SELECTION < "$WORK/selection"
 MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
-lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
-echo "$MODE data volume: $DEV on $DISK; final pool $POOL at $DEFAULT_MOUNT"
-case $MODE in
-preserve) echo '[ ext4 ] -> [ smaller ext4 | temporary ZFS ] -> [ ZFS mirror | temporary ZFS ] -> [ full ZFS ]';;
-backup) echo '[ ext4 ] -> [ verified archive on separate Volume / remote ] -> [ full ZFS ] -> [ restored data ]';;
-erase) echo '[ ext4: all data discarded ] -> [ empty full-disk ZFS ]';;
-esac
-[[ $MODE != erase ]] || echo 'ERASE: no files from this data volume will be retained.'
-echo "Work logs: $WORK; stop applications using $MOUNT before proceeding."
 REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Stop applications using $MOUNT before proceeding.")
 [[ $REVIEW != 1 ]] || break
 MODE=auto
 done
 exec > >(tee -a "$WORK/conversion.log") 2>&1
-phase() { local n=$1 label=$2; shift 2; python3 "$SOURCE/progress.py" run --phase "$n" --label "$label" --devices "$DISK,$DEV" -- "$@"; }
+phase() { local n=$1 label=$2; shift 2; python3 "$SOURCE/progress.py" run --phase "$n" --label "$label" --operation "${ZFSIFY_OPERATION:-prepare}" --devices "$DISK,$DEV" -- "$@"; }
 phase 2 'Update Ubuntu package indexes' apt-get update
 phase 2 'Install data migration tools' apt-get install -y --no-install-recommends zfsutils-linux gdisk e2fsprogs rsync python3 cloud-guest-utils rclone
 if [[ $MODE = backup ]]; then
@@ -2139,28 +2846,28 @@ LOOP=
 trap 'echo "Conversion stopped. Do not wipe or detach devices. Inspect $WORK and zpool status; temporary device: ${LOOP:-none}."' ERR
 if [[ $MODE = backup ]]; then
     mount -o ro "$DEV" "$WORK/old"
-    phase 2 "Back up and read-back verify $DEV with rclone" bash "$SOURCE/backup.sh" save
+    ZFSIFY_OPERATION=backup phase 2 "Back up and read-back verify $DEV with rclone" bash "$SOURCE/backup.sh" save
     umount "$WORK/old"
 fi
 if [[ $MODE = preserve ]]; then
-    phase 3 "Check $DEV offline" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$DEV"
-    phase 3 "Shrink $DEV" resize2fs "$DEV" "$(((SPLIT-START)*512/1024-1024))K"
+    ZFSIFY_OPERATION=shrink phase 3 "Check $DEV offline" bash -c 'e2fsck -f -p "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$DEV"
+    ZFSIFY_OPERATION=shrink phase 3 "Shrink $DEV" resize2fs "$DEV" "$(((SPLIT-START)*512/1024-1024))K"
     LOOP=$(losetup --find --show --offset "$((SPLIT*512))" --sizelimit "$(((LAST-SPLIT+1)*512))" "$DISK")
-    phase 3 "Create temporary ZFS on $LOOP" zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$LOOP"
+    ZFSIFY_OPERATION=copy phase 3 "Create temporary ZFS on $LOOP" zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$LOOP"
     [[ $(zpool status -P "$POOL" | awk '$1 ~ /^\/dev\// {print $1}') = "$LOOP" ]] || die 'Unexpected temporary vdev layout; original filesystem has not been deleted.'
     zfs create -o mountpoint="$WORK/new" "$POOL/data"
     mount -o ro "$DEV" "$WORK/old"
     TOTAL=$(rsync -aHAXS --numeric-ids --dry-run --stats "$WORK/old/" "$WORK/new/" | awk -F ': ' '/^Total transferred file size:/ {gsub(/[^0-9]/,"",$2);print $2}')
-    python3 "$SOURCE/progress.py" run --phase 3 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --source "$DEV" --target "$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
-    phase 3 'Verify every copied file and its metadata' bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$1/" "$2/" > "$3"; cat "$3"; test ! -s "$3"' _ "$WORK/old" "$WORK/new" "$WORK/differences"
+    python3 "$SOURCE/progress.py" run --operation copy --phase 3 --label "Copy $DEV to $LOOP" --devices "$DISK,$DEV,$LOOP" --source "$DEV" --target "$LOOP" --total "$TOTAL" -- rsync -aHAXS --numeric-ids --info=progress2,name0 --outbuf=L "$WORK/old/" "$WORK/new/"
+    ZFSIFY_OPERATION=verify phase 3 'Verify every copied file and its metadata' bash -o pipefail -c 'rsync -aHAXSnic --numeric-ids --delete "$1/" "$2/" > "$3"; cat "$3"; test ! -s "$3"' _ "$WORK/old" "$WORK/new" "$WORK/differences"
     umount "$WORK/old"
     # The verified tail ends before the backup GPT; writing the new GPT cannot touch it.
-    phase 4 "Create the final GPT on $DISK" sgdisk --clear -n "1:2048:$((SPLIT-1))" -t 1:BF01 "$DISK"
+    ZFSIFY_OPERATION=mirror phase 4 "Create the final GPT on $DISK" sgdisk --clear -n "1:2048:$((SPLIT-1))" -t 1:BF01 "$DISK"
     partprobe "$DISK"
     udevadm settle
     FRONT=$(part 1)
     [[ -b $FRONT && $(blockdev --getsize64 "$FRONT") -ge $(blockdev --getsize64 "$LOOP") ]]
-    python3 "$SOURCE/progress.py" run --phase 4 --label "Relocate verified data via mirror" \
+    python3 "$SOURCE/progress.py" run --operation mirror --phase 4 --label "Relocate verified data via mirror" \
         --devices "$DISK,$LOOP,$FRONT" --source "$LOOP" --target "$FRONT" --resilver --pool "$POOL" \
         -- zpool attach -f -w "$POOL" "$LOOP" "$FRONT"
     [[ $(zpool list -H -o health "$POOL") = ONLINE ]]
@@ -2168,26 +2875,26 @@ if [[ $MODE = preserve ]]; then
     zpool detach "$POOL" "$LOOP"
     zpool labelclear -f "$LOOP"
     losetup -d "$LOOP"; LOOP=
-    phase 4 'Expand the final data partition' growpart "$DISK" 1
+    ZFSIFY_OPERATION=grow phase 4 'Expand the final data partition' growpart "$DISK" 1
     partx -u --nr 1 "$DISK"
     zpool online -e "$POOL" "$FRONT"
 else
-    phase 3 "Erase data disk $DISK" sgdisk --clear -n 1:2048:0 -t 1:BF01 "$DISK"
+    ZFSIFY_OPERATION=erase phase 3 "Erase data disk $DISK" sgdisk --clear -n 1:2048:0 -t 1:BF01 "$DISK"
     partprobe "$DISK"; udevadm settle
     FRONT=$(part 1)
     zpool create -f -o ashift=12 -o autoexpand=on -O compression=lz4 -O xattr=sa -O acltype=posixacl -O mountpoint=none "$POOL" "$FRONT"
     zfs create -o mountpoint="$WORK/new" "$POOL/data"
 fi
 if [[ $MODE = backup ]]; then
-    phase 3 'Restore verified data-volume archive' bash "$SOURCE/backup.sh" restore
+    ZFSIFY_OPERATION=restore phase 3 'Restore verified data-volume archive' bash "$SOURCE/backup.sh" restore
 fi
-phase 4 'Update fstab and mount the new ZFS dataset' bash "$SOURCE/volume-finish.sh" "$DEV" "$ORIGINAL_UUID" "$DEFAULT_MOUNT" "$POOL" "$WORK" "$SOURCE"
-phase 5 "Enable automatic disk growth for $POOL" systemctl enable "zfsify-volume-grow@$POOL.service"
-phase 5 'Ready: data volume converted' zpool status "$POOL"
+ZFSIFY_OPERATION=ready phase 4 'Update fstab and mount the new ZFS dataset' bash "$SOURCE/volume-finish.sh" "$DEV" "$ORIGINAL_UUID" "$DEFAULT_MOUNT" "$POOL" "$WORK" "$SOURCE"
+ZFSIFY_OPERATION=ready phase 5 "Enable automatic disk growth for $POOL" systemctl enable "zfsify-volume-grow@$POOL.service"
+ZFSIFY_OPERATION=ready phase 5 'Ready: data volume converted' zpool status "$POOL"
 echo "ZFS data mounted at $DEFAULT_MOUNT; original fstab and logs saved in $WORK."
 [[ $MODE != backup ]] || cat "$WORK/backup-next-steps.txt"
 
-ZFS_ON_BOOT_ac4fdd9c7b45b334abec4ee613248f364e0b4dfefccd9aeed04765153947b046
+ZFS_ON_BOOT_88f5efc262e975d392f42b35490c010a13426e491325dd1544111ea6e61403c0
 cat > "$work/volume-finish.sh" <<'ZFS_ON_BOOT_5cf92df028744c7ddfffe4bde184a052ac9ca82fa4fc7ecb99c3d95deb7cb2cc'
 #!/bin/bash
 set -Eeuo pipefail
@@ -2507,7 +3214,7 @@ print('First selected files:\n'+'\n'.join(preview))
 print('Complete KEEP/OMIT preview:', output.with_suffix('.manifest'))
 
 ZFS_ON_BOOT_30f084bb342a56cb18894353d441529c4b70c40d8929df99548c01212793b161
-cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_7c95985970d54d6ded8f04eeefcfa32f02999208641be71e12fb76103683f310'
+cat > "$work/inplace.sh" <<'ZFS_ON_BOOT_05f07e3a979786d622f240c0f3083d6e05b282e94ffdc162ded76b2d4058f349'
 #!/bin/bash
 # Sourced by the RAM installer. Persistent state lives outside the source.
 . /etc/zfs-on-boot/plan.env
@@ -2566,8 +3273,8 @@ if [[ -z $SCRATCH ]]; then
     cp /old/var/lib/zfs-on-boot/stage.log /var/log/zfs-on-boot/stage.log
     rm -rf /old/var/lib/zfs-on-boot
     inplace_unmount_source
-    phase 2 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
-    phase 2 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
+    ZFSIFY_OPERATION=reserve phase 2 "Check ext4 before reserving 1 GiB on $DISK" bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    ZFSIFY_OPERATION=reserve phase 2 'Reserve space for the persistent rescue and journal' resize2fs "$ROOTDEV" "$(( (COPY_END-ROOT_START+1)/2-1024 ))K"
     sgdisk -d "$ROOT_PART" -n "$ROOT_PART:$ROOT_START:$COPY_END" -t "$ROOT_PART:8300" -u "$ROOT_PART:$ROOT_GUID" -n "32:$SCRATCH_START:$ROOT_END" -t 32:8300 "$DISK"
     partprobe "$DISK"
     udevadm settle
@@ -2626,7 +3333,7 @@ if [[ $INPLACE_PHASE = prepare ]]; then
     inplace_mount_source
     rm -rf /old/var/lib/zfs-on-boot /old/boot/zfs-on-boot
     rm -f "$IMAGE" "$MANIFEST" "$MANIFEST-journal"
-    phase 3 'Record original file hashes and metadata in the journal' python3 "$MOVER" capture "$MANIFEST" /old
+    ZFSIFY_OPERATION=reserve phase 3 'Record original file hashes and metadata in the journal' python3 "$MOVER" capture "$MANIFEST" /old
     truncate -s "$IMAGE_BYTES" "$IMAGE"
     inplace_map_image
     create_root_pool off
@@ -2636,16 +3343,17 @@ if [[ $INPLACE_PHASE = prepare ]]; then
     sync -f /old
     inplace_checkpoint copy
 elif [[ $INPLACE_PHASE = copy ]]; then
-    phase 3 'Recover the outer ext4 journal' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    ZFSIFY_OPERATION=reserve phase 3 'Recover the outer ext4 journal' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     inplace_mount_source
     inplace_map_image
     zpool import -f -N -R /target -d "$ZPART" rpool
+    encryption_load
     zfs mount rpool/ROOT/ubuntu
 fi
 if [[ $INPLACE_PHASE = copy ]]; then
     DEVICES=$DISK,$ROOTDEV,$SCRATCH,$ZPART
-    phase 3 'Copy, checksum and release original data in 64 MiB batches' python3 "$MOVER" move "$MANIFEST" /old /target
-    phase 3 'Verify the complete manifest against the ZFS image' python3 "$MOVER" verify "$MANIFEST" /target
+    ZFSIFY_OPERATION=copy phase 3 'Copy, checksum and release original data in 64 MiB batches' python3 "$MOVER" move "$MANIFEST" /old /target
+    ZFSIFY_OPERATION=verify phase 3 'Verify the complete manifest against the ZFS image' python3 "$MOVER" verify "$MANIFEST" /target
     inplace_unmap_image
     inplace_checkpoint copied
 fi
@@ -2655,17 +3363,17 @@ if [[ $INPLACE_PHASE = remap && ! -d $JOB ]]; then
     inplace_checkpoint copied
 fi
 if [[ $INPLACE_PHASE = copied ]]; then
-    phase 3 'Check outer ext4 before physical block relocation' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
+    ZFSIFY_OPERATION=remap phase 3 'Check outer ext4 before physical block relocation' bash -c 'e2fsck -fp "$1"; rc=$?; [ "$rc" -le 1 ]' _ "$ROOTDEV"
     mount -o ro "$ROOTDEV" /old
     inplace_checkpoint remap
     # Exact secondary size disables automatic primary mmap allocation. Keep
     # scratch on partition 32 and bound RAM use even on 512 MiB machines.
-    phase 3 "Remap the image onto $ROOTDEV" fsremap --questions=no --mem-buffer=16M --exact-secondary-storage=32M --temp-dir="$STATE" -- "$ROOTDEV" "$IMAGE"
+    ZFSIFY_OPERATION=remap phase 3 "Remap the image onto $ROOTDEV" fsremap --questions=no --mem-buffer=16M --exact-secondary-storage=32M --temp-dir="$STATE" -- "$ROOTDEV" "$IMAGE"
     inplace_checkpoint native
 elif [[ $INPLACE_PHASE = remap ]]; then
     # Never mount ext4 or create a new job once physical relocation started.
     if [[ -f $JOB/storage.bin ]]; then
-        phase 3 'Resume physical block relocation from its journal' fsremap --questions=no --mem-buffer=16M --temp-dir="$STATE" --resume-job=1 -- "$ROOTDEV"
+        ZFSIFY_OPERATION=remap phase 3 'Resume physical block relocation from its journal' fsremap --questions=no --mem-buffer=16M --temp-dir="$STATE" --resume-job=1 -- "$ROOTDEV"
     else
         # fsremap removes storage.bin on success, before our next checkpoint.
         # A completed relocation is also recorded as zero outstanding blocks.
@@ -2677,8 +3385,9 @@ fi
 if [[ $INPLACE_PHASE = native ]]; then
     dmsetup create zfsify-native --table "0 $((IMAGE_BYTES/512-IMAGE_OFFSET)) linear $ROOTDEV $IMAGE_OFFSET"
     zpool import -f -N -R /target -d /dev/mapper/zfsify-native rpool
+    encryption_load
     zfs mount rpool/ROOT/ubuntu
-    phase 3 'Verify all files after physical remapping' python3 "$MOVER" verify "$MANIFEST" /target
+    ZFSIFY_OPERATION=verify-final phase 3 'Verify all files after physical remapping' python3 "$MOVER" verify "$MANIFEST" /target
     zpool set autotrim=on rpool
     zpool export rpool
     dmsetup remove zfsify-native
@@ -2697,11 +3406,12 @@ fi
 [[ $INPLACE_PHASE = target || $INPLACE_PHASE = configured ]]
 ZPART=$(part 2)
 zpool import -f -N -R /target -d "$ZPART" rpool
+encryption_load
 zfs mount rpool/ROOT/ubuntu
 mkdir -p -m 700 /target/var/log/zfs-on-boot/inplace
 DEVICES=$DISK,$ZPART,$SCRATCH
 
-ZFS_ON_BOOT_7c95985970d54d6ded8f04eeefcfa32f02999208641be71e12fb76103683f310
+ZFS_ON_BOOT_05f07e3a979786d622f240c0f3083d6e05b282e94ffdc162ded76b2d4058f349
 cat > "$work/inplace-move.py" <<'ZFS_ON_BOOT_e48c067a76dd746fc2782b206265a3db15b24d6c8f6a4f2906cba152ccb2aca8'
 #!/usr/bin/python3
 """Experimental offline mover: verify and journal each batch before freeing ext4.

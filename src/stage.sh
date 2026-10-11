@@ -11,9 +11,19 @@ TARGET=/
 BACKUP=
 MODE_COUNT=0
 TARGET_COUNT=0
+ENCRYPT=auto
+ENCRYPT_COUNT=0
+ENCRYPT_KEY_URL=
+ENCRYPT_KEY_SET=${ZFSIFY_ENCRYPT_KEY+x}
+ENCRYPT_KEY=${ZFSIFY_ENCRYPT_KEY-}
+unset ZFSIFY_ENCRYPT_KEY
 for arg in "$@"; do
     case "$arg" in
         --yes) ASSUME_YES=1 ;;
+        --encrypt) ENCRYPT=on; ENCRYPT_COUNT=$((ENCRYPT_COUNT+1)) ;;
+        --encrypt-key=*) ENCRYPT_KEY=${arg#*=}; ENCRYPT_KEY_SET=x ;;
+        --no-encrypt) ENCRYPT=off; ENCRYPT_COUNT=$((ENCRYPT_COUNT+1)) ;;
+        --encrypt-key-url=*) ENCRYPT_KEY_URL=${arg#*=}; [[ -n $ENCRYPT_KEY_URL ]] || { echo "Missing HTTPS key URL." >&2; exit 2; } ;;
         --auto) MODE=auto; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --preserve) MODE=preserve; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --erase) MODE=erase; MODE_COUNT=$((MODE_COUNT+1)) ;;
@@ -22,7 +32,7 @@ for arg in "$@"; do
         --backup=*) MODE=backup; BACKUP=${arg#*=}; MODE_COUNT=$((MODE_COUNT+1)) ;;
         --help|-h)
             cat <<'EOF'
-Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
+Usage: curl -fsSL URL | sudo sh -s -- [--yes] [--encrypt [--encrypt-key=KEY | --encrypt-key-url=HTTPS] | --no-encrypt] [--auto | --preserve | --erase | --backup[=REMOTE:PATH|/MOUNT/DIR] | --inplace] [/ | MOUNTPOINT | BLOCK_DEVICE]
 
 Default: detect the disk and choose a data-preserving strategy.
 Review the recommended method, then explicitly confirm before any conversion.
@@ -31,6 +41,15 @@ Method flags select a method; only --yes skips selection and confirmation.
                            plan. Auto mode prefers preservation, never erasure.
                            Backup requires an explicit --backup= destination and
                            an existing rclone configuration or mounted ext4 disk.
+  --encrypt                Encrypt the new root pool; enter the passphrase in RAM
+                           rescue via console or SSH (zfsify-unlock).
+  --encrypt-key-url=HTTPS  Fetch the passphrase in RAM for headless conversion.
+                           Requires --encrypt. Each later boot needs console unlock.
+  --encrypt-key=KEY        TEMPORARY: save your supplied key on the boot partition.
+                           Requires --encrypt; defeats disk encryption. Prefer
+                           ZFSIFY_ENCRYPT_KEY in the environment to a CLI secret.
+                           Random keys are offered only in the TUI: save + retype.
+  --no-encrypt             Skip the encryption question (the default with --yes).
   --preserve               Request the 50/50 copy-and-verify strategy.
   --auto                   Choose automatically (the default).
   --backup                 Guide me through a temporary Volume or rclone remote.
@@ -57,7 +76,7 @@ EOF
         *) echo "Unknown argument: $arg" >&2; exit 1 ;;
     esac
 done
-(( MODE_COUNT <= 1 && TARGET_COUNT <= 1 )) || { echo "Specify one mode and one target per invocation." >&2; exit 2; }
+(( MODE_COUNT <= 1 && TARGET_COUNT <= 1 && ENCRYPT_COUNT <= 1 )) || { echo "Specify one mode, one encryption choice and one target per invocation." >&2; exit 2; }
 if [[ $TARGET != / ]]; then
     running_root=$(findmnt -n -o SOURCE /)
     running_disk=
@@ -68,14 +87,16 @@ if [[ $TARGET != / ]]; then
     resolved=$(readlink -f "$TARGET")
     if [[ $resolved != "$running_root" && $resolved != "$running_disk" ]]; then
         [[ $MODE != inplace ]] || { echo '--inplace currently supports the boot drive only.' >&2; exit 2; }
+        [[ $ENCRYPT != on && -z $ENCRYPT_KEY_URL && -z $ENCRYPT_KEY_SET ]] || { echo "Encryption currently supports the root drive only." >&2; exit 2; }
         exec bash "$SOURCE/volume.sh" "$SOURCE" "$TARGET" "$MODE" "$BACKUP" "$ASSUME_YES"
     fi
 fi
 export LC_ALL=C
 [[ -t 1 ]] && export ZFS_PROGRESS_TTY=1
 PROGRESS=$SOURCE/progress.py
+export ZFSIFY_UI_CONTEXT=$SOURCE/ui-context.json
 python3 "$PROGRESS" header --phase 1 --label "Scan Ubuntu, boot configuration and disk layout"
-phase() { local n=$1 label=$2; shift 2; python3 "$PROGRESS" run --phase "$n" --label "$label" --devices "$DISK,$ROOTDEV" -- "$@"; }
+phase() { local n=$1 label=$2; shift 2; python3 "$PROGRESS" run --phase "$n" --label "$label" --operation "${ZFSIFY_OPERATION:-prepare}" --devices "$DISK,$ROOTDEV" -- "$@"; }
 WORK=/var/lib/zfs-on-boot
 ROOT=$WORK/root
 die() { echo "zfs-on-boot: $*" >&2; exit 1; }
@@ -179,62 +200,15 @@ ip -brief address
 CONSENT=()
 [[ $ASSUME_YES != 1 ]] || CONSENT=(--yes)
 while :; do
-python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --size "$FS_BYTES" --used "$TOTAL_USED" \
+python3 "$SOURCE/strategy.py" menu "${CONSENT[@]}" --kind root --disk "$DISK" --source "$ROOTDEV" --platform "$ARCH / $FIRMWARE" --size "$FS_BYTES" --used "$TOTAL_USED" \
     --preserve-capacity "$PRESERVE_CAPACITY" --inplace-capacity "$INPLACE_CAPACITY" \
     --mode "$MODE" --backup "$BACKUP" > "$SOURCE/selection"
 mapfile -t SELECTION < "$SOURCE/selection"
 MODE=${SELECTION[0]}; BACKUP=${SELECTION[1]}
-lsblk -o NAME,PATH,SIZE,FSTYPE,MOUNTPOINTS "$DISK"
-PREFIX=$DISK; [[ $DISK = *[0-9] ]] && PREFIX=${DISK}p
-if [[ $MODE = preserve ]]; then
-    cat <<EOF
-PRESERVE: your Ubuntu installation, users, applications and files move to ZFS.
-Devices: source $ROOTDEV; temporary ${PREFIX}32; final ${PREFIX}2.
-$DISK (512 MiB ZFSBootMenu partition omitted):
-  [              original ext4              ]
-  [       smaller ext4      ][ temporary ZFS ]  shrink offline; copy + verify
-  [       new ZFS member    ][ temporary ZFS ]  attach mirror; resilver
-  [       new ZFS member    ][ free space    ]  detach temporary member
-  [                   ZFS                   ]  grow; / and /boot on ZFS
-The server reboots into RAM. Services are offline during migration.
-Original ext4 is removed only after the copy is checksum-verified.
-Power loss during repartitioning can require provider recovery.
-EOF
-elif [[ $MODE = inplace ]]; then
-    cat <<EOF
-EXPERIMENTAL IN-PLACE CONVERSION: $ROOTDEV -> one native ZFS root partition.
-  [ ext4 files + free space                    ]
-  [ ext4 files shrinking | sparse ZFS growing  ]  copy, sync, verify, release 64 MiB batches
-  [ completed ZFS image inside ext4           ]  verify the complete manifest
-  [ native ZFS partition; no image or mapper  ]  fsremap relocates physical blocks
-A temporary 1 GiB area at the end holds the rescue system and migration journal.
-Original file data is released progressively. This is not a retained full backup.
-The rescue entry resumes an interrupted copy or remap. Bootloader replacement
-still has a short recovery window; keep a provider backup before converting.
-EOF
-elif [[ $MODE = backup ]]; then
-    echo "BACKUP AND RESTORE: $ROOTDEV -> archive on a separate Volume or rclone remote"
-    echo "                    -> read-back verification -> reformat $DISK as ZFS -> restore."
-    echo 'The backup remains available after completion. Destination setup follows before rescue preparation.'
-else
-    cat <<EOF
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-!! ERASE MODE: ALL EXISTING DATA ON $DISK WILL BE DELETED.
-!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  [ existing partitions + ALL their data ]
-  [ 512 MiB ZFSBootMenu ][ ZFS: fresh Ubuntu / and /boot ]
-Devices: erase $DISK; create ${PREFIX}1 (ZFSBootMenu) and ${PREFIX}2 (ZFS).
-/etc, users, SSH authorized_keys and basic settings are retained.
-Complete optional files are retained in priority order within the RAM budget; omitted data is removed.
-EOF
-fi
-cat <<'EOF'
-5 phases: scan and choose > prepare > convert > finish setup > recovery and growth
-Live status includes logical copy bytes, MB/s and block-device IOPS.
-SSH disconnects at reboot. Reconnect and run: zfs-on-boot-status
-Package/metadata phases have no meaningful byte total and show n/a.
-EOF
-REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "Selected: $MODE on $DISK. Review the diagram above.")
+[[ -z $ENCRYPT_KEY_SET ]] || export ZFSIFY_ENCRYPT_KEY=$ENCRYPT_KEY
+python3 "$SOURCE/encryption.py" configure "${CONSENT[@]}" --mode "$ENCRYPT" --key-url "$ENCRYPT_KEY_URL" --output "$SOURCE/encryption.json"
+unset ZFSIFY_ENCRYPT_KEY
+REVIEW=$(python3 "$SOURCE/strategy.py" confirm "${CONSENT[@]}" --mode "$MODE" --label "$ROOTDEV on $DISK. Server reboots; services stop during migration. Power loss can require recovery. Reconnect with zfs-on-boot-status.")
 [[ $REVIEW != 1 ]] || break
 MODE=auto
 done
@@ -319,6 +293,11 @@ cp -L /etc/resolv.conf "$ROOT/etc/resolv.conf"
 phase 2 'Update rescue package indexes' chroot "$ROOT" apt-get update
 # Only boot utilities are needed here; do not install a GRUB loader on the live disk.
 phase 2 'Install RAM rescue packages' chroot "$ROOT" apt-get install -y --no-install-recommends linux-image-virtual "$INITRAMFS_PACKAGE" zfsutils-linux "${BOOT_PACKAGES[@]}" openssh-server cloud-init netplan.io systemd-sysv $RESOLVED_PACKAGE systemd-timesyncd udev sudo locales ca-certificates curl wget lsb-release python3 gdisk parted e2fsprogs dosfstools cpio gzip rsync cloud-guest-utils apparmor busybox-static rclone binutils efibootmgr </dev/null
+# Internal HTTPS key servers use the same public trust anchors as the host.
+if [[ -d /usr/local/share/ca-certificates ]]; then
+    cp -a /usr/local/share/ca-certificates/. "$ROOT/usr/local/share/ca-certificates/"
+    chroot "$ROOT" update-ca-certificates
+fi
 if [[ $MODE = inplace ]]; then
     phase 2 'Install experimental block remapper' chroot "$ROOT" apt-get install -y --no-install-recommends fstransform dmsetup
 fi
@@ -328,6 +307,7 @@ python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
 if [[ $ARCH = arm64 ]]; then
     mkdir -p "$ROOT/etc/zfs-on-boot/zbm"
     mv "$WORK/zfsbootmenu.EFI" "$ROOT/etc/zfs-on-boot/zbm/"
+    bash "$SOURCE/zbm-install.sh" kcl-tool "$ROOT"
 else
     phase 2 "Download verified ZFSBootMenu 3.1.0 for $FIRMWARE" bash "$SOURCE/zbm-install.sh" download "$ROOT"
 fi
@@ -377,10 +357,15 @@ fi
 [[ $MODE != preserve && $MODE != inplace ]] || cp "$SOURCE/plan.env" "$ROOT/etc/zfs-on-boot/plan.env"
 mkdir -p "$ROOT/usr/local/lib/zfs-on-boot" "$ROOT/usr/local/sbin"
 cp "$PROGRESS" "$ROOT/usr/local/lib/zfs-on-boot/progress.py"
+cp "$ZFSIFY_UI_CONTEXT" "$ROOT/etc/zfs-on-boot/ui-context.json"
 install -m 755 "$SOURCE/status.sh" "$ROOT/usr/local/sbin/zfs-on-boot-status"
 install -m 755 "$SOURCE/grow.sh" "$ROOT/usr/local/sbin/zfs-on-boot-grow"
 cp "$SOURCE/grow.service" "$ROOT/etc/systemd/system/zfs-on-boot-grow.service"
 cp "$SOURCE/target.sh" "$SOURCE/recovery-setup.sh" "$ROOT/etc/zfs-on-boot/"
+cp "$SOURCE/encryption.sh" "$SOURCE/encryption.py" "$SOURCE/encryption.json" "$ROOT/etc/zfs-on-boot/"
+[[ ! -f $SOURCE/bootstrap.key ]] || install -m 600 "$SOURCE/bootstrap.key" "$ROOT/etc/zfs-on-boot/bootstrap.key"
+printf '#!/bin/sh\nexec python3 /etc/zfs-on-boot/encryption.py prompt\n' > "$ROOT/usr/local/sbin/zfsify-unlock"
+chmod 755 "$ROOT/usr/local/sbin/zfsify-unlock"
 install -m 755 "$SOURCE/snapshot.sh" "$ROOT/usr/local/sbin/zfsify-snapshot"
 cp "$SOURCE/backup.sh" "$ROOT/etc/zfs-on-boot/backup.sh"
 cp "$SOURCE/zbm-install.sh" "$ROOT/etc/zfs-on-boot/zbm-install.sh"

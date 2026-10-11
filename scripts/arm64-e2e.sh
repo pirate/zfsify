@@ -75,8 +75,11 @@ python3 "$BASE/scripts/package.py"
 "${SSH[@]}" 'bash /root/setup-fixture.sh preserve && python3 /root/setup-inplace-fill.py' | tee "$STATE/input.txt"
 # The test explicitly confirms the disposable disk; production has no bypass.
 python3 "$BASE/scripts/recordings/capture-terminal.py" --output "$STATE/stage.cast" \
+    --width 120 --height 32 \
+    --answer 'waiting for your selection (no timeout):=' \
+    --answer 'waiting for your selection (no timeout):=1' \
     --answer 'waiting for your selection (no timeout):=1' -- \
-    "${SSH[@]}" -tt 'TERM=xterm-256color bash /root/reformat.sh --inplace' || [[ $? = 255 ]]
+    "${SSH[@]}" -tt 'TERM=xterm-256color bash /root/reformat.sh' || [[ $? = 255 ]]
 ready=0
 for _ in {1..360}; do
     if "${SSH[@]}" 'test -f /etc/zfs-on-boot-installed && test "$(findmnt -no FSTYPE /)" = zfs' 2>/dev/null; then ready=1; break; fi

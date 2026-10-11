@@ -1,0 +1,189 @@
+DigitalOcean Ubuntu 24.04 amd64 BIOS, 1 GiB RAM, 25 GiB disk
+Installer SHA256: 7f9e233be7409fbd568264374fd52853ff537f7cd2ded120e595e8baa9e157b8
+
+--- verification.txt ---
+active
+active
+active
+status: done
+607701938
+2.2.2-0ubuntu9.5
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: resilvered 2.51G in 00:00:06 with 0 errors on Fri Oct  9 19:15:38 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              2.16G  21.1G   192K  none
+rpool/ROOT         2.16G  21.1G   192K  none
+rpool/ROOT/ubuntu  2.16G  21.1G  2.16G  /
+6.8.0-146-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  2.45M      -  2.16G  -
+enabled
+ZFS root verification passed.
+
+--- fixture-verification.txt ---
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+
+--- scrub.txt ---
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:03 with 0 errors on Fri Oct  9 19:16:45 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+
+--- verification-after-reboot.txt ---
+active
+active
+active
+..status: done
+607701938
+2.2.2-0ubuntu9.5
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:03 with 0 errors on Fri Oct  9 19:16:45 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              2.17G  21.1G   192K  none
+rpool/ROOT         2.16G  21.1G   192K  none
+rpool/ROOT/ubuntu  2.16G  21.1G  2.16G  /
+6.8.0-146-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  2.52M      -  2.16G  -
+enabled
+ZFS root verification passed.
+
+--- fixture-after-reboot.txt ---
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+
+--- encryption.txt ---
+etc/zfs/zfsify-rpool.key
+etc/zfs/zfsify-rpool.key
+NAME               PROPERTY        VALUE        SOURCE
+rpool              encryption      aes-256-gcm  -
+rpool              encryptionroot  rpool        -
+rpool              keyformat       passphrase   -
+rpool              keystatus       available    -
+rpool/ROOT/ubuntu  encryption      aes-256-gcm  -
+rpool/ROOT/ubuntu  encryptionroot  rpool        -
+rpool/ROOT/ubuntu  keyformat       passphrase   -
+rpool/ROOT/ubuntu  keystatus       available    -
+Encrypted root, inherited key, boot configuration and private initramfs verified.
+
+--- initramfs-rebuild.txt ---
+update-initramfs: Generating /boot/initrd.img-6.8.0-146-generic
+update-initramfs: Generating /boot/initrd.img-6.8.0-142-generic
+
+--- encryption-after-rebuild.txt ---
+etc/zfs/zfsify-rpool.key
+etc/zfs/zfsify-rpool.key
+NAME               PROPERTY        VALUE        SOURCE
+rpool              encryption      aes-256-gcm  -
+rpool              encryptionroot  rpool        -
+rpool              keyformat       passphrase   -
+rpool              keystatus       available    -
+rpool/ROOT/ubuntu  encryption      aes-256-gcm  -
+rpool/ROOT/ubuntu  encryptionroot  rpool        -
+rpool/ROOT/ubuntu  keyformat       passphrase   -
+rpool/ROOT/ubuntu  keystatus       available    -
+Encrypted root, inherited key, boot configuration and private initramfs verified.
+active
+active
+active
+status: done
+607701938
+2.2.2-0ubuntu9.5
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:03 with 0 errors on Fri Oct  9 19:16:45 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              2.26G  21.0G   192K  none
+rpool/ROOT         2.26G  21.0G   192K  none
+rpool/ROOT/ubuntu  2.26G  21.0G  2.18G  /
+6.8.0-146-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  80.8M      -  2.16G  -
+enabled
+ZFS root verification passed.
+
+--- fixture-after-rebuild.txt ---
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+

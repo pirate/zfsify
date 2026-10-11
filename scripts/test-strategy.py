@@ -53,9 +53,13 @@ class StrategyTests(unittest.TestCase):
              patch.object(strategy.os, 'statvfs', side_effect=space):
             self.assertEqual([item['path'] for item in strategy.backup_candidates('/dev/vda', 8*G)], ['/backup'])
 
-    def terminal(self, body, inputs=(), timeout=20):
+    def terminal(self, body, inputs=(), timeout=20, width=120, height=32):
         pid, fd = pty.fork()
         if pid == 0:
+            import fcntl, struct, termios
+            fcntl.ioctl(1, termios.TIOCSWINSZ, struct.pack('HHHH', height, width, 0, 0))
+            os.environ['TERM'] = 'xterm-256color'
+            os.environ.pop('NO_COLOR', None)
             # Exactly like curl | sh: stdin is not the controlling terminal.
             null = os.open('/dev/null', os.O_RDONLY); os.dup2(null, 0)
             os.execv(sys.executable, [sys.executable, '-c',
@@ -78,6 +82,27 @@ class StrategyTests(unittest.TestCase):
             return os.waitstatus_to_exitcode(status), output.decode(errors='replace'), time.monotonic()-start
         finally:
             os.close(fd)
+
+    def test_arrow_preview_and_multidigit_destination(self):
+        body = 'print("RESULT",m.choose("test", "1", {str(i):str(i) for i in range(1,13)}))'
+        for answer, expected in [(b'\x1b[B\n', '2'), (b'10\n', '10')]:
+            rc, out, _ = self.terminal(body, [(0.2, answer)])
+            self.assertEqual(rc, 0, out)
+            self.assertIn('RESULT '+expected, out)
+            self.assertIn('\x1b[?25h', out)
+            self.assertNotIn('\x1b[2J', out)
+
+    def test_small_console_keeps_confirmation_visible_and_restores_tty(self):
+        body = ('import termios; tty=open("/dev/tty"); before=termios.tcgetattr(tty.fileno()); '
+                'answer=m.choose("test","q",["1","q"]); '
+                'after=termios.tcgetattr(tty.fileno()); '
+                'before[3] &= ~getattr(termios,"PENDIN",0); after[3] &= ~getattr(termios,"PENDIN",0); '
+                'assert after==before; print("RESULT",answer)')
+        for width, height in [(80,24), (40,16), (120,32)]:
+            rc, out, _ = self.terminal(body, [(0.2,b'\n')], width=width, height=height)
+            self.assertEqual(rc,0,out)
+            self.assertIn('RESULT q',out)
+            self.assertIn('Enter = q',out)
 
     def test_enter_and_explicit_choice(self):
         for answer, expected in [(b'\n', '1'), (b'2\n', '2')]:
@@ -124,7 +149,7 @@ class StrategyTests(unittest.TestCase):
         self.assertEqual(rc, 0, out); self.assertIn('\r\ninplace\r\n', out)
         rc, out, _ = self.terminal(base+'sys.argv += ["--mode","preserve"]; m.main()')
         self.assertNotEqual(rc, 0, out)
-        rc, out, _ = self.terminal(base.replace('"root"','"volume"')+'m.main()', [(0.2, b'2\n')])
+        rc, out, _ = self.terminal(base.replace('"root"','"volume"')+'m.main()', [(0.2, b'2\n'), (0.5, b'q\n')])
         self.assertNotEqual(rc, 0, out); self.assertIn('unavailable for data volumes', out)
 
     def test_review_transport_and_explicit_erase(self):
