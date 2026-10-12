@@ -6,7 +6,9 @@ Convert a running Ubuntu VPS or attached volume from ext4 to ZFS in-place, prese
 
 Reboots into a ramdisk, converts chunks slice-by-slice in O(N) time. The end result is existing OS + data running perfectly on a now-ZFS-formatted `/` disk (aka `rpool`, just like [Ubuntu Server's 24.04+'s native ZFS root](https://www.phoronix.com/news/OpenZFS-Ubuntu-24.04-LTS)). You also get a beautiful new [boot menu](https://zfsbootmenu.org) (on a small boot partition) that lets you boot from previous snapshots, send/recv, and more.
 
-[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04+-E95420?logo=ubuntu&logoColor=white)](#minimum-requirements)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-22.04-E95420?logo=ubuntu&logoColor=white)](#minimum-requirements)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](#minimum-requirements)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-26.04-E95420?logo=ubuntu&logoColor=white)](#minimum-requirements)
 [![Experimental](https://img.shields.io/badge/status-experimental-f59e0b)](#before-you-start)
 [![MIT](https://img.shields.io/badge/license-MIT-64748b)](LICENSE)
 
