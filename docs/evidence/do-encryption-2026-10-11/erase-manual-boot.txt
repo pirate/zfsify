@@ -1,0 +1,64 @@
+active
+active
+active
+status: done
+607703512
+2.2.2-0ubuntu9.5
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool               335M  22.9G   192K  none
+rpool/ROOT          334M  22.9G   192K  none
+rpool/ROOT/ubuntu   333M  22.9G   323M  /
+6.8.0-146-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  10.7M      -   322M  -
+enabled
+ZFS root verification passed.
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+/home/erasetest/.ssh/authorized_keys: OK
+/usr/bin/awk
+active
+active
+active
+ERASE VERIFIED: fresh ZFS root, retained accounts/configuration/SSH access, bounded priority restore, large omitted file removed.
+etc/zfs/zfsify-rpool.key
+NAME               PROPERTY        VALUE        SOURCE
+rpool              encryption      aes-256-gcm  -
+rpool              encryptionroot  rpool        -
+rpool              keyformat       passphrase   -
+rpool              keystatus       available    -
+rpool/ROOT/ubuntu  encryption      aes-256-gcm  -
+rpool/ROOT/ubuntu  encryptionroot  rpool        -
+rpool/ROOT/ubuntu  keyformat       passphrase   -
+rpool/ROOT/ubuntu  keystatus       available    -
+Encrypted root, inherited key, boot configuration and private initramfs verified.
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:00 with 0 errors on Mon Oct 12 00:07:06 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors

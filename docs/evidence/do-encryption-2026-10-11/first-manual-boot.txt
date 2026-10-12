@@ -1,0 +1,75 @@
+Mon Oct 12 02:01:02 UTC 2026
+ee9bcac0-2901-4466-9bdd-8da302cebfb4
+active
+active
+active
+status: done
+607702172
+2.2.2-0ubuntu9.5
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+TARGET SOURCE            FSTYPE OPTIONS
+/      rpool/ROOT/ubuntu zfs    rw,relatime,xattr,posixacl,casesensitive
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+NAME                USED  AVAIL  REFER  MOUNTPOINT
+rpool              16.1G  6.70G   192K  none
+rpool/ROOT         16.1G  6.70G   192K  none
+rpool/ROOT/ubuntu  16.1G  6.70G  16.0G  /
+6.8.0-146-generic
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.
+NAME                                 USED  AVAIL  REFER  MOUNTPOINT
+rpool/ROOT/ubuntu@zfsify-installed  4.41M      -  16.0G  -
+enabled
+ZFS root verification passed.
+/root/migration-fixture/hardlink.bin: OK
+/root/migration-fixture/random.bin: OK
+/root/migration-fixture/sparse.bin: OK
+/root/migration-fixture/large.bin: OK
+/etc/ssh/ssh_host_ecdsa_key: OK
+/etc/ssh/ssh_host_ecdsa_key.pub: OK
+/etc/ssh/ssh_host_ed25519_key: OK
+/etc/ssh/ssh_host_ed25519_key.pub: OK
+/etc/ssh/ssh_host_rsa_key: OK
+/etc/ssh/ssh_host_rsa_key.pub: OK
+enabled
+Result=success
+PRESERVATION VERIFIED: bytes, users, shadow, host keys, ACLs, xattrs, hard links, sparse files, configuration, full-disk ZFS.
+etc/zfs/zfsify-rpool.key
+etc/zfs/zfsify-rpool.key
+NAME               PROPERTY        VALUE        SOURCE
+rpool              encryption      aes-256-gcm  -
+rpool              encryptionroot  rpool        -
+rpool              keyformat       passphrase   -
+rpool              keystatus       available    -
+rpool/ROOT/ubuntu  encryption      aes-256-gcm  -
+rpool/ROOT/ubuntu  encryptionroot  rpool        -
+rpool/ROOT/ubuntu  keyformat       passphrase   -
+rpool/ROOT/ubuntu  keystatus       available    -
+Encrypted root, inherited key, boot configuration and private initramfs verified.
+NO_PLAINTEXT_BOOT_HOOK
+NAME    SIZE FSTYPE     MOUNTPOINTS
+vda      25G
+├─vda1    1G ext4       /boot/syslinux
+└─vda2   24G zfs_member
+vdb     482K iso9660
+  pool: rpool
+ state: ONLINE
+  scan: scrub repaired 0B in 00:00:23 with 0 errors on Mon Oct 12 02:03:39 2026
+config:
+
+	NAME        STATE     READ WRITE CKSUM
+	rpool       ONLINE       0     0     0
+	  vda2      ONLINE       0     0     0
+
+errors: No known data errors
+ENCRYPTED_SLICE_ACCEPTANCE_PASSED

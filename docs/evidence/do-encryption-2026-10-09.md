@@ -35,9 +35,9 @@ The final package booted its RAM environment with `console=ttyS0` followed by
 Linux regression tests cover graphical/serial combinations, inactive displays,
 quoted console arguments, and GRUB syntax.
 
-Manual passphrase entry in the DigitalOcean browser console is still pending:
-the browser login expired during testing. This report does not claim that
-interactive check has passed.
+Manual passphrase entry, encrypted slice conversion, and snapshot recovery in
+DigitalOcean's browser console are covered by the
+[2026-10-11 acceptance report](do-encryption-2026-10-11.md).
 
 ## Other checks
 

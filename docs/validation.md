@@ -23,7 +23,9 @@ ARM64 VMs with UEFI.
 | amd64 boot regression | [Ubuntu 24.04 DigitalOcean acceptance](evidence/amd64-architecture-acceptance.txt) |
 | Temporary local key and passphrase rotation | [ARM64 automatic boot, saved-key TUI, and manual unlock](evidence/encryption-2026-10-04.md) |
 | DigitalOcean encrypted preservation and automatic boot | [Ubuntu 24.04 BIOS, 1 GiB; preservation, scrub and initramfs rebuild/reboot](evidence/do-encryption-2026-10-09.md) |
-| Optional encrypted root | [ARM64 conversion, boot and recovery; DigitalOcean conversion and interruption recovery](evidence/encryption-2026-10-03.md) — DigitalOcean final console unlock remains unverified |
+| DigitalOcean encrypted slice conversion above 50% usage and manual unlock | [71% used, 1 GiB RAM; two manual boots, preservation, encryption and scrubs](evidence/do-encryption-2026-10-11.md#encrypted-slice-by-slice-preservation) |
+| DigitalOcean encrypted erase, passphrase rotation and snapshot recovery | [Manual console unlock, initramfs rebuild and restored snapshot boot](evidence/do-encryption-2026-10-11.md) |
+| Optional encrypted root on ARM64 | [Conversion, boot and recovery](evidence/encryption-2026-10-03.md) |
 
 The recordings offer selected highlights and full terminal captures. Their notes
 identify the installer build, fixture, timing edits, and acceptance results.
