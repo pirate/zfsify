@@ -1,0 +1,52 @@
+docs/evidence/do-encryption-2026-10-09.md
+  s_3dff2a00c4a5b5::t_ff26ee73e30fbe 38-40
+docs/evidence/do-encryption-2026-10-11.md
+  s_3dff2a00c4a5b5::t_68a859ad4fe67e 1-7,44-75
+  s_3dff2a00c4a5b5::t_01475d8355ad12 8-11,13-26,32,35-36,38-39,42-43
+  s_3dff2a00c4a5b5::t_73d8a7c89cb4d1 12,37,40-41,76-79
+  s_3dff2a00c4a5b5::t_ff26ee73e30fbe 27-31,33-34
+docs/validation.md
+  s_3dff2a00c4a5b5::t_ff26ee73e30fbe 26-28
+docs/evidence/do-encryption-2026-10-11/after-rebuild-manual-boot.txt
+  s_3dff2a00c4a5b5::t_693d2a052711d2 1-76
+docs/evidence/do-encryption-2026-10-11/cleanup.txt
+  s_3dff2a00c4a5b5::t_9b9b4abb6630c5 1
+docs/evidence/do-encryption-2026-10-11/erase-after-rebuild.txt
+  s_3dff2a00c4a5b5::t_e25a7af74455d1 1-55
+docs/evidence/do-encryption-2026-10-11/erase-initramfs-rebuild.txt
+  s_3dff2a00c4a5b5::t_95360d6488227b 1-2
+docs/evidence/do-encryption-2026-10-11/erase-manual-boot.txt
+  s_3dff2a00c4a5b5::t_ee699db50c8b35 1-64
+docs/evidence/do-encryption-2026-10-11/first-manual-boot.txt
+  s_3dff2a00c4a5b5::t_c0f810e24db176 1-75
+docs/evidence/do-encryption-2026-10-11/native-encryption.txt
+  s_3dff2a00c4a5b5::t_6621c8460681b0 1-16
+docs/evidence/do-encryption-2026-10-11/post-remap-verification.txt
+  s_3dff2a00c4a5b5::t_4dcac7b9b0bd58 1-8
+docs/evidence/do-encryption-2026-10-11/pre-remap-verification.txt
+  s_3dff2a00c4a5b5::t_60142c500f3ad2 1
+docs/evidence/do-encryption-2026-10-11/preserve-rotation.txt
+  s_3dff2a00c4a5b5::t_19d9dec4d9d2ac 1-4
+docs/evidence/do-encryption-2026-10-11/preserve-snapshot-boot.txt
+  s_3dff2a00c4a5b5::t_154b84b80a65c0 1-18
+docs/evidence/do-encryption-2026-10-11/rescue-key-entry.txt
+  s_3dff2a00c4a5b5::t_be8f802e868764 1-4
+docs/evidence/do-encryption-2026-10-11/slice-initramfs-rebuild.txt
+  s_3dff2a00c4a5b5::t_f84736aa500e7d 1-2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0b43ef683836264079ffb51b809dd1c0e6e6434c",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
