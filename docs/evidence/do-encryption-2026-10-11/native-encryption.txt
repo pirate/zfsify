@@ -1,0 +1,16 @@
+  pool: rpool
+ state: ONLINE
+config:
+
+	NAME                         STATE     READ WRITE CKSUM
+	rpool                        ONLINE       0     0     0
+	  /dev/mapper/zfsify-native  ONLINE       0     0     0
+
+errors: No known data errors
+NAME               PROPERTY        VALUE        SOURCE
+rpool              encryption      aes-256-gcm  -
+rpool              encryptionroot  rpool        -
+rpool              keystatus       available    -
+rpool/ROOT/ubuntu  encryption      aes-256-gcm  -
+rpool/ROOT/ubuntu  encryptionroot  rpool        -
+rpool/ROOT/ubuntu  keystatus       available    -

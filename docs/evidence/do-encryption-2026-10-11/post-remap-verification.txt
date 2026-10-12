@@ -1,0 +1,8 @@
+VERIFIED: 118466 entries; SHA256, modes, owners, timestamps, ACLs, xattrs and hard links.
+blocks remapping completed.
+inplace
+install.log
+last-progress.json
+progress.log
+stage.log
+ee9bcac0-2901-4466-9bdd-8da302cebfb4

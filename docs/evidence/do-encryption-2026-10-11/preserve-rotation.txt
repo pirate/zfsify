@@ -1,0 +1,4 @@
+update-initramfs: Generating /boot/initrd.img-6.8.0-146-generic
+update-initramfs: Generating /boot/initrd.img-6.8.0-142-generic
+Wrapping-key rotation seconds: 0.734
+Plaintext boot hook removed; post-rotation recovery snapshot created.
