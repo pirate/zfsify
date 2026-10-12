@@ -1,0 +1,19 @@
+docs/evidence/do-encryption-2026-10-11.md
+  s_3dff2a00c4a5b5::t_6ab1fca3adb81e 49-52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "2366fb5aca6dcfc1035b2d949b8f35f413395d89",
+  "prompts": {},
+  "sessions": {
+    "s_3dff2a00c4a5b5": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a078ff-a665-72d3-a593-c4eb6ed6ba9f",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Nick Sweeting <git@sweeting.me>"
+    }
+  }
+}
