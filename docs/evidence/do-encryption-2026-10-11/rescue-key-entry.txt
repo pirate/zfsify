@@ -1,4 +1,3 @@
 ZFS passphrase (also used for future boots):
 Confirm passphrase:
 Passphrase delivered to the RAM installer. Follow progress with zfs-on-boot-status.
-Connection to 164.92.98.116 closed.

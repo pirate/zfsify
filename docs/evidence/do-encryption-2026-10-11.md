@@ -46,9 +46,10 @@ another scrub with zero errors. No installer modifications were required.
 The HTTPS endpoint supplied the conversion key only. With that endpoint stopped
 and no plaintext automatic-boot hook, ZFSBootMenu waited for the passphrase in
 DigitalOcean's recovery console. Entering it booted Ubuntu on encrypted ZFS.
-Root, erase-mode restoration and encryption checks passed; scrub found no errors.
-Rebuilding every Ubuntu initramfs, rebooting, and entering the passphrase again
-also passed the same checks.
+Root, erase-mode restoration and encryption checks passed. A scrub after this
+first boot found no errors. Rebuilding every Ubuntu initramfs, rebooting, and
+entering the passphrase again passed the root, restoration and encryption checks;
+the erase fixture was scrubbed once, after its first boot.
 
 - [First manual boot and scrub](do-encryption-2026-10-11/erase-manual-boot.txt)
 - [Initramfs rebuild](do-encryption-2026-10-11/erase-initramfs-rebuild.txt)
