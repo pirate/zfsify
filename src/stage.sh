@@ -301,6 +301,10 @@ fi
 if [[ $MODE = inplace ]]; then
     phase 2 'Install experimental block remapper' chroot "$ROOT" apt-get install -y --no-install-recommends fstransform dmsetup
 fi
+# The RAM installer never runs systemd-resolved, so the stub symlink that apt
+# installs would dangle. A fixed public resolver lets the HTTPS key fetch work.
+rm -f "$ROOT/etc/resolv.conf"
+printf 'nameserver 1.1.1.1\n' > "$ROOT/etc/resolv.conf"
 mkdir -p "$ROOT/etc/zfs-on-boot"
 printf '%s\n' "$FIRMWARE" > "$ROOT/etc/zfs-on-boot/firmware"
 python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
