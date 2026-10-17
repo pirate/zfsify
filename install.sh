@@ -4,7 +4,7 @@ set -eu
 work=$(mktemp -d /tmp/zfs-on-boot.XXXXXXXX)
 chmod 700 "$work"
 trap 'rm -rf "$work"' EXIT
-cat > "$work/stage.sh" <<'ZFS_ON_BOOT_b54f857fbb613286b8ad63cf099411203b25322ce6367aa401be68109a4d158e'
+cat > "$work/stage.sh" <<'ZFS_ON_BOOT_b32c696413b7c8303ebc739397d324f3afec4945e7e4f3f71324aa3b6e169648'
 #!/bin/bash
 # Preserve an ext4 Ubuntu installation by migrating through a RAM rescue OS.
 set -Eeuo pipefail
@@ -308,6 +308,10 @@ fi
 if [[ $MODE = inplace ]]; then
     phase 2 'Install experimental block remapper' chroot "$ROOT" apt-get install -y --no-install-recommends fstransform dmsetup
 fi
+# The RAM installer never runs systemd-resolved, so the stub symlink that apt
+# installs would dangle. A fixed public resolver lets the HTTPS key fetch work.
+rm -f "$ROOT/etc/resolv.conf"
+printf 'nameserver 1.1.1.1\n' > "$ROOT/etc/resolv.conf"
 mkdir -p "$ROOT/etc/zfs-on-boot"
 printf '%s\n' "$FIRMWARE" > "$ROOT/etc/zfs-on-boot/firmware"
 python3 "$SOURCE/boot-config.py" "$ROOT/etc/zfs-on-boot/boot"
@@ -439,7 +443,7 @@ phase 2 'Rebooting into RAM; reconnect and run zfs-on-boot-status' true
 sync
 shutdown -r +0 'zfs-on-boot installer staged'
 
-ZFS_ON_BOOT_b54f857fbb613286b8ad63cf099411203b25322ce6367aa401be68109a4d158e
+ZFS_ON_BOOT_b32c696413b7c8303ebc739397d324f3afec4945e7e4f3f71324aa3b6e169648
 cat > "$work/encryption.py" <<'ZFS_ON_BOOT_f58c2de11fee92eb31fd7d7ee8236d0d77a02c8a898a17d238572d2d70d8061f'
 #!/usr/bin/env python3
 """Optional root encryption; plaintext bootstrap keys require explicit selection."""
