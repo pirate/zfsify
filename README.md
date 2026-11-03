@@ -23,8 +23,8 @@ custom vm boot img or iso and uploading it. That's a pain though, and not all cl
 providers support it. zfsify automates that work and lets you in-place convert any disk, `/` and any other `/dev/disk*` others too!
 
 Create a normal Ubuntu VPS or volume on DigitalOcean, Vultr, Hetzner, AWS, GCP,
-Azure, or another provider, then run zfsify inside Ubuntu. It transfers your
-installation onto ZFS so you can use snapshots, compression, checksums, booting
+Azure, or another provider, then run zfsify inside Ubuntu. It in-place converts your
+EXT4 filesystem into ZFS, allowing you to use snapshots, compression, checksums, booting
 from snapshots, and all the other benefits of ZFS.
 
 ## Choose a setup
